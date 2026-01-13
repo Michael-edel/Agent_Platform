@@ -1,5 +1,8 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+*.pyc
+.venv/
+venv/
 *.py[codz]
 *$py.class
 
@@ -8,6 +11,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+*.pyc
 build/
 develop-eggs/
 dist/
@@ -205,3 +209,27 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# runtime
+out/
+platform.db
+jobs.db
+*.db
+
+# local files
+test.pdf
+.env
+
+# Runtime / artifacts
+out/
+platform.db
+jobs.db
+inventory.db
+*.db
+# Uploaded / test files
+*.pdf
+*.json
+
+# OS
+.DS_Store
+Thumbs.db
