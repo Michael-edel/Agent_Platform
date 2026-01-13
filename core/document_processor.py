@@ -264,10 +264,41 @@ class DocumentProcessor:
         return doc
 
     def save_json(self, data: Dict[str, Any], out_path: PathLike) -> Path:
+        """
+        Сохранить JSON в файл или директорию.
+        
+        Если out_path указывает на директорию → сохраняет в <dir>/result.json
+        Если out_path указывает на файл → сохраняет в этот файл
+        
+        Args:
+            data: Данные для сохранения
+            out_path: Путь к файлу или директории
+            
+        Returns:
+            Путь к созданному файлу
+        """
         out = Path(out_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        return out
+        
+        # Определяем, является ли путь директорией или файлом
+        if out.exists():
+            if out.is_dir():
+                # Существующая директория → сохраняем в result.json
+                out_file = out / "result.json"
+            else:
+                # Существующий файл → используем его
+                out_file = out
+        elif not out.suffix or out.suffix.lower() == "":
+            # Путь без расширения → считаем директорией
+            out.mkdir(parents=True, exist_ok=True)
+            out_file = out / "result.json"
+        else:
+            # Путь с расширением → считаем файлом
+            out_file = out
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Сохраняем JSON
+        out_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        return out_file
 
     def get_stats(self) -> Dict[str, int]:
         """Получить статистику обработки."""

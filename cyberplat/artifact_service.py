@@ -1,0 +1,132 @@
+"""Сервис для работы с артефактами."""
+
+import uuid
+import logging
+import sqlite3
+from typing import Optional, Dict, Any
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class ArtifactService:
+    """Сервис для создания и управления артефактами."""
+    
+    def __init__(self, db_path: str = "platform.db", event_service=None):
+        self.db_path = db_path
+        self.event_service = event_service
+        self._init_database()
+    
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    def _init_database(self) -> None:
+        """Инициализировать таблицы для артефактов."""
+        conn = self._get_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                source TEXT NOT NULL,
+                tenant_id TEXT,
+                data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_source ON artifacts(source)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_tenant_id ON artifacts(tenant_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at)")
+        
+        conn.commit()
+        conn.close()
+        logger.info("База артефактов инициализирована: %s", self.db_path)
+    
+    def create_artifact(
+        self,
+        kind: str,
+        source: str,
+        data: Dict[str, Any],
+        tenant_id: Optional[str] = None
+    ) -> str:
+        """
+        Создать новый артефакт.
+        
+        Args:
+            kind: Тип артефакта (например, "invoice")
+            source: Источник артефакта (например, "doc_agent")
+            data: Данные артефакта
+            tenant_id: ID тенанта
+            
+        Returns:
+            ID созданного артефакта
+        """
+        import json
+        
+        artifact_id = str(uuid.uuid4())
+        
+        conn = self._get_connection()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            INSERT INTO artifacts (id, kind, source, tenant_id, data, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            artifact_id,
+            kind,
+            source,
+            tenant_id,
+            json.dumps(data, ensure_ascii=False),
+            datetime.now().isoformat()
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Создан артефакт: {artifact_id} (kind={kind}, source={source}, tenant_id={tenant_id})")
+        
+        # Эмитим событие создания артефакта
+        # Передаем и tenant_id, и artifact_id для проверки консистентности
+        if self.event_service:
+            try:
+                self.event_service.emit(
+                    event_type="artifact.created",
+                    tenant_id=tenant_id,
+                    artifact_id=artifact_id,
+                    payload={"kind": kind, "source": source}
+                )
+            except Exception as e:
+                # Логируем ошибку, но не падаем - артефакт уже создан
+                logger.error(f"Ошибка при эмиссии события artifact.created: {e}", exc_info=True)
+                # В production можно решить, нужно ли падать здесь или просто логировать
+        
+        return artifact_id
+    
+    def get_artifact(self, artifact_id: str) -> Optional[Dict[str, Any]]:
+        """Получить артефакт по ID."""
+        import json
+        
+        conn = self._get_connection()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,))
+        row = cur.fetchone()
+        conn.close()
+        
+        if not row:
+            return None
+        
+        return {
+            "id": row["id"],
+            "kind": row["kind"],
+            "source": row["source"],
+            "tenant_id": row["tenant_id"],
+            "data": json.loads(row["data"]),
+            "created_at": row["created_at"]
+        }

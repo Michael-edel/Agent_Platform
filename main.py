@@ -115,7 +115,7 @@ def main():
     if not is_batch:
         result = processor.process_file(files[0])
         out_path = processor.save_json(result, Path(args.out))
-        print(f"✅ Готово: {out_path}")
+        print(f"[OK] Готово: {out_path}")
         return
 
     out_arg = Path(args.out)
@@ -203,9 +203,9 @@ def main():
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
     # Выводим статистику
-    print(f"✅ Готово: {summary_path}")
-    print(f"✅ Сохранены отдельные JSON для {len(files)} файлов в: {out_dir}")
-    print(f"📊 Stats: files={len(files)} | cache_hit={processor_stats['cache_hit']} | cache_miss={processor_stats['cache_miss']} | duplicates_reused={duplicates_reused} | openai_requests={openai_requests} | time={elapsed_time:.1f}s")
+    print(f"[OK] Готово: {summary_path}")
+    print(f"[OK] Сохранены отдельные JSON для {len(files)} файлов в: {out_dir}")
+    print(f"[STATS] files={len(files)} | cache_hit={processor_stats['cache_hit']} | cache_miss={processor_stats['cache_miss']} | duplicates_reused={duplicates_reused} | openai_requests={openai_requests} | time={elapsed_time:.1f}s")
 
 
 if __name__ == "__main__":
