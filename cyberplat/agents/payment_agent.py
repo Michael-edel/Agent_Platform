@@ -300,7 +300,17 @@ class PaymentAgent(BaseAgent):
             # Пытаемся получить из контекста
             tenant_id = context.tenant_id
             if not tenant_id:
-                raise ValueError(f"tenant_id не найден в артефакте {context.artifact_id} и не передан в контексте")
+                raise TenantValidationError(
+                    f"tenant_id не найден в артефакте {context.artifact_id} и не передан в контексте. "
+                    f"Передайте X-Tenant-ID заголовок."
+                )
+        
+        # КРИТИЧНО: нормализуем и валидируем tenant_id перед созданием payment артефакта
+        tenant_id = tenant_id.strip()
+        if not tenant_id or tenant_id == "string":
+            raise TenantValidationError(
+                f"Некорректный tenant_id: '{tenant_id}'. tenant_id не может быть пустым или 'string'"
+            )
         
         invoice_data = invoice_artifact.get("data", {})
         
@@ -424,13 +434,29 @@ class PaymentAgent(BaseAgent):
             "validation": validation
         }
         
-        # Создаем payment артефакт
-        payment_artifact_id = self.artifact_service.create_artifact(
-            kind="payment",
-            source="payment_agent",
-            data=payment_artifact_data,
-            tenant_id=tenant_id
-        )
+        # КРИТИЧНО: Создаем payment артефакт ПЕРЕД эмиссией событий
+        # Это гарантирует, что артефакт существует, когда события ссылаются на него
+        try:
+            payment_artifact_id = self.artifact_service.create_artifact(
+                kind="payment",
+                source="payment_agent",
+                data=payment_artifact_data,
+                tenant_id=tenant_id
+            )
+            logger.info(f"Payment артефакт создан: {payment_artifact_id} (tenant_id={tenant_id})")
+        except Exception as e:
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: не удалось создать payment артефакт: {e}", exc_info=True)
+            raise RuntimeError(f"Не удалось создать payment артефакт: {e}") from e
+        
+        # Проверяем, что артефакт действительно создан
+        created_artifact = self.artifact_service.get_artifact(payment_artifact_id)
+        if not created_artifact:
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: payment артефакт {payment_artifact_id} не найден после создания")
+            raise RuntimeError(f"Payment артефакт {payment_artifact_id} не найден после создания")
+        
+        if created_artifact.get("kind") != "payment":
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА: созданный артефакт имеет kind={created_artifact.get('kind')}, ожидается 'payment'")
+            raise RuntimeError(f"Созданный артефакт имеет неправильный kind: {created_artifact.get('kind')}")
         
         # Эмитим события
         # Всегда эмитим payment.prepared
@@ -461,7 +487,7 @@ class PaymentAgent(BaseAgent):
                 }
             )
         
-        logger.info(f"Payment артефакт создан: {payment_artifact_id} (is_ready={validation['is_ready']})")
+        logger.info(f"Payment артефакт создан и события эмитированы: {payment_artifact_id} (is_ready={validation['is_ready']})")
         
         return {
             "success": True,

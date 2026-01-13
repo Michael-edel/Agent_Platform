@@ -3,7 +3,7 @@
 import uuid
 import logging
 import sqlite3
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ class EventService:
     def __init__(self, db_path: str = "platform.db", artifact_service=None):
         self.db_path = db_path
         self.artifact_service = artifact_service
+        self._subscribers: List[Callable] = []  # Список подписчиков на события
         self._init_database()
     
     def _get_connection(self) -> sqlite3.Connection:
@@ -140,6 +141,17 @@ class EventService:
             "либо передайте artifact_id для получения tenant_id из артефакта"
         )
     
+    def subscribe(self, handler: Callable[[str, str, str, Optional[str], Optional[Dict[str, Any]], str], None]):
+        """
+        Подписаться на события.
+        
+        Args:
+            handler: Функция-обработчик, которая будет вызвана при каждом событии.
+                    Сигнатура: handler(event_id, event_type, tenant_id, artifact_id, payload, created_at)
+        """
+        self._subscribers.append(handler)
+        logger.info(f"Добавлен подписчик на события (всего: {len(self._subscribers)})")
+    
     def emit(
         self,
         event_type: str,
@@ -172,6 +184,8 @@ class EventService:
         conn = self._get_connection()
         cur = conn.cursor()
         
+        created_at = datetime.now().isoformat()
+        
         cur.execute("""
             INSERT INTO events (id, event_type, tenant_id, artifact_id, payload, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -181,11 +195,24 @@ class EventService:
             resolved_tenant_id,
             artifact_id,
             json.dumps(payload, ensure_ascii=False) if payload else None,
-            datetime.now().isoformat()
+            created_at
         ))
         
         conn.commit()
         conn.close()
         
         logger.info(f"Эмитировано событие: {event_type} (tenant_id={resolved_tenant_id}, artifact_id={artifact_id})")
+        
+        # Вызываем подписчиков (try/except, чтобы экспорт не валил основной поток)
+        for subscriber in self._subscribers:
+            try:
+                subscriber(event_id, event_type, resolved_tenant_id, artifact_id, payload, created_at)
+            except Exception as e:
+                logger.error(
+                    f"Ошибка в подписчике событий при обработке {event_type} "
+                    f"(event_id={event_id}): {e}",
+                    exc_info=True
+                )
+                # Продолжаем работу, не падаем
+        
         return event_id

@@ -117,6 +117,21 @@ class DocAgent(BaseAgent):
                 tenant_id = source_artifact.get("tenant_id")
                 logger.info(f"tenant_id получен из исходного артефакта: {tenant_id}")
         
+        # КРИТИЧНО: tenant_id обязателен для создания invoice артефакта
+        # Не создаем артефакт без tenant_id (нарушение tenant isolation)
+        if not tenant_id:
+            raise TenantValidationError(
+                f"tenant_id обязателен для doc_agent. "
+                f"Передайте X-Tenant-ID заголовок или убедитесь, что исходный артефакт имеет tenant_id."
+            )
+        
+        # Нормализуем tenant_id
+        tenant_id = tenant_id.strip()
+        if not tenant_id or tenant_id == "string":
+            raise TenantValidationError(
+                f"Некорректный tenant_id: '{tenant_id}'. tenant_id не может быть пустым или 'string'"
+            )
+        
         # Получаем путь к файлу
         if not context.file_id:
             raise ValueError("file_id не указан в контексте")

@@ -11,12 +11,24 @@ from cyberplat.artifact_service import ArtifactService
 
 @pytest.fixture
 def temp_db():
-    """Создать временную БД для тестов."""
+    """Создать временную БД для тестов (Windows-safe)."""
+    import time
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     yield db_path
     if os.path.exists(db_path):
-        os.unlink(db_path)
+        # Retry логика для Windows (файл может быть временно заблокирован)
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                os.unlink(db_path)
+                break
+            except PermissionError:
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                else:
+                    import logging
+                    logging.warning(f"Не удалось удалить временный файл {db_path} после {max_retries} попыток")
 
 
 @pytest.fixture
