@@ -1,0 +1,22 @@
+fix(db): нормализация DATABASE_URL для совместимости с psycopg v3
+
+SQLAlchemy по умолчанию использует драйвер psycopg2 для URL вида postgresql://,
+но в проекте установлен psycopg v3 (psycopg[binary]). Это приводило к ошибкам
+"No module named 'psycopg2'" в endpoint /ready и при выполнении миграций Alembic.
+
+Изменения:
+- Вынесена нормализация URL в utils/db_url.py (принцип DRY)
+- Нормализация postgresql:// и postgres:// в postgresql+psycopg:// для
+  SQLAlchemy/Alembic (замена только один раз, безопасно для production)
+- Нормализованный URL используется для create_engine() и конфигурации Alembic
+- Оригинальный URL (разобранные параметры) используется для psycopg.connect()
+- Добавлено 12 регрессионных тестов для нормализации URL (без реальной БД)
+- Обновлён README.md с разделом "PostgreSQL + psycopg v3"
+
+Безопасность:
+- SQLite workflow не изменён (нет нормализации для sqlite://)
+- Оригинальный DATABASE_URL в переменных окружения не изменяется
+- Идемпотентная нормализация (безопасно для повторных вызовов)
+- Нет breaking changes в существующем поведении
+
+Ref: readiness endpoint, alembic migrations, psycopg v3

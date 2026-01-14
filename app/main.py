@@ -20,8 +20,19 @@ from pathlib import Path as PathLib
 root_dir = PathLib(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from utils.logger import setup_logging
 from utils.config import load_settings, Settings
+from utils.db_url import normalize_database_url
+
+# Импорты для observability
+from cyberplat.observability.logging import setup_structured_logging
+from cyberplat.observability.request_id import RequestIDMiddleware
+from cyberplat.observability.metrics import (
+    setup_metrics,
+    metrics_endpoint,
+    record_http_request,
+    record_webhook_event,
+    record_recurring_run,
+)
 from storage.database import Database
 from storage.job_queue import JobQueue, JobStatus
 from core.worker import DocumentWorker
@@ -46,10 +57,11 @@ from cyberplat.billing_entitlements import EntitlementService
 from cyberplat.stripe_webhook_handler import StripeWebhookHandler
 from cyberplat.kaspi_webhook_handler import KaspiWebhookHandler
 from cyberplat.kaspi_client import create_checkout_session as kaspi_create_checkout, charge_token as kaspi_charge_token
-from cyberplat.kaspi_recurring import charge_kaspi_subscriptions
 
-# Настройка логирования
-setup_logging("INFO")
+# Настройка структурированного логирования
+log_level = os.getenv("LOG_LEVEL", "INFO").strip()
+log_format = os.getenv("LOG_FORMAT", "json").strip()
+setup_structured_logging(level=log_level, format_type=log_format)
 logger = logging.getLogger(__name__)
 
 # Инициализация приложения
@@ -58,6 +70,39 @@ app = FastAPI(
     description="API для обработки PDF счетов и других документов",
     version="1.0.0"
 )
+
+# Настройка метрик
+metrics_enabled = os.getenv("METRICS_ENABLED", "1").strip() == "1"
+setup_metrics(enabled=metrics_enabled)
+
+# Подключение middleware для request_id (должен быть первым)
+app.add_middleware(RequestIDMiddleware)
+
+# Middleware для метрик HTTP запросов (если включены)
+if metrics_enabled:
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from time import time
+    
+    class MetricsMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            start_time = time()
+            method = request.method
+            path = request.url.path
+            
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+                return response
+            except Exception as e:
+                status_code = 500
+                raise
+            finally:
+                duration = time() - start_time
+                # Исключаем /metrics и /health из метрик (чтобы не зашумлять)
+                if path not in ("/metrics", "/health", "/ready"):
+                    record_http_request(method, path, status_code, duration)
+    
+    app.add_middleware(MetricsMiddleware)
 
 # Глобальные объекты (инициализируются при старте)
 settings: Optional[Settings] = None
@@ -272,13 +317,159 @@ class PreparePaymentResponse(BaseModel):
 
 @app.get("/health")
 async def health(request: Request):
-    """Проверка здоровья сервиса."""
+    """
+    Health check endpoint.
+    
+    Проверяет, что процесс жив и базовые компоненты инициализированы.
+    Не проверяет зависимости (БД, внешние сервисы) - для этого используется /ready.
+    """
     return {
         "status": "ok",
         "service": "document-processing-api",
         "worker_running": worker.is_running if worker else False,
         "billing_initialized": hasattr(request.app.state, "billing_service") and request.app.state.billing_service is not None
     }
+
+
+@app.get("/ready")
+async def ready(request: Request):
+    """
+    Readiness check endpoint.
+    
+    Проверяет доступность критичных зависимостей (БД, сервисы).
+    Используется для Kubernetes liveness/readiness probes.
+    """
+    checks = {
+        "status": "ok",
+        "checks": {}
+    }
+    
+    # Проверка БД
+    original_database_url = os.getenv("DATABASE_URL", "").strip()
+    
+    # Нормализация DATABASE_URL для psycopg v3 (production-safe)
+    # SQLAlchemy по умолчанию использует psycopg2, но у нас установлен psycopg v3
+    normalized_database_url = normalize_database_url(original_database_url)
+    
+    # Если указан PostgreSQL через DATABASE_URL
+    # Проверяем оригинальный URL (до нормализации) для определения типа БД
+    is_postgres = original_database_url and (
+        original_database_url.startswith("postgresql://") or 
+        original_database_url.startswith("postgres://") or 
+        original_database_url.startswith("postgresql+psycopg://")
+    )
+    
+    if is_postgres:
+        try:
+            import psycopg
+            from urllib.parse import urlparse
+            
+            # Парсим DATABASE_URL (используем оригинальный для psycopg.connect)
+            # Для psycopg.connect используются разобранные параметры подключения,
+            # для SQLAlchemy create_engine() — нормализованный DATABASE_URL с postgresql+psycopg://
+            parsed = urlparse(original_database_url)
+            
+            # Подключаемся к PostgreSQL с коротким таймаутом
+            conn = psycopg.connect(
+                host=parsed.hostname or os.getenv("POSTGRES_HOST", "postgres"),
+                port=parsed.port or int(os.getenv("POSTGRES_PORT", "5432")),
+                dbname=parsed.path.lstrip("/") if parsed.path else os.getenv("POSTGRES_DB", "agent_platform"),
+                user=parsed.username or os.getenv("POSTGRES_USER", "postgres"),
+                password=parsed.password or os.getenv("POSTGRES_PASSWORD", ""),
+                connect_timeout=3  # Короткий таймаут для readiness check
+            )
+            
+            # Выполняем простой запрос
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+            
+            # Проверяем версию схемы Alembic (только для PostgreSQL)
+            try:
+                from alembic.config import Config
+                from alembic import command
+                from alembic.script import ScriptDirectory
+                from alembic.runtime.migration import MigrationContext
+                from sqlalchemy import create_engine
+                
+                # Получаем текущую версию из БД
+                # Используем нормализованный database_url с postgresql+psycopg:// для SQLAlchemy
+                engine = create_engine(normalized_database_url, pool_pre_ping=True)
+                with engine.connect() as migration_conn:
+                    context = MigrationContext.configure(migration_conn)
+                    current_rev = context.get_current_revision()
+                
+                # Получаем head версию из миграций
+                alembic_cfg = Config("alembic.ini")
+                script = ScriptDirectory.from_config(alembic_cfg)
+                head_rev = script.get_current_head()
+                
+                if current_rev != head_rev:
+                    checks["checks"]["database"] = f"error: schema version mismatch (current: {current_rev or 'none'}, expected: {head_rev})"
+                    checks["checks"]["database_migration"] = "not_up_to_date"
+                    checks["status"] = "degraded"
+                else:
+                    checks["checks"]["database"] = "ok (postgresql)"
+                    checks["checks"]["database_migration"] = f"ok (revision: {current_rev})"
+                
+                engine.dispose()
+            except Exception as migration_error:
+                # Если проверка миграций не удалась, но подключение работает - предупреждение
+                logger.warning(f"Failed to check Alembic migration version: {migration_error}")
+                checks["checks"]["database"] = "ok (postgresql, migration check failed)"
+                checks["checks"]["database_migration"] = f"warning: {str(migration_error)[:50]}"
+            
+            conn.close()
+        except ImportError:
+            checks["checks"]["database"] = "error: psycopg not installed"
+            checks["status"] = "degraded"
+        except Exception as e:
+            checks["checks"]["database"] = f"error: {str(e)[:50]}"
+            checks["status"] = "degraded"
+    else:
+        # SQLite проверка (как раньше)
+        try:
+            if db:
+                # Простая проверка доступности БД
+                conn = db._get_connection()
+                conn.close()
+                checks["checks"]["database"] = "ok (sqlite)"
+            else:
+                checks["checks"]["database"] = "not_initialized"
+        except Exception as e:
+            checks["checks"]["database"] = f"error: {str(e)[:50]}"
+            checks["status"] = "degraded"
+    
+    # Проверка billing service
+    if hasattr(request.app.state, "billing_service") and request.app.state.billing_service:
+        checks["checks"]["billing_service"] = "ok"
+    else:
+        checks["checks"]["billing_service"] = "not_initialized"
+    
+    # Проверка entitlement service
+    if hasattr(request.app.state, "entitlement_service") and request.app.state.entitlement_service:
+        checks["checks"]["entitlement_service"] = "ok"
+    else:
+        checks["checks"]["entitlement_service"] = "not_initialized"
+    
+    # Если хотя бы одна критичная проверка не прошла, возвращаем 503
+    if checks["status"] != "ok":
+        return JSONResponse(status_code=503, content=checks)
+    
+    return checks
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+    
+    Возвращает метрики в Prometheus exposition format.
+    Доступен только если METRICS_ENABLED=1.
+    """
+    if not metrics_enabled:
+        raise HTTPException(status_code=404, detail="Metrics are disabled")
+    return metrics_endpoint()
 
 
 @app.post("/v1/process", response_model=ProcessResponse)
@@ -1117,6 +1308,8 @@ async def stripe_webhook(request: Request):
     
     Требует заголовок Stripe-Signature для проверки подписи.
     Секрет берется из env: STRIPE_WEBHOOK_SECRET
+    
+    ВАЖНО: Использует ProcessWebhookUseCase для обработки событий (Clean Architecture).
     """
     import os
     
@@ -1137,16 +1330,6 @@ async def stripe_webhook(request: Request):
     # Читаем тело запроса
     body = await request.body()
     
-    # Создаем handler
-    handler = StripeWebhookHandler(
-        entitlement_service=entitlement_svc,
-        webhook_secret=webhook_secret
-    )
-    
-    # Проверяем подпись
-    if not handler.verify_signature(body, signature):
-        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
-    
     # Парсим JSON
     try:
         event = json.loads(body.decode('utf-8'))
@@ -1157,44 +1340,124 @@ async def stripe_webhook(request: Request):
     if not event_id:
         raise HTTPException(status_code=400, detail="Missing event.id in payload")
     
-    # Записываем событие (идемпотентно)
-    webhook_id = entitlement_svc.record_webhook_event(
-        provider="stripe",
-        event_id=event_id,
-        raw_json=body.decode('utf-8')
+    # Инициализируем Clean Architecture компоненты
+    from cyberplat.billing.infrastructure.stripe_provider import StripePaymentProvider
+    from cyberplat.billing.infrastructure.repositories import (
+        EntitlementSubscriptionRepository,
+        EntitlementWebhookEventRepository
+    )
+    from cyberplat.billing.infrastructure.stripe_webhook_handlers import create_stripe_event_handlers
+    from cyberplat.billing.application.process_webhook_use_case import ProcessWebhookUseCase
+    
+    # Создаем адаптеры
+    provider = StripePaymentProvider()
+    subscription_repo = EntitlementSubscriptionRepository(entitlement_svc)
+    event_repo = EntitlementWebhookEventRepository(entitlement_svc)
+    
+    # Создаем обработчики событий
+    event_handlers = create_stripe_event_handlers()
+    
+    # Создаем use case
+    use_case = ProcessWebhookUseCase(
+        provider=provider,
+        event_repo=event_repo,
+        subscription_repo=subscription_repo,
+        event_handlers=event_handlers
     )
     
-    # Проверяем, было ли событие уже обработано
-    conn = entitlement_svc._get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT status FROM billing_webhook_events WHERE id = ?", (webhook_id,))
-    row = cur.fetchone()
-    conn.close()
+    # Извлекаем тип события для метрик
+    event_type = event.get("type", "unknown")
     
-    if row and row["status"] == "processed":
-        # Событие уже обработано - идемпотентность
-        logger.info(f"Stripe событие {event_id} уже обработано, возвращаем 200 OK")
-        return {"status": "ok", "message": "Event already processed"}
-    
-    # Обрабатываем событие
+    # Обрабатываем событие через use case
     try:
-        success, tenant_id, error_msg = handler.handle_event(event)
+        success, tenant_id, error_msg = use_case.execute(
+            event=event,
+            raw_payload=body,
+            signature=signature,
+            webhook_secret=webhook_secret
+        )
         
+        # Записываем метрику webhook события
+        if metrics_enabled:
+            if success:
+                if tenant_id is None:
+                    status = "duplicate"  # Идемпотентный ответ
+                else:
+                    status = "ok"
+            else:
+                if "not handled" in (error_msg or "") or "Missing" in (error_msg or ""):
+                    status = "invalid"
+                else:
+                    status = "error"
+            record_webhook_event("stripe", event_type, status)
+        
+        # Формируем ответ в том же формате, что и раньше (для обратной совместимости)
         if success:
-            entitlement_svc.mark_webhook_processed(webhook_id, tenant_id=tenant_id)
+            # Если tenant_id None, это может быть идемпотентный ответ (событие уже обработано)
+            if tenant_id is None:
+                return {"status": "ok", "message": "Event already processed"}
             return {"status": "ok", "event_id": event_id, "tenant_id": tenant_id}
         else:
             # Событие проигнорировано или ошибка
             if error_msg:
                 if "not handled" in error_msg or "Missing" in error_msg:
-                    entitlement_svc.mark_webhook_ignored(webhook_id, error_msg)
+                    # Помечаем как ignored через event_repo
+                    try:
+                        event_repo.mark_event_ignored(
+                            provider="stripe",
+                            event_id=event_id,
+                            reason=error_msg
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to mark event as ignored: {e}")
                 else:
-                    entitlement_svc.mark_webhook_processed(webhook_id, tenant_id=tenant_id, error=error_msg)
+                    # Ошибка обработки - помечаем как processed с ошибкой
+                    try:
+                        event_repo.mark_event_processed(
+                            provider="stripe",
+                            event_id=event_id,
+                            tenant_id=tenant_id
+                        )
+                        # Обновляем error_message если нужно
+                        conn = entitlement_svc._get_connection()
+                        cur = conn.cursor()
+                        cur.execute("""
+                            UPDATE billing_webhook_events
+                            SET error_message = ?
+                            WHERE event_id = ? AND provider = ?
+                        """, (error_msg, event_id, "stripe"))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.warning(f"Failed to update event error: {e}")
             return {"status": "ignored", "event_id": event_id, "reason": error_msg}
             
     except Exception as e:
         logger.error(f"Ошибка при обработке Stripe webhook: {e}", exc_info=True)
-        entitlement_svc.mark_webhook_processed(webhook_id, error=str(e))
+        
+        # Записываем метрику ошибки
+        if metrics_enabled:
+            event_type = event.get("type", "unknown")
+            record_webhook_event("stripe", event_type, "error")
+        
+        # Помечаем событие как processed с ошибкой
+        try:
+            event_repo.mark_event_processed(
+                provider="stripe",
+                event_id=event_id,
+                tenant_id=None
+            )
+            conn = entitlement_svc._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE billing_webhook_events
+                SET error_message = ?
+                WHERE event_id = ? AND provider = ?
+            """, (str(e), event_id, "stripe"))
+            conn.commit()
+            conn.close()
+        except Exception as update_error:
+            logger.warning(f"Failed to update event error: {update_error}")
         raise HTTPException(status_code=500, detail=f"Error processing webhook: {str(e)}")
 
 
@@ -1332,6 +1595,8 @@ async def kaspi_webhook(request: Request):
     
     Требует заголовок X-Kaspi-Signature для проверки подписи.
     Секрет берется из env: KASPI_WEBHOOK_SECRET
+    
+    ВАЖНО: Использует ProcessWebhookUseCase для обработки событий (Clean Architecture).
     """
     import os
     
@@ -1354,62 +1619,136 @@ async def kaspi_webhook(request: Request):
     if not signature:
         raise HTTPException(status_code=401, detail="Missing X-Kaspi-Signature header")
     
-    # Инициализируем обработчик
-    billing_svc = getattr(request.app.state, "billing_service", None)
-    handler = KaspiWebhookHandler(
-        entitlement_service=entitlement_svc,
-        billing_service=billing_svc,
-        webhook_secret=webhook_secret
-    )
-    
-    if not handler.verify_signature(body_bytes, signature):
-        raise HTTPException(status_code=401, detail="Invalid Kaspi webhook signature")
-    
     try:
         payload = json.loads(body_str)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
     
-    # Извлекаем event_id
+    # Извлекаем event_id (Kaspi может использовать id или event_id)
     event_id = payload.get("id") or payload.get("event_id") or str(uuid.uuid4())
     
-    # Записываем событие (идемпотентность)
-    webhook_id = entitlement_svc.record_webhook_event(
-        provider="kaspi",
-        event_id=event_id,
-        raw_json=body_str
+    # Инициализируем Clean Architecture компоненты
+    from cyberplat.billing.infrastructure.kaspi_provider import KaspiPaymentProvider
+    from cyberplat.billing.infrastructure.repositories import (
+        EntitlementSubscriptionRepository,
+        EntitlementWebhookEventRepository
+    )
+    from cyberplat.billing.infrastructure.kaspi_webhook_handlers import create_kaspi_event_handlers
+    from cyberplat.billing.application.process_webhook_use_case import ProcessWebhookUseCase
+    
+    # Получаем billing_service для сохранения Kaspi токенов
+    billing_svc = getattr(request.app.state, "billing_service", None)
+    
+    # Создаем адаптеры
+    provider = KaspiPaymentProvider()
+    subscription_repo = EntitlementSubscriptionRepository(entitlement_svc, billing_service=billing_svc)
+    event_repo = EntitlementWebhookEventRepository(entitlement_svc)
+    
+    # Создаем обработчики событий (передаём entitlement_service для lookup order)
+    event_handlers = create_kaspi_event_handlers(entitlement_svc)
+    
+    # Создаем use case
+    use_case = ProcessWebhookUseCase(
+        provider=provider,
+        event_repo=event_repo,
+        subscription_repo=subscription_repo,
+        event_handlers=event_handlers
     )
     
-    # Проверяем, не обработано ли уже событие
-    conn = entitlement_svc._get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT status, processed_at FROM billing_webhook_events
-        WHERE id = ?
-    """, (webhook_id,))
-    webhook_row = cur.fetchone()
-    conn.close()
+    # Извлекаем тип события для метрик
+    event_type = payload.get("event_type") or payload.get("type") or "unknown"
     
-    if webhook_row and webhook_row["status"] == "processed":
-        logger.info(f"Webhook событие {event_id} уже обработано, пропускаем")
-        return {"status": "ok", "event_id": event_id, "message": "Already processed"}
-    
-    # Обрабатываем событие
+    # Обрабатываем событие через use case
     try:
-        success, tenant_id, error_msg = handler.handle_event(payload)
+        success, tenant_id, error_msg = use_case.execute(
+            event=payload,
+            raw_payload=body_bytes,
+            signature=signature,
+            webhook_secret=webhook_secret
+        )
         
+        # Записываем метрику webhook события
+        if metrics_enabled:
+            if success:
+                if tenant_id is None:
+                    status = "duplicate"  # Идемпотентный ответ
+                else:
+                    status = "ok"
+            else:
+                if "not handled" in (error_msg or "") or "Missing" in (error_msg or "") or "Order not found" in (error_msg or ""):
+                    status = "invalid"
+                else:
+                    status = "error"
+            record_webhook_event("kaspi", event_type, status)
+        
+        # Формируем ответ в том же формате, что и раньше (для обратной совместимости)
         if success:
-            entitlement_svc.mark_webhook_processed(webhook_id, tenant_id)
+            # Если tenant_id None, это может быть идемпотентный ответ (событие уже обработано)
+            if tenant_id is None:
+                return {"status": "ok", "event_id": event_id, "message": "Already processed"}
             return {"status": "ok", "event_id": event_id, "tenant_id": tenant_id}
         else:
-            entitlement_svc.mark_webhook_processed(webhook_id, tenant_id, error=error_msg)
-            logger.error(f"Ошибка при обработке Kaspi webhook {event_id}: {error_msg}")
+            # Событие проигнорировано или ошибка
+            if error_msg:
+                if "not handled" in error_msg or "Missing" in error_msg or "Order not found" in error_msg:
+                    # Помечаем как ignored через event_repo
+                    try:
+                        event_repo.mark_event_ignored(
+                            provider="kaspi",
+                            event_id=event_id,
+                            reason=error_msg
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to mark event as ignored: {e}")
+                else:
+                    # Ошибка обработки - помечаем как processed с ошибкой
+                    try:
+                        event_repo.mark_event_processed(
+                            provider="kaspi",
+                            event_id=event_id,
+                            tenant_id=tenant_id
+                        )
+                        # Обновляем error_message если нужно
+                        conn = entitlement_svc._get_connection()
+                        cur = conn.cursor()
+                        cur.execute("""
+                            UPDATE billing_webhook_events
+                            SET error_message = ?
+                            WHERE event_id = ? AND provider = ?
+                        """, (error_msg, event_id, "kaspi"))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.warning(f"Failed to update event error: {e}")
             return {"status": "error", "event_id": event_id, "error": error_msg}
+            
     except Exception as e:
-        error_msg = str(e)
-        entitlement_svc.mark_webhook_processed(webhook_id, None, error=error_msg)
-        logger.error(f"Исключение при обработке Kaspi webhook {event_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Webhook processing error: {error_msg}")
+        logger.error(f"Ошибка при обработке Kaspi webhook: {e}", exc_info=True)
+        
+        # Записываем метрику ошибки
+        if metrics_enabled:
+            event_type = payload.get("event_type") or payload.get("type") or "unknown"
+            record_webhook_event("kaspi", event_type, "error")
+        
+        # Помечаем событие как processed с ошибкой
+        try:
+            event_repo.mark_event_processed(
+                provider="kaspi",
+                event_id=event_id,
+                tenant_id=None
+            )
+            conn = entitlement_svc._get_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE billing_webhook_events
+                SET error_message = ?
+                WHERE event_id = ? AND provider = ?
+            """, (str(e), event_id, "kaspi"))
+            conn.commit()
+            conn.close()
+        except Exception as update_error:
+            logger.warning(f"Failed to update event error: {update_error}")
+        raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
 
 
 @app.post("/api/v1/billing/webhook/yoomoney")
@@ -1838,6 +2177,8 @@ async def charge_kaspi_recurring(request: Request):
     - BILLING_ENABLED=1
     - KASPI_ENABLED=1
     
+    ВАЖНО: Использует RenewSubscriptionsUseCase для обработки recurring billing (Clean Architecture).
+    
     Returns:
         {
             "status": "ok",
@@ -1873,19 +2214,55 @@ async def charge_kaspi_recurring(request: Request):
     if not billing_svc:
         raise HTTPException(status_code=503, detail="Billing service not initialized")
     
+    # Инициализируем Clean Architecture компоненты
+    from cyberplat.billing.infrastructure.kaspi_provider import KaspiPaymentProvider
+    from cyberplat.billing.infrastructure.repositories import EntitlementSubscriptionRepository
+    from cyberplat.billing.application.renew_subscriptions_use_case import RenewSubscriptionsUseCase
+    
+    # Создаем адаптеры
+    kaspi_provider = KaspiPaymentProvider()
+    subscription_repo = EntitlementSubscriptionRepository(entitlement_svc, billing_service=billing_svc)
+    
+    # Создаем общий use case для Kaspi
+    use_case = RenewSubscriptionsUseCase(
+        provider_name="kaspi",
+        subscription_repo=subscription_repo,
+        kaspi_provider=kaspi_provider
+    )
+    
+    import time
+    start_time = time.time()
+    
     try:
-        # Вызываем recurring charge
-        result = charge_kaspi_subscriptions(entitlement_svc)
+        # Выполняем recurring charge через общий use case
+        result = use_case.execute()
         
-        return {
-            "status": "ok",
-            "charged": result.get("charged", 0),
-            "failed": result.get("failed", 0),
-            "skipped": result.get("skipped", 0),
-            "errors": result.get("errors", [])
-        }
+        duration = time.time() - start_time
+        
+        # Записываем метрики recurring run
+        if metrics_enabled:
+            # Определяем общий статус
+            if result.failed > 0 or result.errors:
+                status = "failed"
+            elif result.charged > 0:
+                status = "success"
+            else:
+                status = "skipped"
+            record_recurring_run("kaspi", status, duration)
+        
+        # Сериализуем RecurringResult в прежний формат JSON ответа
+        result_dict = result.to_dict()
+        result_dict["status"] = "ok"
+        
+        return result_dict
     except Exception as e:
+        duration = time.time() - start_time
         logger.error(f"Ошибка при выполнении recurring charge: {e}", exc_info=True)
+        
+        # Записываем метрику ошибки
+        if metrics_enabled:
+            record_recurring_run("kaspi", "failed", duration)
+        
         raise HTTPException(
             status_code=500,
             detail=f"Error executing recurring charge: {str(e)}"

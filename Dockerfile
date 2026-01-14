@@ -1,18 +1,48 @@
-FROM python:3.11-slim
+# Multi-stage build для оптимизации размера образа
+FROM python:3.13-slim as builder
 
 WORKDIR /app
 
-# Чтобы некоторые пакеты ставились без сюрпризов
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Установка системных зависимостей для сборки пакетов
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
+# Копируем requirements и устанавливаем зависимости
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir --user -r /app/requirements.txt
 
+# Production stage
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Переменные окружения для Python
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/home/appuser/.local/bin:$PATH
+
+# Создаем non-root пользователя для безопасности
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Копируем установленные пакеты из builder stage
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Копируем код приложения
 COPY . /app
 
-# Создаем необходимые директории
-RUN mkdir -p /app/out/temp /app/out/cache /app/out/cache_pages /app/out/jobs
+# Создаем необходимые директории с правильными правами
+RUN mkdir -p /app/out/temp /app/out/cache /app/out/cache_pages /app/out/jobs \
+    && chown -R appuser:appuser /app
+
+# Переключаемся на non-root пользователя
+USER appuser
+
+# Проверка здоровья (healthcheck)
+# Используем urllib из стандартной библиотеки Python (не требует дополнительных зависимостей)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)" || exit 1
 
 # По умолчанию запускаем FastAPI сервер
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

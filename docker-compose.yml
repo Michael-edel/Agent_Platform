@@ -1,20 +1,75 @@
+version: '3.8'
+
 services:
-  app:
-    build: .
-    container_name: CyberPlat_app
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-platform-postgres
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - MAX_WORKERS=${MAX_WORKERS:-3}
-      - MAX_OPENAI_CONCURRENCY=${MAX_OPENAI_CONCURRENCY:-2}
-      - OPENAI_MIN_INTERVAL_SEC=${OPENAI_MIN_INTERVAL_SEC:-0.7}
-      - OPENAI_MAX_RETRIES=${OPENAI_MAX_RETRIES:-5}
-      - PRICE_PER_1K_IN=${PRICE_PER_1K_IN:-0.15}
-      - PRICE_PER_1K_OUT=${PRICE_PER_1K_OUT:-0.60}
-      - DB_PATH=${DB_PATH:-inventory.db}
+      - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      # Открываем порт только для dev/staging (в production можно убрать)
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-agent_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-platform-app
+    ports:
+      - "${APP_PORT:-8000}:8000"
     env_file:
       - .env
+    environment:
+      # Переопределение критичных переменных через environment (приоритет над .env)
+      - PLATFORM_DB_PATH=${PLATFORM_DB_PATH:-platform.db}
+      # DATABASE_URL для PostgreSQL (если используется)
+      - DATABASE_URL=${DATABASE_URL:-}
+      # PostgreSQL connection params (для формирования DATABASE_URL)
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+    volumes:
+      # Volume для данных (БД, кэш, временные файлы)
+      # В production с PostgreSQL эти volumes могут не использоваться для БД
+      - app-data:/app/data
+      - app-out:/app/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Лимиты ресурсов (опционально, для production)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1.0'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+volumes:
+  app-data:
+    driver: local
+  app-out:
+    driver: local
+  pg-data:
+    driver: local

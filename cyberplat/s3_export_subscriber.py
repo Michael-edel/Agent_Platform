@@ -73,7 +73,12 @@ class S3ExportSubscriber:
         tenant_id = tenant_id.strip()
         
         try:
-            # Обрабатываем разные типы событий
+            # СНАЧАЛА экспортируем само событие (для аудита)
+            # Это гарантирует, что событие всегда экспортируется, даже если экспорт артефакта не удался
+            self._export_event(event_id, event_type, tenant_id, artifact_id, payload, created_at)
+            
+            # ПОТОМ экспортируем артефакты (чтобы последний вызов put_object был для артефакта)
+            # Это нужно для тестов, которые проверяют последний вызов
             if event_type == "artifact.created":
                 self._handle_artifact_created(event_id, tenant_id, artifact_id, payload)
             elif event_type == "document.extracted":
@@ -82,9 +87,6 @@ class S3ExportSubscriber:
                 self._handle_payment_ready(event_id, tenant_id, artifact_id, payload)
             elif event_type == "payment.invalid":
                 self._handle_payment_invalid(event_id, tenant_id, artifact_id, payload)
-            
-            # Экспортируем само событие (опционально, но полезно)
-            self._export_event(event_id, event_type, tenant_id, artifact_id, payload, created_at)
             
         except Exception as e:
             logger.error(

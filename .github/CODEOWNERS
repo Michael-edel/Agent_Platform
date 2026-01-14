@@ -1,0 +1,14 @@
+# CODEOWNERS для Agent Platform / CyberPlat
+#
+# Формат: <path> <@username или @team>
+# См. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Critical billing и webhook зоны
+/cyberplat/billing/ @Michael-edel
+/app/main.py @Michael-edel
+
+# CI/CD и документация
+/.github/ @Michael-edel
+
+# Если GitHub требует корректный username, замените @Michael-edel на реальный
+# Для приватных репозиториев или если CODEOWNERS не поддерживается - оставьте как есть

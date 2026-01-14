@@ -1,0 +1,39 @@
+# docker-compose.override.yml для локальной разработки
+# 
+# Скопируйте этот файл в docker-compose.override.yml:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# docker-compose автоматически использует override файл для dev окружения
+# ⚠️ НЕ коммитьте docker-compose.override.yml с реальными секретами!
+
+version: '3.8'
+
+services:
+  app:
+    # Автоперезагрузка при изменении кода
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    
+    # Монтируем код для hot-reload
+    volumes:
+      - .:/app
+      # Исключаем node_modules, .git и другие ненужные директории
+      - /app/__pycache__
+      - /app/.pytest_cache
+      - /app/.venv
+    
+    # Переменные для dev окружения
+    environment:
+      - DEBUG=1
+      - PYTHONUNBUFFERED=1
+    
+    # Отключаем healthcheck в dev (опционально)
+    # healthcheck:
+    #   disable: true
+    
+    # По умолчанию dev использует SQLite (не требует postgres)
+    # PostgreSQL сервис будет запущен, но не используется, если DATABASE_URL не указан
+    # 
+    # Если нужно использовать PostgreSQL в dev, раскомментируйте:
+    # environment:
+    #   - DATABASE_URL=postgresql://postgres:change-me@postgres:5432/agent_platform
+    #   - POSTGRES_PASSWORD=change-me

@@ -1,0 +1,22 @@
+fix(db): normalize DATABASE_URL for psycopg v3 compatibility
+
+SQLAlchemy defaults to psycopg2 driver for postgresql:// URLs, but the
+project uses psycopg v3 (psycopg[binary]). This caused "No module named
+'psycopg2'" errors in /ready endpoint and Alembic migrations.
+
+Changes:
+- Extract URL normalization into utils/db_url.py (DRY principle)
+- Normalize postgresql:// and postgres:// to postgresql+psycopg:// for
+  SQLAlchemy/Alembic (replace only once, production-safe)
+- Use normalized URL for create_engine() and Alembic config
+- Use original URL (parsed parameters) for psycopg.connect()
+- Add 12 regression tests for URL normalization (no real DB required)
+- Update README.md with "PostgreSQL + psycopg v3" section
+
+Safety:
+- SQLite workflow unchanged (no normalization for sqlite://)
+- Original DATABASE_URL in environment not modified
+- Idempotent normalization (safe for repeated calls)
+- No breaking changes to existing behavior
+
+Ref: readiness endpoint, alembic migrations, psycopg v3

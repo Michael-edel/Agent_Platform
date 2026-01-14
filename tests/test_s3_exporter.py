@@ -226,10 +226,9 @@ def test_s3_export_subscriber_document_extracted(services, mock_s3_client):
         access_key="test_key",
         secret_key="test_secret",
         bucket="test-bucket",
-        prefix="test"
+        prefix="test",
+        s3_client=mock_s3_client
     )
-    # Используем параметр s3_client в конструкторе вместо присваивания после создания
-    # (уже исправлено в fixture s3_exporter)
     
     subscriber = S3ExportSubscriber(
         s3_exporter=exporter,
@@ -272,10 +271,9 @@ def test_s3_export_subscriber_payment_ready(services, mock_s3_client):
         access_key="test_key",
         secret_key="test_secret",
         bucket="test-bucket",
-        prefix="test"
+        prefix="test",
+        s3_client=mock_s3_client
     )
-    # Используем параметр s3_client в конструкторе вместо присваивания после создания
-    # (уже исправлено в fixture s3_exporter)
     
     subscriber = S3ExportSubscriber(
         s3_exporter=exporter,

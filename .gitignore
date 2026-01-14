@@ -6,11 +6,13 @@ __pycache__/
 *$py.class
 .venv/
 venv/
-env/
+.env/
 ENV/
 env.bak/
 venv.bak/
-
+*.pyc
+.env
+.env.*
 # =========================
 # Build / packaging
 # =========================
@@ -22,7 +24,10 @@ dist/
 wheels/
 .installed.cfg
 MANIFEST
-
+*.zip
+*.db
+# Test scripts (local only)
+test-secrets-scan.sh
 # =========================
 # Test / coverage
 # =========================
