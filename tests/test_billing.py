@@ -366,6 +366,149 @@ def test_invoice_total_amount_matches_sum(billing_service, billing_subscriber, a
         f"total_amount_minor ({invoice['total_amount_minor']}) должен совпадать с суммой totals_by_metric ({sum_by_metric})"
 
 
+def test_invoice_tenant_isolation(billing_service, billing_subscriber):
+    """Тест: invoice для одного tenant не содержит данные других tenants (критический security invariant)."""
+    tenant_a = "tenant-a"
+    tenant_b = "tenant-b"
+    period = datetime.now().strftime("%Y-%m")
+    
+    # Создаем usage для tenant-A
+    billing_subscriber(
+        "event-a-1", "document.extracted", tenant_a, "artifact-a-1", {},
+        f"{period}-15T10:00:00"
+    )
+    billing_subscriber(
+        "event-a-2", "payment.ready", tenant_a, "artifact-a-2", {},
+        f"{period}-15T11:00:00"
+    )
+    
+    # Создаем usage для tenant-B
+    billing_subscriber(
+        "event-b-1", "document.extracted", tenant_b, "artifact-b-1", {},
+        f"{period}-15T12:00:00"
+    )
+    billing_subscriber(
+        "event-b-2", "payment.ready", tenant_b, "artifact-b-2", {},
+        f"{period}-15T13:00:00"
+    )
+    
+    # Получаем invoice для tenant-A
+    invoice_a = billing_service.get_invoice(tenant_id=tenant_a, period=period)
+    
+    # Проверяем, что invoice-A содержит только данные tenant-A
+    assert invoice_a["tenant_id"] == tenant_a
+    assert "invoice_extracted" in invoice_a["totals_by_metric"]
+    assert "payment_ready" in invoice_a["totals_by_metric"]
+    # Проверяем, что units соответствуют только tenant-A (2 события)
+    assert invoice_a["totals_by_metric"]["invoice_extracted"]["units"] == 1.0
+    assert invoice_a["totals_by_metric"]["payment_ready"]["units"] == 1.0
+    
+    # Получаем invoice для tenant-B
+    invoice_b = billing_service.get_invoice(tenant_id=tenant_b, period=period)
+    
+    # Проверяем, что invoice-B содержит только данные tenant-B
+    assert invoice_b["tenant_id"] == tenant_b
+    assert invoice_b["totals_by_metric"]["invoice_extracted"]["units"] == 1.0
+    assert invoice_b["totals_by_metric"]["payment_ready"]["units"] == 1.0
+    
+    # Критическая проверка: invoice-A не содержит данные tenant-B
+    assert invoice_a["total_amount_minor"] != invoice_b["total_amount_minor"] or \
+           invoice_a["totals_by_metric"] != invoice_b["totals_by_metric"], \
+           "Invoice для разных tenants должен быть изолирован"
+
+
+def test_invoice_currency_consistency_error(billing_service):
+    """Тест: invoice бросает ValueError при разных валютах в одном периоде (защита от data corruption)."""
+    tenant_id = "tenant-currency-error"
+    period = datetime.now().strftime("%Y-%m")
+    
+    # Создаем usage с разными валютами для одного tenant/period
+    # Это должно быть невозможно в нормальном flow, но может произойти при data corruption
+    conn = billing_service._get_connection()
+    cur = conn.cursor()
+    
+    # Вставляем usage с USD
+    cur.execute("""
+        INSERT INTO billing_usage (
+            id, tenant_id, event_id, artifact_id, event_type,
+            metric, units, unit_price_minor, amount_minor,
+            currency, period, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        "usage-1", tenant_id, "event-1", "artifact-1", "document.extracted",
+        "invoice_extracted", 1.0, 25, 25,
+        "USD", period, datetime.now().isoformat()
+    ))
+    
+    # Вставляем usage с KZT (другая валюта)
+    cur.execute("""
+        INSERT INTO billing_usage (
+            id, tenant_id, event_id, artifact_id, event_type,
+            metric, units, unit_price_minor, amount_minor,
+            currency, period, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        "usage-2", tenant_id, "event-2", "artifact-2", "payment.ready",
+        "payment_ready", 1.0, 10, 10,
+        "KZT", period, datetime.now().isoformat()
+    ))
+    
+    conn.commit()
+    conn.close()
+    
+    # Попытка получить invoice должна вызвать ValueError
+    with pytest.raises(ValueError) as exc_info:
+        billing_service.get_invoice(tenant_id=tenant_id, period=period)
+    
+    # Проверяем, что сообщение об ошибке понятное
+    assert "Multiple currencies" in str(exc_info.value) or "currencies" in str(exc_info.value).lower()
+
+
+def test_invoice_empty_period(billing_service):
+    """Тест: invoice для периода без usage возвращает пустую структуру."""
+    tenant_id = "tenant-empty"
+    period = datetime.now().strftime("%Y-%m")
+    
+    # Получаем invoice для периода без usage
+    invoice = billing_service.get_invoice(tenant_id=tenant_id, period=period)
+    
+    assert invoice["tenant_id"] == tenant_id
+    assert invoice["period"] == period
+    assert invoice["totals_by_metric"] == {}
+    assert invoice["total_amount_minor"] == 0
+    assert invoice["currency"] == "USD"  # Default currency
+
+
+def test_invoice_period_validation(billing_service):
+    """Тест: API endpoint валидирует формат периода."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    
+    # Инициализируем billing_service в app state
+    app.state.billing_service = billing_service
+    
+    client = TestClient(app)
+    
+    # Невалидный формат периода
+    response = client.get(
+        "/api/v1/billing/invoice?period=invalid",
+        headers={"X-Tenant-ID": "test-tenant"}
+    )
+    assert response.status_code == 400
+    assert "формат периода" in response.json()["detail"].lower() or "YYYY-MM" in response.json()["detail"]
+    
+    # Валидный формат периода
+    response = client.get(
+        "/api/v1/billing/invoice?period=2026-01",
+        headers={"X-Tenant-ID": "test-tenant"}
+    )
+    assert response.status_code == 200
+    assert response.json()["period"] == "2026-01"
+    assert response.json()["tenant_id"] == "test-tenant"
+
+
 def test_upsert_tenant_rate_twice_updates_quota(billing_service):
     """Тест: upsert tenant-specific rate два раза подряд не падает и обновляет monthly_quota."""
     tenant_id = "tenant-upsert"

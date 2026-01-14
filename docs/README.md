@@ -50,6 +50,7 @@
 - **Kaspi**: эмуляция подписок через Hosted Checkout + token + cron autocharge
 - **Usage-based billing**: автоматический подсчёт usage из событий
 - **Recurring billing**: единый use case для всех провайдеров
+- **Invoice**: вычисляется из `billing_usage` (не хранится как отдельная таблица), используется для отображения и billing preview
 
 ---
 

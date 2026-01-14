@@ -245,6 +245,7 @@ docker-compose logs app --tail=100 | grep -E '"level":"(ERROR|CRITICAL)"'
    - Регрессионные тесты для нормализации URL (если изменяется `utils/db_url.py`)
    - Тесты для `/ready` endpoint (если изменяется readiness check)
    - Тесты для Alembic (если изменяется `alembic/env.py`)
+   - Тесты для invoice (если изменяется агрегация в `billing_usage` или `get_invoice()`)
 
 2. **Проверить `/ready` endpoint:**
    - Убедиться, что endpoint корректно проверяет новую логику
@@ -267,6 +268,7 @@ docker-compose logs app --tail=100 | grep -E '"level":"(ERROR|CRITICAL)"'
 - `app/main.py` — `/ready` endpoint, database connection
 - `alembic/env.py` — конфигурация Alembic
 - `requirements.txt` — зависимости (psycopg, sqlalchemy, alembic)
+- `cyberplat/billing_service.py` — `get_invoice()` или агрегация `billing_usage` (invoice computed, не требует миграций, но требует обновления тестов)
 
 **Проверка после изменений:**
 ```bash

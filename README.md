@@ -73,6 +73,7 @@ Kaspi не поддерживает нативные подписки, поэт�
 - **Quotas**: лимиты по метрикам (documents, invoices, payments)
 - **Usage tracking**: автоматический подсчёт usage из событий
 - **Plan application**: автоматическое применение планов при оплате/обновлении подписки
+- **Invoice**: вычисляется on-demand из `billing_usage` (агрегация по метрикам за период YYYY-MM). Invoice не является persisted entity и не хранится в отдельной таблице.
 
 ### Recurring Billing
 
@@ -535,7 +536,7 @@ aws --endpoint-url=http://localhost:9000 s3 mb s3://agent-platform
 - `GET /api/v1/billing/portal?period=YYYY-MM` — Billing Portal (план, подписка, invoice, quota, upgrade/manage URLs)
 - `GET /api/v1/billing/quota?period=YYYY-MM` — статус квот
 - `GET /api/v1/billing/usage?period=YYYY-MM` — usage за период
-- `GET /api/v1/billing/invoice?period=YYYY-MM` — invoice за период
+- `GET /api/v1/billing/invoice?period=YYYY-MM` — вычисляемый invoice за период (агрегация usage по метрикам)
 - `POST /api/v1/billing/admin/reset-usage` — сброс usage (требует `BILLING_ADMIN_KEY`)
 
 ### Documents & Agents
