@@ -1,0 +1,71 @@
+"""Database session management for product layer."""
+
+import os
+import logging
+from typing import Generator
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from utils.db_url import normalize_database_url
+
+logger = logging.getLogger(__name__)
+
+# Global engine and sessionmaker (initialized on first use)
+_engine = None
+_SessionLocal = None
+
+
+def get_database_url() -> str:
+    """Получить нормализованный DATABASE_URL для SQLAlchemy."""
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        # Fallback для dev (SQLite) - используем тот же путь, что и legacy сервисы
+        db_path = os.getenv("PLATFORM_DB_PATH", "platform.db")
+        # Преобразуем относительный путь в абсолютный для SQLite
+        if not os.path.isabs(db_path):
+            db_path = os.path.abspath(db_path)
+        database_url = f"sqlite:///{db_path}"
+    
+    # Нормализация для PostgreSQL (psycopg v3)
+    normalized = normalize_database_url(database_url)
+    return normalized or database_url
+
+
+def get_engine():
+    """Получить или создать SQLAlchemy engine."""
+    global _engine
+    if _engine is None:
+        database_url = get_database_url()
+        _engine = create_engine(
+            database_url,
+            pool_pre_ping=True,
+            connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {}
+        )
+        logger.info(f"SQLAlchemy engine created: {database_url[:50]}...")
+    return _engine
+
+
+def get_sessionmaker():
+    """Получить или создать sessionmaker."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        engine = get_engine()
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        logger.info("Sessionmaker created")
+    return _SessionLocal
+
+
+def get_db_session() -> Generator[Session, None, None]:
+    """
+    Dependency для получения DB session (FastAPI dependency).
+    
+    Usage:
+        @app.get("/endpoint")
+        def endpoint(db: Session = Depends(get_db_session)):
+            ...
+    """
+    SessionLocal = get_sessionmaker()
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
