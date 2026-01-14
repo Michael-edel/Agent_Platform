@@ -3,6 +3,7 @@
 import uuid
 import logging
 import sqlite3
+import os
 from typing import Optional, Dict, Any, Callable, List
 from datetime import datetime
 
@@ -18,15 +19,35 @@ class EventService:
     """Сервис для эмиссии и управления событиями."""
     
     def __init__(self, db_path: str = "platform.db", artifact_service=None):
+        if db_path == "platform.db":
+            db_path = os.getenv("PLATFORM_DB_PATH", db_path)
+        # Аналогично BillingService/ArtifactService: для db_path=":memory:" используем
+        # shared in-memory URI, иначе схема не сохраняется между соединениями.
         self.db_path = db_path
+        self._sqlite_connect_target = db_path
+        self._sqlite_connect_kwargs = {}
+        self._keeper_conn: Optional[sqlite3.Connection] = None
+        if db_path == ":memory:":
+            self._sqlite_connect_target = f"file:events_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._sqlite_connect_kwargs = {"uri": True}
+            self._keeper_conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
+            self._keeper_conn.row_factory = sqlite3.Row
         self.artifact_service = artifact_service
         self._subscribers: List[Callable] = []  # Список подписчиков на события
         self._init_database()
     
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def close(self) -> None:
+        """Закрыть keeper connection (для тестов/cleanup)."""
+        try:
+            if self._keeper_conn is not None:
+                self._keeper_conn.close()
+        except Exception:
+            pass
     
     def _init_database(self) -> None:
         """Инициализировать таблицы для событий."""
@@ -176,8 +197,16 @@ class EventService:
         """
         import json
         
-        # Разрешаем tenant_id с строгой валидацией
-        resolved_tenant_id = self._resolve_tenant_id(tenant_id, artifact_id)
+        # Разрешаем tenant_id с строгой валидацией.
+        # Важно: для ограниченного набора "технических" событий tenant_id может быть неизвестен.
+        # Разрешаем tenant_id=NULL ТОЛЬКО для этих событий, иначе сохраняем строгий invariant.
+        if tenant_id is None and artifact_id is None:
+            if event_type in {"email.ingest.failed"}:
+                resolved_tenant_id = None
+            else:
+                resolved_tenant_id = self._resolve_tenant_id(tenant_id, artifact_id)
+        else:
+            resolved_tenant_id = self._resolve_tenant_id(tenant_id, artifact_id)
         
         event_id = str(uuid.uuid4())
         

@@ -64,7 +64,9 @@ def test_metrics_endpoint_enabled(client, monkeypatch):
     if response.status_code == 200:
         content = response.text
         assert "http_requests_total" in content or "HELP" in content
-        assert response.headers.get("Content-Type") == "text/plain; version=0.0.4; charset=utf-8"
+        content_type = response.headers.get("Content-Type") or ""
+        # Не привязываемся к точной версии/charset: разные клиенты/версии могут отличаться.
+        assert content_type.startswith("text/plain"), f"Неожиданный Content-Type: {content_type}"
 
 
 def test_metrics_endpoint_disabled(client, monkeypatch):

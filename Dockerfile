@@ -13,6 +13,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --user -r /app/requirements.txt
 
+# Test stage (dev dependencies + pytest)
+FROM python:3.13-slim as test
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/home/appuser/.local/bin:$PATH
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Runtime deps (from builder)
+COPY --from=builder /root/.local /home/appuser/.local
+
+# App code + dev deps
+COPY . /app
+COPY requirements-dev.txt /app/requirements-dev.txt
+
+RUN pip install --no-cache-dir --user -r /app/requirements-dev.txt \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+CMD ["python", "-m", "pytest", "-q"]
+
 # Production stage
 FROM python:3.13-slim
 

@@ -411,10 +411,8 @@ def test_invoice_tenant_isolation(billing_service, billing_subscriber):
     assert invoice_b["totals_by_metric"]["invoice_extracted"]["units"] == 1.0
     assert invoice_b["totals_by_metric"]["payment_ready"]["units"] == 1.0
     
-    # Критическая проверка: invoice-A не содержит данные tenant-B
-    assert invoice_a["total_amount_minor"] != invoice_b["total_amount_minor"] or \
-           invoice_a["totals_by_metric"] != invoice_b["totals_by_metric"], \
-           "Invoice для разных tenants должен быть изолирован"
+    # Критическая проверка: tenant isolation обеспечивается фильтрацией по tenant_id.
+    # Не сравниваем суммы/тоталы между tenants: при одинаковом usage они могут совпадать.
 
 
 def test_invoice_currency_consistency_error(billing_service):

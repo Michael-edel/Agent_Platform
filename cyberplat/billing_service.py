@@ -3,6 +3,7 @@
 import uuid
 import logging
 import sqlite3
+import os
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 from calendar import monthrange
@@ -14,14 +15,33 @@ class BillingService:
     """Сервис для управления биллингом и тарифами."""
     
     def __init__(self, db_path: str = "platform.db"):
+        if db_path == "platform.db":
+            # Для тестов/локального запуска можно переопределять путь через env.
+            db_path = os.getenv("PLATFORM_DB_PATH", db_path)
+        # В тестах часто используется db_path=":memory:".
+        # Важно: обычный ":memory:" создаёт НОВУЮ БД на каждое sqlite3.connect(),
+        # из-за чего таблицы "пропадают" между вызовами (no such table: billing_rates).
+        # Чтобы сохранить поведение "в памяти" и при этом сделать его стабильным,
+        # используем shared in-memory URI для каждого инстанса.
         self.db_path = db_path
+        self._sqlite_connect_target = db_path
+        self._sqlite_connect_kwargs = {}
+        self._keeper_conn: Optional[sqlite3.Connection] = None
+        if db_path == ":memory:":
+            self._sqlite_connect_target = f"file:billing_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._sqlite_connect_kwargs = {"uri": True}
+            # Держим "keeper" соединение открытым, иначе shared in-memory БД будет уничтожена
+            # после закрытия первого connection (SQLite semantics).
+            self._keeper_conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
+            self._keeper_conn.row_factory = sqlite3.Row
+
         # КРИТИЧНО: Self-healing - автоматически создаем schema при инициализации
         # Это гарантирует, что billing_rates всегда существует, даже в тестах
         self.ensure_schema()
         self.seed_default_rates_if_empty()
     
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
         conn.row_factory = sqlite3.Row
         return conn
     
@@ -37,7 +57,11 @@ class BillingService:
         # которые закрываются сразу после использования (conn.close()).
         # Этот метод добавлен для явного cleanup и совместимости с Windows.
         # Если в будущем добавим пул соединений, здесь будет их закрытие.
-        pass
+        try:
+            if self._keeper_conn is not None:
+                self._keeper_conn.close()
+        except Exception:
+            pass
     
     def ensure_schema(self) -> None:
         """Инициализировать таблицы для биллинга."""

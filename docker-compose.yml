@@ -66,6 +66,27 @@ services:
     #       cpus: '0.5'
     #       memory: 512M
 
+  app-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    container_name: agent-platform-app-test
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "pytest", "-q"]
+    profiles: ["test"]
+
 volumes:
   app-data:
     driver: local

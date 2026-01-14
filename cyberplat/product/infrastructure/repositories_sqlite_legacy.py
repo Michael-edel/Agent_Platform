@@ -1,4 +1,17 @@
-"""Repository implementations for product/UI layer."""
+"""
+LEGACY REPOSITORY - НЕ ИСПОЛЬЗОВАТЬ!
+
+Этот файл содержит legacy реализацию репозиториев на sqlite3 с self-healing schema.
+Он был заменён на SQLAlchemy-based реализацию в repositories_sqlalchemy.py.
+
+ВНИМАНИЕ:
+- ❌ НЕ ИМПОРТИРОВАТЬ этот файл в новом коде
+- ❌ Содержит CREATE TABLE IF NOT EXISTS (недопустимо в проде)
+- ✅ Используйте repositories_sqlalchemy.py вместо этого файла
+- ✅ Все таблицы создаются через Alembic миграции
+
+Этот файл сохранён только для справки и может быть удалён после миграции всех данных.
+"""
 
 import uuid
 import logging
@@ -6,6 +19,14 @@ import sqlite3
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+# Защита от случайного импорта
+import warnings
+warnings.warn(
+    "repositories_sqlite_legacy.py is deprecated. Use repositories_sqlalchemy.py instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 from cyberplat.product.domain.interfaces import (
     ArtifactStateRepository,
