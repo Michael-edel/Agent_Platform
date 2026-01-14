@@ -115,4 +115,8 @@ class ExportInvoiceResponse(BaseModel):
     artifact_id: str
     export_type: str
     status: str  # 'pending', 'completed', 'failed'
+    # file_id нужен, чтобы UI/клиент мог скачать экспорт через /files/{file_id}
+    file_id: Optional[str] = None
+    # Удобный относительный URL для скачивания (можно конкатенировать с baseUrl на клиенте).
+    download_url: Optional[str] = None
     message: Optional[str] = None

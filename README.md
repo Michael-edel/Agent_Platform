@@ -191,6 +191,20 @@ python -m pytest -q
 pytest tests/ -v
 ```
 
+### Тесты в Docker
+
+Быстрый запуск тестов в контейнере (PostgreSQL поднимется как зависимость):
+
+```bash
+docker compose --profile test run --rm app-test
+```
+
+Если контейнер `app` уже запущен, можно выполнить тесты внутри него (если образ собран с dev-зависимостями):
+
+```bash
+docker exec -it agent-platform-app python -m pytest -q
+```
+
 ### Local Development & Operations
 
 #### Быстрый старт
@@ -285,6 +299,28 @@ python -m pytest -q   # Запуск тестов
 ## Deployment & Environments
 
 ### Локальный запуск через Docker
+
+#### Docker: миграции и /ready degraded
+
+Если Postgres **healthy**, приложение стартует, но `/ready` показывает **degraded** — часто причина в том, что Alembic миграции ещё не применены.
+
+**Применить миграции в контейнере:**
+
+```bash
+docker exec -it agent-platform-app alembic upgrade head
+```
+
+**Проверить readiness:**
+
+```bash
+curl http://127.0.0.1:8000/ready
+```
+
+**Сбросить окружение в dev, если миграции применились частично (⚠️ удалит данные):**
+
+```bash
+docker compose down -v
+```
 
 **Development (SQLite):**
 ```bash
@@ -527,6 +563,211 @@ docker-compose up -d
 aws --endpoint-url=http://localhost:9000 s3 mb s3://agent-platform
 ```
 
+## Product/UI Layer
+
+Product/UI layer предоставляет REST API для работы с документами и инвойсами через UI, с автоматическим управлением состояниями (`artifact_states`) и экспортом.
+
+### Архитектура
+
+**Таблицы:**
+- `artifact_states` — UI состояния артефактов (uploaded, processing, completed, confirmed, exported, error)
+- `exports` — записи об экспортах инвойсов (Excel, JSON, 1C, etc.)
+
+**Автоматическое создание состояний:**
+- При загрузке документа:
+  - **Новый product endpoint** (рекомендуется): `POST /api/v1/documents/upload`
+  - **Legacy endpoint** (совместимость): `POST /documents/upload`
+  → в обоих случаях создаётся **один и тот же** `artifact_id`, и в product таблице `artifact_states` появляется запись с `ui_status="uploaded"`.
+- При запуске OCR (`POST /api/v1/documents/{document_id}/run-ocr`) → создаётся `artifact_state` для invoice с `ui_status="pending"`, `source_artifact_id=document_id`
+- При событии `document.extracted` → обновляется state для document (`ui_status="extracted"`) и invoice (`source_artifact_id` заполняется)
+
+**Экспорт:**
+- Создаётся запись в `exports` (status="pending" → "processing" → "completed"/"failed")
+- Генерируется файл экспорта (синхронно, MVP)
+- Обновляется `artifact_state`: `ui_status="exported"`, `export_target`, `exported_at`
+  - API **возвращает `file_id`** (и `download_url`), чтобы файл можно было скачать через `/files/{file_id}`.
+
+### Endpoints
+
+**Документы:**
+- `GET /api/v1/documents?ui_status=...` — список документов (с фильтрацией по статусу)
+- `GET /api/v1/documents/{document_id}` — детали документа
+- `POST /api/v1/documents/{document_id}/run-ocr` — запуск OCR на документе
+
+**Инвойсы:**
+- `GET /api/v1/invoices?ui_status=...` — список инвойсов (с фильтрацией по статусу)
+- `GET /api/v1/invoices/{invoice_id}` — детали инвойса
+- `POST /api/v1/invoices/{invoice_id}/confirm` — подтверждение инвойса (idempotent)
+- `POST /api/v1/invoices/{invoice_id}/export` — экспорт инвойса (Excel/JSON/etc.)
+
+**Файлы:**
+- `GET /files/{file_id}` — получение файла по file_id
+
+**Заголовки:**
+- `X-Tenant-ID` — обязательный заголовок для всех endpoints (multi-tenant изоляция)
+
+### Примеры использования
+
+**1. Загрузка документа (legacy, совместимость):**
+```bash
+curl -X POST http://localhost:8000/documents/upload \
+  -H "X-Tenant-ID: tenant-123" \
+  -F "file=@invoice.pdf"
+```
+
+**2. Запуск OCR (product):**
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/{document_id}/run-ocr \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**2b. Запуск OCR (legacy doc_agent, совместимость):**
+```bash
+curl -X POST http://localhost:8000/agents/doc_agent/run \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{"artifact_id":"{document_id}"}'
+```
+
+**3. Получение списка документов:**
+```bash
+curl http://localhost:8000/api/v1/documents?ui_status=uploaded \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**4. Получение списка инвойсов:**
+```bash
+curl http://localhost:8000/api/v1/invoices?ui_status=pending \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**5. Подтверждение инвойса:**
+```bash
+curl -X POST http://localhost:8000/api/v1/invoices/{invoice_id}/confirm \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**6. Экспорт инвойса:**
+```bash
+curl -X POST http://localhost:8000/api/v1/invoices/{invoice_id}/export \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{"export_type": "excel"}'
+```
+
+**7. Получение файла (используйте `file_id` из ответа export):**
+```bash
+curl http://localhost:8000/files/{file_id} \
+  -H "X-Tenant-ID: tenant-123" \
+  -o exported_invoice.xlsx
+```
+
+### Полный сценарий (PowerShell)
+
+```powershell
+$tenant = "tenant-123"
+
+# 1) Upload (legacy)
+$upload = curl.exe -sS -X POST "http://127.0.0.1:8000/documents/upload" `
+  -H "X-Tenant-ID: $tenant" `
+  -F "file=@invoice.pdf" | ConvertFrom-Json
+
+$docId = $upload.artifact_id
+
+# 2) OCR (legacy doc_agent)
+$ocr = curl.exe -sS -X POST "http://127.0.0.1:8000/agents/doc_agent/run" `
+  -H "X-Tenant-ID: $tenant" `
+  -H "Content-Type: application/json" `
+  -d ("{`"artifact_id`":`"$docId`"}") | ConvertFrom-Json
+
+$invId = $ocr.artifact_id
+
+# 3) Проверка, что документ виден в Product/UI API
+curl.exe -sS "http://127.0.0.1:8000/api/v1/documents/$docId" -H "X-Tenant-ID: $tenant" | Out-Null
+
+# 4) Confirm invoice (idempotent)
+curl.exe -sS -X POST "http://127.0.0.1:8000/api/v1/invoices/$invId/confirm" -H "X-Tenant-ID: $tenant" | Out-Null
+
+# 5) Export invoice → получаем file_id
+$exp = curl.exe -sS -X POST "http://127.0.0.1:8000/api/v1/invoices/$invId/export" `
+  -H "X-Tenant-ID: $tenant" `
+  -H "Content-Type: application/json" `
+  -d "{`"export_type`":`"json`"}" | ConvertFrom-Json
+
+$fileId = $exp.file_id
+
+# 6) Download export
+curl.exe -sS -L "http://127.0.0.1:8000/files/$fileId" -H "X-Tenant-ID: $tenant" -o export.json
+```
+
+### Локальный запуск
+
+**Development (SQLite):**
+```bash
+# 1. Убедитесь, что миграции применены
+make db-upgrade
+
+# 2. Запустите сервер
+make run
+# или
+uvicorn app.main:app --reload
+
+# 3. Проверьте готовность
+curl http://localhost:8000/ready
+```
+
+**Staging (PostgreSQL):**
+```bash
+# 1. Установите DATABASE_URL
+export DATABASE_URL=postgresql://postgres:password@localhost:5432/agent_platform
+
+# 2. Примените миграции
+make db-upgrade
+
+# 3. Проверьте версию схемы
+make db-current
+
+# 4. Запустите сервер
+make run
+```
+
+### Проверка миграций
+
+```bash
+# Проверить текущую версию
+make db-current
+
+# Применить миграции
+make db-upgrade
+
+# Проверить, что схема актуальна (для CI/staging)
+make db-check
+```
+
+**Важно:** Все таблицы (`artifact_states`, `exports`) создаются через Alembic миграции. Никакого auto-create в runtime.
+
+### Billing integration
+
+Product layer интегрирован с billing системой:
+- Usage считается из событий (`artifact.created`, `document.extracted`)
+- Квоты проверяются перед запуском OCR
+- Invoice вычисляется on-demand из usage за период
+
+**Пример получения billing информации:**
+```bash
+# Получить invoice за период
+curl http://localhost:8000/api/v1/billing/invoice?period=2026-01 \
+  -H "X-Tenant-ID: tenant-123"
+
+# Получить quota status
+curl http://localhost:8000/api/v1/billing/quota?period=2026-01 \
+  -H "X-Tenant-ID: tenant-123"
+
+# Получить billing portal (план, подписка, invoice, quota, upgrade URLs)
+curl http://localhost:8000/api/v1/billing/portal?period=2026-01 \
+  -H "X-Tenant-ID: tenant-123"
+```
+
 ## API Endpoints
 
 ### Billing
@@ -550,6 +791,324 @@ aws --endpoint-url=http://localhost:9000 s3 mb s3://agent-platform
 ### Export
 
 - `GET /api/v1/export/status` — статус экспорта (enabled, bucket, endpoint, prefix)
+
+### Email Ingestion
+
+- `POST /api/v1/ingest/email` — email ingestion webhook (SendGrid/Mailgun/SES)
+
+**Email Ingestion** позволяет клиентам отправлять PDF счета по email и автоматически создавать document artifacts.
+
+**Как это работает:**
+1. Настройте email provider (SendGrid/Mailgun/SES) для отправки webhook на `POST /api/v1/ingest/email`
+2. Создайте email адрес для каждого tenant: `invoices+tenant-1@yourapp.ai`
+3. Клиент отправляет email с PDF вложением на этот адрес
+4. Система автоматически:
+   - Определяет tenant_id из email адреса (часть после `+` и до `@`)
+   - Сохраняет PDF файл
+   - Создаёт document artifact с `source="email"`
+   - Создаёт artifact_state с `ui_status="uploaded"`
+   - Эмитит события `email.received` и `artifact.created`
+
+**Формат email адреса:**
+- `invoices+tenant-1@yourapp.ai` → tenant_id = `tenant-1`
+- `invoices+tenant-2@yourapp.ai` → tenant_id = `tenant-2`
+
+**Ограничения:**
+- Только PDF вложения (application/pdf)
+- Максимальный размер вложения: 10MB
+- Если tenant_id не определён → email отклоняется с событием `email.ingest.failed`
+- OCR не запускается автоматически (только через UI или отдельную настройку)
+
+**Webhook Payload Format (provider-agnostic):**
+```json
+{
+  "from": "sender@example.com",
+  "to": "invoices+tenant-1@yourapp.ai",
+  "subject": "Invoice #123",
+  "attachments": [
+    {
+      "filename": "invoice.pdf",
+      "content_type": "application/pdf",
+      "content": "base64_encoded_pdf_content",
+      "size": 12345
+    }
+  ]
+}
+```
+
+**Настройка у email provider:**
+
+**SendGrid Inbound Parse:**
+1. Перейдите в Settings → Inbound Parse
+2. Добавьте домен и настройте webhook URL: `https://yourapp.com/api/v1/ingest/email`
+3. Укажите POST destination
+
+**Mailgun Inbound:**
+1. Перейдите в Routes → Inbound
+2. Создайте route с webhook URL: `https://yourapp.com/api/v1/ingest/email`
+3. Настройте фильтры (опционально)
+
+**AWS SES:**
+1. Настройте SNS topic для входящих email
+2. Создайте HTTP(S) subscription на `https://yourapp.com/api/v1/ingest/email`
+3. Обработайте SNS message format (parser поддерживает)
+
+**События:**
+- `email.received` — email получен (payload: from, to, subject, attachments_count, processed_count)
+- `email.ingest.failed` — не удалось обработать email (payload: from, to, subject, error)
+
+### Email Auto-OCR
+
+После успешного email ingestion можно автоматически запускать OCR для созданных document artifacts.
+
+**Включение:**
+```bash
+EMAIL_AUTO_OCR_ENABLED=1
+EMAIL_AUTO_OCR_MAX_RETRIES=5
+EMAIL_AUTO_OCR_RETRY_BASE_SECONDS=10
+EMAIL_AUTO_OCR_RETRY_MAX_SECONDS=600
+```
+
+**Как это работает:**
+1. После успешного email ingest создаётся `email_ocr_job` в таблице `email_ocr_jobs`
+2. Job имеет `idempotency_key` (SHA256 от tenant_id + email metadata + attachment SHA256)
+3. Повторные webhook с тем же email/attachment не создают дубликаты (идемпотентность)
+4. Endpoint `POST /api/v1/ingest/email/ocr/dispatch` обрабатывает jobs из очереди
+5. При успешном OCR создаётся invoice artifact и обновляются states
+
+**Idempotency:**
+- Idempotency key вычисляется детерминированно из:
+  - tenant_id
+  - email_from, email_to, email_subject
+  - attachment_filename, attachment_size
+  - attachment_content_sha256 (SHA256 от PDF bytes после base64 decode)
+- Одинаковый email/attachment → одинаковый key → один job
+- Если job уже `done`, повторный webhook не создаёт новый job
+
+**Retry механизм:**
+- Exponential backoff с jitter: `base_seconds * 2^(attempts-1) + jitter`
+- Ограничено `retry_max_seconds`
+- После `max_retries` попыток job становится `dead`
+
+**Статусы jobs:**
+- `queued` — готов к обработке
+- `processing` — обрабатывается
+- `done` — успешно завершён (invoice создан)
+- `failed` — ошибка, запланирован retry
+- `dead` — превышен max_retries
+
+**Dispatch endpoint:**
+```bash
+# Обработать до 10 jobs (prod режим с admin key)
+curl -X POST http://127.0.0.1:8000/api/v1/ingest/email/ocr/dispatch?limit=10 \
+  -H "X-Admin-Key: your-admin-key"
+
+# Dev режим (если ADMIN_API_KEY не задан)
+curl -X POST http://127.0.0.1:8000/api/v1/ingest/email/ocr/dispatch?limit=10
+```
+
+**Admin Authentication:**
+- Если `ADMIN_API_KEY` задан (prod), endpoint требует заголовок `X-Admin-Key`
+- Если `ADMIN_API_KEY` не задан (dev), endpoint доступен без ключа
+
+**Настройка cron:**
+```bash
+# Каждую минуту обрабатывать jobs
+*/1 * * * * curl -X POST http://localhost:8000/api/v1/ingest/email/ocr/dispatch?limit=10
+```
+
+**События:**
+- `email.ocr.queued` — job создан (payload: job_id, document_artifact_id)
+- `email.ocr.started` — обработка начата (payload: job_id, attempts)
+- `email.ocr.completed` — OCR завершён (payload: job_id, document_artifact_id, invoice_artifact_id, attempts)
+- `email.ocr.failed` — ошибка (payload: job_id, attempts, error, status: "failed"|"dead", next_run_at)
+- `email.ocr.recovered` — job восстановлен из stuck (payload: job_id, attempts, reason="timeout")
+- `email.ocr.dead` — job стал dead (payload: job_id, reason="timeout")
+
+**Обновление states:**
+- Document: `ui_status="extracted"` (после успешного OCR)
+- Invoice: `ui_status="pending"`, `source_artifact_id=document_artifact_id`
+
+**Production Features:**
+- **Admin Authentication:** Endpoint защищён `X-Admin-Key` (если `ADMIN_API_KEY` задан)
+- **Recovery Stuck Jobs:** Автоматическое восстановление залипших processing jobs (timeout: `EMAIL_OCR_PROCESSING_TIMEOUT_SECONDS`)
+- **Concurrency Limit:** Ограничение параллельных jobs (`EMAIL_OCR_MAX_CONCURRENT_JOBS`, default: 3)
+- **Structured Logging:** Логи с job_id, tenant_id, duration для observability
+
+**Environment Variables:**
+- `ADMIN_API_KEY` - Admin API key (обязательно в prod)
+- `EMAIL_OCR_PROCESSING_TIMEOUT_SECONDS=900` - Timeout для recovery (default: 900)
+- `EMAIL_OCR_MAX_CONCURRENT_JOBS=3` - Максимальное количество параллельных jobs (default: 3)
+
+**Подробная документация:** См. `EMAIL_AUTO_OCR_OPERATIONS.md`
+
+### Inbox (Email Status)
+
+**Endpoint:** `GET /api/v1/inbox/emails`
+
+Показывает список последних входящих писем/вложений и их статусы обработки (queued/processing/done/failed/dead).
+
+**Query параметры:**
+- `limit` (int, default: 50) - максимальное количество записей
+- `cursor` (string, optional) - cursor для pagination (формат: "timestamp|job-id")
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "received_at": "2026-01-14T23:00:00",
+      "from_email": "sender@example.com",
+      "to_email": "invoices+tenant-1@yourapp.ai",
+      "subject": "Invoice #123",
+      "attachment_filename": "invoice.pdf",
+      "attachment_size": 12345,
+      "document_artifact_id": "doc-id",
+      "job_id": "job-id",
+      "job_status": "done",
+      "attempts": 1,
+      "next_run_at": null,
+      "invoice_artifact_id": "invoice-id",
+      "error": null
+    }
+  ],
+  "cursor": "2026-01-14T23:00:00|job-id"
+}
+```
+
+**Статусы:**
+- `queued` - готов к обработке
+- `processing` - обрабатывается
+- `done` - успешно завершён (invoice создан)
+- `failed` - ошибка, запланирован retry
+- `dead` - превышен max_retries
+
+**Использование:**
+```bash
+curl http://127.0.0.1:8000/api/v1/inbox/emails?limit=50 \
+  -H "X-Tenant-ID: tenant-1"
+```
+
+**Frontend:**
+- Страница `/app/inbox` показывает таблицу с последними email/вложениями
+- Status badges с цветами (queued=серый, processing=синий, done=зелёный, failed=жёлтый, dead=красный)
+- Ссылки на Document и Invoice (если созданы)
+- Кнопка Refresh для обновления списка
+
+### Webhooks (Outgoing)
+
+**Endpoints:**
+- `GET /api/v1/webhooks` - Список webhooks (tenant-scoped)
+- `POST /api/v1/webhooks` - Создать webhook
+- `DELETE /api/v1/webhooks/{id}` - Удалить webhook
+- `POST /api/v1/webhooks/{id}/rotate-secret` - Обновить secret
+- `POST /api/v1/webhooks/dispatch` - Dispatch deliveries (admin-only)
+
+**Supported Events:**
+- `invoice.ready` - Invoice готов
+- `invoice.failed` - Invoice не удалось создать
+- `email.ocr.completed` - Email OCR завершён
+- `email.ocr.dead` - Email OCR провалился
+- `invoice.confirmed` - Invoice подтверждён
+
+**Features:**
+- HMAC-SHA256 подпись для безопасности
+- Safe payload (без raw PDF/OCR JSON)
+- Retry с exponential backoff
+- Tenant isolation
+
+**Подробная документация:** См. `WEBHOOKS.md`
+
+### Billing Enforcement (Paywall)
+
+**Feature Flags:**
+- `BILLING_ENFORCEMENT_ENABLED=0|1` (default: 0) - Включить/выключить enforcement
+- `BILLING_ENFORCEMENT_MODE=block|warn` (default: block) - Режим работы
+- `BILLING_PERIOD_SOURCE=now` (default: now) - Источник периода
+
+**Blocked Operations:**
+- `POST /documents/upload` → метрика: `document_upload` (units=1)
+- `POST /api/v1/documents/{id}/run-ocr` → метрики: `invoice_extracted` (1), `page_processed` (1)
+- `POST /api/v1/ingest/email` → если auto-OCR включен
+- Email auto-OCR jobs dispatch → перед запуском OCR
+
+**Error Response (402 Payment Required):**
+```json
+{
+  "detail": {
+    "detail": "Квота превышена",
+    "metric": "invoice_extracted",
+    "period": "2026-01",
+    "used_units": 10.0,
+    "monthly_quota": 10,
+    "operation": "run_ocr",
+    "upgrade_url": null
+  }
+}
+```
+
+**Events:**
+- `billing.quota.exceeded` - Квота превышена (payload: metric, period, used_units, monthly_quota, operation)
+
+**Webhooks:**
+- `quota.exceeded` - Маппинг из `billing.quota.exceeded`
+
+**Подробная документация:** См. `BILLING_ENFORCEMENT.md`
+
+### Billing Plans and Trial
+
+**Plans:**
+- `trial` - 14 дней бесплатно (квоты: 20/10/50)
+- `pro` - $29/месяц (квоты: 100/50/500)
+- `enterprise` - $99/месяц (unlimited)
+
+**Features:**
+- Автоматическое назначение trial при первом использовании tenant
+- Trial expiration и блокировка операций (HTTP 402)
+- Upgrade flow (MVP без реальных платежей)
+- Интеграция с enforcement (квоты из планов)
+
+**Endpoints:**
+- `POST /api/v1/billing/upgrade` - Обновить план tenant
+- `GET /api/v1/billing/portal` - Получить информацию о плане и trial статусе
+
+**Events:**
+- `billing.trial.expired` - Trial истёк
+- `billing.plan.upgraded` - План обновлён
+
+**Webhooks:**
+- `trial.expired` - Маппинг из `billing.trial.expired`
+- `plan.upgraded` - Маппинг из `billing.plan.upgraded`
+
+**Подробная документация:** См. `BILLING_PLANS_AND_TRIAL.md`
+
+### Оплата через Kaspi → активация плана (MVP)
+
+Коммерческий поток:
+- клиент получает `checkout_url` через `POST /api/v1/billing/checkout/kaspi`
+- после оплаты Kaspi присылает webhook на `POST /api/v1/billing/webhook/kaspi`
+- система **идемпотентно** переключает `tenant_plans.plan_id` на оплаченный план (`pro|enterprise`)
+- enforcement начинает использовать квоты из `plans`
+
+**Kaspi Orders linkage:**
+- создаётся таблица `kaspi_orders` для связи `kaspi_order_id` → `tenant_id` + `plan_id`
+
+**Events:**
+- `billing.kaspi.checkout.created`
+- `billing.plan.upgraded` → outgoing webhook `plan.upgraded`
+- `billing.payment.failed` → outgoing webhook `payment.failed`
+
+**Docs:** См. `BILLING_KASPI_UPGRADE_FLOW.md`
+
+### Kaspi subscription (recurring, production-like MVP)
+
+- Платные планы (`pro/enterprise`) имеют **период**: `tenant_plans.expires_at = now + BILLING_PERIOD_DAYS`.
+- Cron endpoint `POST /api/v1/billing/cron/charge-kaspi`:
+  - продлевает `expires_at` при успешном списании
+  - при ошибках переводит в `past_due`, после `SUBSCRIPTION_MAX_FAILED_CHARGES` → `canceled` и делает downgrade
+- Enforcement блокирует платные операции при `past_due/canceled` (HTTP 402).
+
+**Docs:** См. `BILLING_KASPI_SUBSCRIPTION.md`
 
 ## Документация
 

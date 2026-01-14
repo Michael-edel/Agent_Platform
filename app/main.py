@@ -156,6 +156,12 @@ async def startup_event():
     storage_service = StorageService()
     agent_registry = AgentRegistry()
     
+    # Сохраняем сервисы в app.state для доступа из endpoints
+    app.state.artifact_service = artifact_service
+    app.state.event_service = event_service
+    app.state.storage_service = storage_service
+    app.state.agent_registry = agent_registry
+    
     # Регистрация doc_agent
     doc_agent = DocAgent(
         artifact_service=artifact_service,
@@ -253,7 +259,54 @@ async def startup_event():
     app.include_router(product_router, prefix="/api/v1", tags=["product"])
     logger.info("Product/UI router подключен")
     
-    logger.info("Приложение готово к работе (API + Worker + Agent Platform + Billing + Entitlements + Product/UI)")
+    # Подключение Email Ingestion router
+    from app.api.ingest import router as ingest_router
+    app.include_router(ingest_router, prefix="/api/v1", tags=["ingest"])
+    logger.info("Email ingestion router подключен")
+    
+    # Подключение Inbox router
+    from app.api.inbox import router as inbox_router
+    app.include_router(inbox_router, prefix="/api/v1", tags=["inbox"])
+    logger.info("Inbox router подключен")
+    
+    # Подключение Webhooks router
+    from app.api.webhooks import router as webhooks_router
+    app.include_router(webhooks_router, prefix="/api/v1", tags=["webhooks"])
+    logger.info("Webhooks router подключен")
+    
+    # Подключение Billing Plans router
+    from app.api.billing_plans import router as billing_plans_router
+    app.include_router(billing_plans_router, prefix="/api/v1", tags=["billing-plans"])
+    logger.info("Billing plans router подключен")
+    
+    # Регистрация webhook subscriber для создания deliveries
+    from cyberplat.product.infrastructure.database import get_sessionmaker
+    from cyberplat.product.infrastructure.webhook_repositories_sqlalchemy import (
+        WebhookRepositoryImpl,
+        WebhookDeliveryRepositoryImpl
+    )
+    from cyberplat.product.infrastructure.webhook_subscriber import create_webhook_subscriber
+    from sqlalchemy.orm import Session
+    
+    SessionLocal = get_sessionmaker()
+    session: Session = SessionLocal()
+    
+    try:
+        webhook_repo = WebhookRepositoryImpl(session=session)
+        webhook_delivery_repo = WebhookDeliveryRepositoryImpl(session=session)
+        
+        webhook_subscriber = create_webhook_subscriber(
+            webhook_repo=webhook_repo,
+            webhook_delivery_repo=webhook_delivery_repo
+        )
+        
+        event_service.subscribe(webhook_subscriber)
+        logger.info("Webhook subscriber зарегистрирован")
+        
+    finally:
+        session.close()
+    
+    logger.info("Приложение готово к работе (API + Worker + Agent Platform + Billing + Entitlements + Product/UI + Webhooks)")
 
 
 @app.on_event("shutdown")
@@ -608,6 +661,7 @@ async def get_stats(
 # API endpoints для платформы агентов
 @app.post("/documents/upload", response_model=DocumentUploadResponse)
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
 ):
@@ -642,6 +696,148 @@ async def upload_document(
     artifact_id = str(uuid.uuid4())
     file_id = f"{artifact_id}_{file.filename}"
     
+    # Автоматическое назначение trial (если ещё не назначен)
+    try:
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+            TenantPlanRepositoryImpl,
+            PlanRepositoryImpl
+        )
+        from cyberplat.product.application.assign_trial_use_case import AssignTrialUseCase
+        from sqlalchemy.orm import Session
+        
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        
+        try:
+            tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+            plan_repo = PlanRepositoryImpl(session=session)
+            
+            assign_trial_use_case = AssignTrialUseCase(
+                tenant_plan_repo=tenant_plan_repo,
+                plan_repo=plan_repo
+            )
+            assign_trial_use_case.execute(tenant_id=x_tenant_id)
+        finally:
+            session.close()
+    except Exception as e:
+        # Не падаем, если не удалось назначить trial (логируем)
+        logger.warning(f"Failed to assign trial to tenant {x_tenant_id}: {e}")
+    
+    # Проверка квот (enforcement)
+    try:
+        from cyberplat.product.application.billing_enforcement_service import (
+            BillingEnforcementService,
+            QuotaExceededError,
+            TrialExpiredError,
+            SubscriptionPastDueError,
+            SubscriptionCanceledError,
+        )
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+            TenantPlanRepositoryImpl,
+            PlanRepositoryImpl
+        )
+        from sqlalchemy.orm import Session
+        
+        # Получаем services из app.state или глобальных переменных
+        billing_service = None
+        event_service = None
+        entitlement_service = None
+        
+        # Пытаемся получить из request.app.state
+        if hasattr(request, "app") and hasattr(request.app, "state"):
+            billing_service = getattr(request.app.state, "billing_service", None)
+            event_service = getattr(request.app.state, "event_service", None)
+            entitlement_service = getattr(request.app.state, "entitlement_service", None)
+        
+        # Fallback на глобальные переменные
+        if not billing_service:
+            try:
+                from app.main import billing_service as global_billing_service
+                billing_service = global_billing_service
+            except:
+                pass
+        if not event_service:
+            try:
+                from app.main import event_service as global_event_service
+                event_service = global_event_service
+            except:
+                pass
+        
+        if billing_service and event_service:
+            # Получаем репозитории для планов
+            SessionLocal = get_sessionmaker()
+            session: Session = SessionLocal()
+            
+            try:
+                tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+                plan_repo = PlanRepositoryImpl(session=session)
+                
+                billing_enforcement = BillingEnforcementService(
+                    billing_service=billing_service,
+                    event_service=event_service,
+                    tenant_plan_repo=tenant_plan_repo,
+                    plan_repo=plan_repo,
+                    entitlement_service=entitlement_service
+                )
+                
+                billing_enforcement.enforce(
+                    tenant_id=x_tenant_id,
+                    required_metrics={"document_upload": 1.0},
+                    operation_name="document_upload"
+                )
+            finally:
+                session.close()
+    except TrialExpiredError as e:
+        # 402 Payment Required для истёкшего trial
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "detail": "Пробный период истёк",
+                "trial_expired": True,
+                "expires_at": e.expires_at,
+                "upgrade_url": "/billing/upgrade"
+            }
+        )
+    except SubscriptionPastDueError as e:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "detail": "Оплата просрочена",
+                "subscription_status": "past_due",
+                "expires_at": e.expires_at,
+                "failed_charges": e.failed_charges,
+                "upgrade_url": "/api/v1/billing/checkout/kaspi",
+            },
+        )
+    except SubscriptionCanceledError:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "detail": "Подписка отменена",
+                "subscription_status": "canceled",
+                "upgrade_url": "/api/v1/billing/checkout/kaspi",
+            },
+        )
+    except QuotaExceededError as e:
+        # 402 Payment Required для превышенной квоты
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "detail": "Квота превышена",
+                "metric": e.metric,
+                "period": e.period,
+                "used_units": e.used_units,
+                "monthly_quota": e.monthly_quota,
+                "operation": e.operation,
+                "upgrade_url": e.upgrade_url
+            }
+        )
+    except Exception as e:
+        # Другие ошибки - пробрасываем дальше
+        raise
+    
     # Читаем файл
     file_bytes = await file.read()
     
@@ -658,8 +854,51 @@ async def upload_document(
             kind="document",
             source="upload",
             data={"filename": file.filename, "file_id": file_id},
-            tenant_id=x_tenant_id
+            tenant_id=x_tenant_id,
+            # Критично: используем заранее сгенерированный artifact_id,
+            # чтобы legacy upload и product/UI слой ссылались на ОДИН и тот же документ.
+            artifact_id=artifact_id
         )
+        
+        # Автоматически создаём artifact_state для документа (ui_status="uploaded")
+        # Это гарантирует, что state создан даже если event subscriber не сработал
+        try:
+            from cyberplat.product.infrastructure.database import get_sessionmaker
+            from cyberplat.product.infrastructure.models import ArtifactState
+            from datetime import datetime
+            
+            SessionLocal = get_sessionmaker()
+            session = SessionLocal()
+            try:
+                # Проверяем, не существует ли уже state (idempotent)
+                existing_state = session.query(ArtifactState).filter(
+                    ArtifactState.artifact_id == artifact_id
+                ).first()
+                
+                if not existing_state:
+                    now = datetime.now().isoformat()
+                    state = ArtifactState(
+                        id=str(uuid.uuid4()),
+                        tenant_id=x_tenant_id,
+                        artifact_id=artifact_id,
+                        ui_status="uploaded",
+                        created_at=now,
+                        updated_at=now
+                    )
+                    session.add(state)
+                    session.commit()
+                    logger.info(f"Created artifact_state for uploaded document: artifact_id={artifact_id}, tenant_id={x_tenant_id}")
+                else:
+                    # Обновляем статус если нужно
+                    if existing_state.ui_status != "uploaded":
+                        existing_state.ui_status = "uploaded"
+                        existing_state.updated_at = datetime.now().isoformat()
+                        session.commit()
+            finally:
+                session.close()
+        except Exception as state_error:
+            # Не падаем, если не удалось создать state (event subscriber создаст позже)
+            logger.warning(f"Failed to create artifact_state on upload: {state_error}")
         
         logger.info(f"Документ загружен: artifact_id={artifact_id}, file_id={file_id}, tenant_id={x_tenant_id}")
         
@@ -673,6 +912,11 @@ async def upload_document(
         if temp_file.exists():
             temp_file.unlink()
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Пробрасываем HTTPException (включая 402 Payment Required)
+        if temp_file.exists():
+            temp_file.unlink()
+        raise
     except Exception as e:
         logger.error(f"Ошибка при загрузке документа: {e}", exc_info=True)
         if temp_file.exists():
@@ -718,14 +962,99 @@ async def run_doc_agent(
     # Определяем file_id (приоритет: из запроса > artifact_id)
     file_id = agent_request.file_id or agent_request.artifact_id
     
-    # Проверка квоты для doc_agent (invoice_extracted)
+    # Проверка квот для doc_agent (enforcement через BillingEnforcementService)
     if tenant_id:
-        bs = getattr(request.app.state, "billing_service", None)
-        if bs:
-            period = datetime.now().strftime("%Y-%m")
-            is_allowed, error_msg = bs.check_quota(tenant_id, "invoice_extracted", period)
-            if not is_allowed:
-                raise HTTPException(status_code=402, detail=error_msg)
+        try:
+            from cyberplat.product.application.billing_enforcement_service import (
+                BillingEnforcementService,
+                QuotaExceededError,
+                TrialExpiredError,
+                SubscriptionPastDueError,
+                SubscriptionCanceledError,
+            )
+            from cyberplat.product.infrastructure.database import get_sessionmaker
+            from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+                TenantPlanRepositoryImpl,
+                PlanRepositoryImpl,
+            )
+            from sqlalchemy.orm import Session
+            
+            billing_service = getattr(request.app.state, "billing_service", None)
+            event_service = getattr(request.app.state, "event_service", None)
+            entitlement_service = getattr(request.app.state, "entitlement_service", None)
+            
+            if billing_service and event_service:
+                SessionLocal = get_sessionmaker()
+                session: Session = SessionLocal()
+                try:
+                    tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+                    plan_repo = PlanRepositoryImpl(session=session)
+                    billing_enforcement = BillingEnforcementService(
+                        billing_service=billing_service,
+                        event_service=event_service,
+                        tenant_plan_repo=tenant_plan_repo,
+                        plan_repo=plan_repo,
+                        entitlement_service=entitlement_service,
+                    )
+                    
+                    # Для MVP: page_processed=1 (можно расширить позже для реального количества страниц)
+                    billing_enforcement.enforce(
+                        tenant_id=tenant_id,
+                        required_metrics={
+                            "invoice_extracted": 1.0,
+                            "page_processed": 1.0
+                        },
+                        operation_name="doc_agent_run"
+                    )
+                finally:
+                    session.close()
+                
+        except Exception as e:
+            if isinstance(e, TrialExpiredError):
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "detail": "Пробный период истёк",
+                        "trial_expired": True,
+                        "expires_at": getattr(e, "expires_at", None),
+                        "upgrade_url": "/billing/upgrade",
+                    },
+                )
+            if isinstance(e, SubscriptionPastDueError):
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "detail": "Оплата просрочена",
+                        "subscription_status": "past_due",
+                        "expires_at": getattr(e, "expires_at", None),
+                        "failed_charges": getattr(e, "failed_charges", None),
+                        "upgrade_url": "/api/v1/billing/checkout/kaspi",
+                    },
+                )
+            if isinstance(e, SubscriptionCanceledError):
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "detail": "Подписка отменена",
+                        "subscription_status": "canceled",
+                        "upgrade_url": "/api/v1/billing/checkout/kaspi",
+                    },
+                )
+            if isinstance(e, QuotaExceededError):
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "detail": "Квота превышена",
+                        "metric": e.metric,
+                        "period": e.period,
+                        "used_units": e.used_units,
+                        "monthly_quota": e.monthly_quota,
+                        "operation": e.operation,
+                        "upgrade_url": e.upgrade_url
+                    }
+                )
+            # Другие ошибки - пробрасываем дальше
+            raise
     
     # Создаем контекст
     context = AgentContext(
@@ -1148,6 +1477,12 @@ class BillingPortalResponse(BaseModel):
     invoice: Dict[str, Any]
     quota: Dict[str, Any]
     links: PortalLinks
+    trial: Optional[Dict[str, Any]] = None  # Trial информация (days_left, expires_at)
+    upgrade_available: bool = True  # Доступен ли upgrade
+    expires_at: Optional[str] = None  # Для paid/trial
+    subscription_status: Optional[str] = None  # trial|active|past_due|canceled
+    failed_charges: Optional[int] = None
+    days_left: Optional[int] = None
 
 
 # Kaspi checkout models
@@ -1158,6 +1493,7 @@ class KaspiCheckoutRequest(BaseModel):
 class KaspiCheckoutResponse(BaseModel):
     checkout_url: str
     order_id: str
+    kaspi_order_id: Optional[str] = None
 
 
 class KaspiRecurringChargeResponse(BaseModel):
@@ -1557,56 +1893,91 @@ async def kaspi_checkout(
         )
     
     # Валидация plan_id
-    plan_id = checkout_request.plan_id
-    if plan_id not in ["plan_pro", "plan_enterprise"]:
+    # Backward compatible:
+    # - legacy: plan_pro / plan_enterprise (used by legacy billing_plans + recurring)
+    # - new (plans/tenant_plans): pro / enterprise
+    requested_plan_id = (checkout_request.plan_id or "").strip()
+    if not requested_plan_id:
+        raise HTTPException(status_code=400, detail="plan_id обязателен")
+
+    if requested_plan_id in ["pro", "enterprise"]:
+        plan_id = requested_plan_id  # plans.id
+        legacy_plan_id = "plan_pro" if requested_plan_id == "pro" else "plan_enterprise"
+    elif requested_plan_id in ["plan_pro", "plan_enterprise"]:
+        legacy_plan_id = requested_plan_id
+        plan_id = "pro" if requested_plan_id == "plan_pro" else "enterprise"
+    else:
         raise HTTPException(
             status_code=400,
-            detail=f"Некорректный plan_id: '{plan_id}'. Допустимые значения: plan_pro, plan_enterprise"
+            detail=(
+                f"Некорректный plan_id: '{requested_plan_id}'. "
+                f"Допустимые значения: pro, enterprise (или legacy: plan_pro, plan_enterprise)"
+            ),
         )
+
+    # Проверяем, что план существует и активен в новой таблице plans
+    try:
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import PlanRepositoryImpl
+        from sqlalchemy.orm import Session
+
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        try:
+            plan_repo = PlanRepositoryImpl(session=session)
+            plan_row = plan_repo.get_plan(plan_id)
+            if not plan_row or not plan_row.get("active"):
+                raise HTTPException(status_code=404, detail=f"План {plan_id} не найден или не активен")
+            # Цена берем из plans (источник истины для upgrade)
+            amount_minor = plan_row.get("price_minor")
+            currency = plan_row.get("currency") or "KZT"
+            if amount_minor is None:
+                raise HTTPException(status_code=400, detail=f"План {plan_id} не является платным")
+        finally:
+            session.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate plan via plans table: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to validate plan")
     
-    # Проверяем upgrade path
-    current_plan_info = entitlement_svc.get_tenant_plan_info(tenant_id=x_tenant_id)
-    current_plan_id = current_plan_info["plan"]["id"]
-    
-    # Валидация upgrade path
-    if current_plan_id == "plan_free" and plan_id not in ["plan_pro"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Нельзя перейти с {current_plan_id} на {plan_id}. Доступен только upgrade на plan_pro"
-        )
-    elif current_plan_id == "plan_pro" and plan_id != "plan_enterprise":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Нельзя перейти с {current_plan_id} на {plan_id}. Доступен только upgrade на plan_enterprise"
-        )
-    elif current_plan_id == "plan_enterprise":
-        raise HTTPException(
-            status_code=400,
-            detail="Уже используется максимальный план plan_enterprise"
-        )
-    
-    # Получаем цену плана
-    conn = entitlement_svc._get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT price_minor, currency
-        FROM billing_plans
-        WHERE id = ?
-    """, (plan_id,))
-    plan_row = cur.fetchone()
-    conn.close()
-    
-    if not plan_row:
-        raise HTTPException(status_code=404, detail=f"План {plan_id} не найден")
-    
-    amount_minor = plan_row["price_minor"]
-    currency = plan_row["currency"]
+    # Проверяем upgrade path по новой системе планов (tenant_plans), но не ломаем legacy:
+    # если tenant_plans еще нет — считаем текущим "trial"
+    try:
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import TenantPlanRepositoryImpl
+        from sqlalchemy.orm import Session
+        from cyberplat.product.application.assign_trial_use_case import AssignTrialUseCase
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import PlanRepositoryImpl
+
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        try:
+            tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+            plan_repo = PlanRepositoryImpl(session=session)
+            # Авто-trial на первом контакте
+            AssignTrialUseCase(tenant_plan_repo=tenant_plan_repo, plan_repo=plan_repo).execute(x_tenant_id)
+
+            current_tp = tenant_plan_repo.get_tenant_plan(x_tenant_id)
+            current_plan = current_tp["plan_id"] if current_tp else "trial"
+            if current_plan == "enterprise":
+                raise HTTPException(status_code=400, detail="Уже используется максимальный план enterprise")
+            if current_plan == "pro" and plan_id != "enterprise":
+                raise HTTPException(status_code=400, detail="С pro доступен upgrade только на enterprise")
+            if current_plan == "trial" and plan_id not in ("pro", "enterprise"):
+                raise HTTPException(status_code=400, detail="С trial доступен upgrade только на pro или enterprise")
+        finally:
+            session.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Failed to validate upgrade path via tenant_plans: {e}")
     
     # Создаем заказ
     order_id = entitlement_svc.create_order(
         tenant_id=x_tenant_id,
         provider="kaspi",
-        plan_id=plan_id,
+        plan_id=legacy_plan_id,
         amount_minor=amount_minor,
         currency=currency
     )
@@ -1620,7 +1991,7 @@ async def kaspi_checkout(
         amount_minor=amount_minor,
         currency=currency,
         tenant_id=x_tenant_id,
-        plan_id=plan_id,
+        plan_id=legacy_plan_id,
         success_url=success_url,
         cancel_url=cancel_url,
         order_id=order_id
@@ -1639,10 +2010,43 @@ async def kaspi_checkout(
             status="pending",
             external_order_id=external_order_id
         )
+
+        # Создаем kaspi_orders row (tenant_id + plans.id + kaspi_order_id)
+        try:
+            from cyberplat.product.infrastructure.database import get_sessionmaker
+            from cyberplat.product.infrastructure.kaspi_order_repository_sqlalchemy import KaspiOrderRepositoryImpl
+            from sqlalchemy.orm import Session
+
+            SessionLocal = get_sessionmaker()
+            session: Session = SessionLocal()
+            try:
+                repo = KaspiOrderRepositoryImpl(session=session)
+                # уникальность по kaspi_order_id
+                existing = repo.get_by_kaspi_order_id(external_order_id)
+                if not existing:
+                    repo.create_order(tenant_id=x_tenant_id, plan_id=plan_id, kaspi_order_id=external_order_id)
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning(f"Failed to create kaspi_orders row: {e}")
+
+        # Emit event for observability + outgoing webhooks
+        try:
+            evt = getattr(request.app.state, "event_service", None)
+            if evt:
+                evt.emit(
+                    event_type="billing.kaspi.checkout.created",
+                    tenant_id=x_tenant_id,
+                    artifact_id=None,
+                    payload={"plan_id": plan_id, "kaspi_order_id": external_order_id, "order_id": order_id},
+                )
+        except Exception as e:
+            logger.warning(f"Failed to emit billing.kaspi.checkout.created: {e}")
     
     return KaspiCheckoutResponse(
         checkout_url=checkout_url,
-        order_id=order_id
+        order_id=order_id,
+        kaspi_order_id=external_order_id
     )
 
 
@@ -1684,6 +2088,113 @@ async def kaspi_webhook(request: Request):
     
     # Извлекаем event_id (Kaspi может использовать id или event_id)
     event_id = payload.get("id") or payload.get("event_id") or str(uuid.uuid4())
+
+    # --- MVP commercial flow: kaspi_orders -> tenant_plans (idempotent) ---
+    # We keep existing Clean Architecture webhook processing (tenant_subscriptions + billing_rates)
+    # but additionally update new tenant_plans based on kaspi_orders table.
+    def _extract_kaspi_order_id(p: dict) -> Optional[str]:
+        for key in ("external_order_id", "kaspi_order_id", "order_id"):
+            val = p.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        data = p.get("data")
+        if isinstance(data, dict):
+            for key in ("external_order_id", "kaspi_order_id", "order_id"):
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+        return None
+
+    def _classify_event_type(t: str) -> Optional[str]:
+        # paid / failed / canceled
+        if t in ("payment.success", "payment.paid", "order.paid"):
+            return "paid"
+        if t in ("payment.failed", "order.failed"):
+            return "failed"
+        if t in ("payment.canceled", "order.canceled"):
+            return "canceled"
+        return None
+
+    kaspi_event_type = payload.get("event_type") or payload.get("type") or "unknown"
+    kaspi_order_id = _extract_kaspi_order_id(payload)
+    kaspi_status_kind = _classify_event_type(kaspi_event_type)
+
+    if kaspi_order_id and kaspi_status_kind in ("paid", "failed", "canceled"):
+        try:
+            from cyberplat.product.infrastructure.database import get_sessionmaker
+            from cyberplat.product.infrastructure.kaspi_order_repository_sqlalchemy import KaspiOrderRepositoryImpl
+            from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import TenantPlanRepositoryImpl
+            from sqlalchemy.orm import Session
+
+            SessionLocal = get_sessionmaker()
+            session: Session = SessionLocal()
+            try:
+                kaspi_repo = KaspiOrderRepositoryImpl(session=session)
+                tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+
+                order_row = kaspi_repo.get_by_kaspi_order_id(kaspi_order_id)
+                if not order_row:
+                    logger.warning(
+                        f"Kaspi webhook for unknown kaspi_order_id={kaspi_order_id} "
+                        f"(event_id={event_id}, type={kaspi_event_type})"
+                    )
+                else:
+                    # Idempotency: already paid -> no-op
+                    if kaspi_status_kind == "paid" and order_row.get("status") == "paid":
+                        logger.info(f"Kaspi order already paid (idempotent): {kaspi_order_id}")
+                    elif kaspi_status_kind == "paid":
+                        # Mark paid + switch tenant_plans to paid plan
+                        kaspi_repo.mark_paid(kaspi_order_id, payload=payload)
+                        import os
+                        from datetime import datetime, timedelta
+                        period_days = int(os.getenv("BILLING_PERIOD_DAYS", "30"))
+                        now = datetime.now()
+                        expires_at = (now + timedelta(days=period_days)).isoformat()
+                        tenant_plan_repo.assign_plan(
+                            tenant_id=order_row["tenant_id"],
+                            plan_id=order_row["plan_id"],
+                            expires_at=expires_at,
+                            subscription_status="active",
+                            failed_charges=0,
+                        )
+                        # Emit event for outgoing webhooks + audit
+                        evt = getattr(request.app.state, "event_service", None)
+                        if evt:
+                            evt.emit(
+                                event_type="billing.plan.upgraded",
+                                tenant_id=order_row["tenant_id"],
+                                artifact_id=None,
+                                payload={
+                                    "plan_id": order_row["plan_id"],
+                                    "provider": "kaspi",
+                                    "kaspi_order_id": kaspi_order_id,
+                                },
+                            )
+                    else:
+                        # failed / canceled
+                        kaspi_repo.mark_failed(
+                            kaspi_order_id,
+                            error=f"kaspi_{kaspi_status_kind}",
+                            payload=payload,
+                            status="failed" if kaspi_status_kind == "failed" else "canceled",
+                        )
+                        evt = getattr(request.app.state, "event_service", None)
+                        if evt:
+                            evt.emit(
+                                event_type="billing.payment.failed",
+                                tenant_id=order_row["tenant_id"],
+                                artifact_id=None,
+                                payload={
+                                    "plan_id": order_row["plan_id"],
+                                    "provider": "kaspi",
+                                    "kaspi_order_id": kaspi_order_id,
+                                    "reason": kaspi_status_kind,
+                                },
+                            )
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning(f"Failed to process kaspi_orders -> tenant_plans sync: {e}", exc_info=True)
     
     # Инициализируем Clean Architecture компоненты
     from cyberplat.billing.infrastructure.kaspi_provider import KaspiPaymentProvider
@@ -1713,8 +2224,8 @@ async def kaspi_webhook(request: Request):
         event_handlers=event_handlers
     )
     
-    # Извлекаем тип события для метрик
-    event_type = payload.get("event_type") or payload.get("type") or "unknown"
+    # Извлекаем тип события для метрик (используем уже вычисленный)
+    event_type = kaspi_event_type
     
     # Обрабатываем событие через use case
     try:
@@ -2083,8 +2594,64 @@ async def get_billing_portal(
             detail=f"Некорректный формат периода: '{period}'. Ожидается YYYY-MM"
         )
     
-    # Получаем информацию о плане и подписке
+    # Получаем информацию о плане tenant (если используется система планов)
+    tenant_plan_info = None
+    trial_days_left = None
+    upgrade_available = True
+    
+    try:
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+            TenantPlanRepositoryImpl,
+            PlanRepositoryImpl
+        )
+        from sqlalchemy.orm import Session
+        
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        
+        try:
+            tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+            plan_repo = PlanRepositoryImpl(session=session)
+            
+            tenant_plan = tenant_plan_repo.get_tenant_plan(x_tenant_id)
+            if tenant_plan:
+                plan = plan_repo.get_plan(tenant_plan["plan_id"])
+                if plan:
+                    tenant_plan_info = {
+                        "plan_id": plan["id"],
+                        "plan_name": plan["name"],
+                        "plan_description": plan.get("description"),
+                        "started_at": tenant_plan["started_at"],
+                        "expires_at": tenant_plan.get("expires_at")
+                    }
+                    
+                    # Вычисляем days_left для trial
+                    if tenant_plan["plan_id"] == "trial" and tenant_plan.get("expires_at"):
+                        try:
+                            expires_at = datetime.fromisoformat(tenant_plan["expires_at"])
+                            now = datetime.now()
+                            if expires_at > now:
+                                trial_days_left = (expires_at - now).days
+                            else:
+                                trial_days_left = 0
+                        except Exception:
+                            trial_days_left = None
+                    
+                    # Upgrade доступен если не enterprise
+                    upgrade_available = plan["id"] != "enterprise"
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"Failed to get tenant plan info: {e}")
+    
+    # Получаем информацию о плане и подписке (legacy, для совместимости)
     plan_info = entitlement_svc.get_tenant_plan_info(tenant_id=x_tenant_id)
+    
+    # Обновляем plan_info если есть информация о плане из новой системы
+    if tenant_plan_info:
+        plan_info["plan"]["id"] = tenant_plan_info["plan_id"]
+        plan_info["plan"]["name"] = tenant_plan_info["plan_name"]
     
     # Получаем invoice
     try:
@@ -2099,6 +2666,60 @@ async def get_billing_portal(
     except ValueError as e:
         logger.error(f"Ошибка при получении quota status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+    # --- New plans/tenant_plans view (trial/pro/enterprise) for UI ---
+    tenant_plan_info = None
+    trial_days_left = None
+    current_ui_plan_id = None  # trial|pro|enterprise
+    current_subscription_status = None  # trial|active|past_due|canceled
+    current_failed_charges = None
+    current_expires_at = None
+    current_days_left = None
+
+    try:
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+            TenantPlanRepositoryImpl,
+            PlanRepositoryImpl,
+        )
+        from cyberplat.product.application.assign_trial_use_case import AssignTrialUseCase
+        from sqlalchemy.orm import Session
+
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        try:
+            tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+            plan_repo = PlanRepositoryImpl(session=session)
+
+            # auto-trial on first portal call
+            AssignTrialUseCase(tenant_plan_repo=tenant_plan_repo, plan_repo=plan_repo).execute(x_tenant_id)
+
+            tp = tenant_plan_repo.get_tenant_plan(x_tenant_id)
+            if tp:
+                current_ui_plan_id = tp["plan_id"]
+                current_subscription_status = tp.get("subscription_status") or ("trial" if tp["plan_id"] == "trial" else "active")
+                current_failed_charges = tp.get("failed_charges")
+                current_expires_at = tp.get("expires_at")
+                tenant_plan_info = tp
+
+                if tp["plan_id"] == "trial" and tp.get("expires_at"):
+                    try:
+                        expires_at = datetime.fromisoformat(tp["expires_at"])
+                        now = datetime.now()
+                        trial_days_left = max(0, (expires_at - now).days)
+                    except Exception:
+                        trial_days_left = None
+                elif tp.get("expires_at"):
+                    try:
+                        expires_at = datetime.fromisoformat(tp["expires_at"])
+                        now = datetime.now()
+                        current_days_left = max(0, (expires_at - now).days)
+                    except Exception:
+                        current_days_left = None
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"Failed to read tenant_plans for portal: {e}")
     
     # Определяем upgrade_url и manage_url
     upgrade_url = None
@@ -2209,17 +2830,42 @@ async def get_billing_portal(
             if portal_session:
                 manage_url = portal_session.get("url")
     
+    # Override plan/subscription for UI if tenant_plans is present
+    plan_payload = plan_info["plan"]
+    sub_payload = plan_info["subscription"]
+
+    if current_ui_plan_id:
+        plan_payload = {"id": current_ui_plan_id, "name": current_ui_plan_id.capitalize()}
+        sub_payload = {
+            "status": current_subscription_status or sub_payload.get("status"),
+            "subscription_id": sub_payload.get("subscription_id"),
+        }
+
+    # Portal: for MVP, expose internal upgrade endpoint as upgrade_url (UI will POST to it)
+    if kaspi_enabled and current_ui_plan_id in (None, "trial", "pro"):
+        # UI chooses plan_id in body: pro/enterprise
+        upgrade_url = "/api/v1/billing/checkout/kaspi"
+    elif current_ui_plan_id == "enterprise":
+        upgrade_url = None
+
+    trial_info = None
+    if current_ui_plan_id == "trial":
+        trial_info = {"days_left": trial_days_left, "expires_at": tenant_plan_info.get("expires_at") if tenant_plan_info else None}
+
     return BillingPortalResponse(
         tenant_id=x_tenant_id,
         period=period,
-        plan=PlanInfo(**plan_info["plan"]),
-        subscription=SubscriptionInfo(**plan_info["subscription"]),
+        plan=PlanInfo(**plan_payload),
+        subscription=SubscriptionInfo(**sub_payload),
         invoice=invoice,
         quota=quota_status,
-        links=PortalLinks(
-            upgrade_url=upgrade_url,
-            manage_url=manage_url
-        )
+        links=PortalLinks(upgrade_url=upgrade_url, manage_url=manage_url),
+        trial=trial_info,
+        upgrade_available=(current_ui_plan_id != "enterprise"),
+        expires_at=current_expires_at,
+        subscription_status=current_subscription_status,
+        failed_charges=current_failed_charges,
+        days_left=(trial_days_left if current_ui_plan_id == "trial" else current_days_left),
     )
 
 
@@ -2272,59 +2918,208 @@ async def charge_kaspi_recurring(request: Request):
     if not billing_svc:
         raise HTTPException(status_code=503, detail="Billing service not initialized")
     
-    # Инициализируем Clean Architecture компоненты
-    from cyberplat.billing.infrastructure.kaspi_provider import KaspiPaymentProvider
-    from cyberplat.billing.infrastructure.repositories import EntitlementSubscriptionRepository
-    from cyberplat.billing.application.renew_subscriptions_use_case import RenewSubscriptionsUseCase
-    
-    # Создаем адаптеры
-    kaspi_provider = KaspiPaymentProvider()
-    subscription_repo = EntitlementSubscriptionRepository(entitlement_svc, billing_service=billing_svc)
-    
-    # Создаем общий use case для Kaspi
-    use_case = RenewSubscriptionsUseCase(
-        provider_name="kaspi",
-        subscription_repo=subscription_repo,
-        kaspi_provider=kaspi_provider
-    )
-    
+    # New production-like recurring flow based on tenant_plans:
+    # - pro/enterprise have expires_at + subscription_status + failed_charges
+    # - renew window + idempotent extension: max(expires_at, now) + period_days
     import time
     start_time = time.time()
-    
+    import os
+    from datetime import timedelta
+    from cyberplat.kaspi_client import charge_token
+
+    period_days = int(os.getenv("BILLING_PERIOD_DAYS", "30"))
+    max_failed = int(os.getenv("SUBSCRIPTION_MAX_FAILED_CHARGES", "3"))
+    renew_window_days = int(os.getenv("RENEW_WINDOW_DAYS", "2"))
+
+    event_service_local = getattr(request.app.state, "event_service", None)
+
+    from cyberplat.product.infrastructure.database import get_sessionmaker
+    from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+        TenantPlanRepositoryImpl,
+        PlanRepositoryImpl,
+    )
+    from sqlalchemy.orm import Session
+
+    now = datetime.now()
+    renew_before = (now + timedelta(days=renew_window_days)).isoformat()
+
+    charged = 0
+    failed = 0
+    skipped = 0
+    errors = []
+
+    SessionLocal = get_sessionmaker()
+    session: Session = SessionLocal()
     try:
-        # Выполняем recurring charge через общий use case
-        result = use_case.execute()
-        
-        duration = time.time() - start_time
-        
-        # Записываем метрики recurring run
-        if metrics_enabled:
-            # Определяем общий статус
-            if result.failed > 0 or result.errors:
-                status = "failed"
-            elif result.charged > 0:
-                status = "success"
-            else:
-                status = "skipped"
-            record_recurring_run("kaspi", status, duration)
-        
-        # Сериализуем RecurringResult в прежний формат JSON ответа
-        result_dict = result.to_dict()
-        result_dict["status"] = "ok"
-        
-        return result_dict
-    except Exception as e:
-        duration = time.time() - start_time
-        logger.error(f"Ошибка при выполнении recurring charge: {e}", exc_info=True)
-        
-        # Записываем метрику ошибки
-        if metrics_enabled:
-            record_recurring_run("kaspi", "failed", duration)
-        
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error executing recurring charge: {str(e)}"
+        tp_repo = TenantPlanRepositoryImpl(session=session)
+        plan_repo = PlanRepositoryImpl(session=session)
+
+        due = tp_repo.list_tenants_due_for_renewal(
+            plan_ids=["pro", "enterprise"],
+            statuses=["active", "past_due"],
+            renew_before_iso=renew_before,
+            limit=200,
         )
+
+        for tp in due:
+            tenant_id = tp["tenant_id"]
+            plan_id = tp["plan_id"]
+            expires_at = tp.get("expires_at")
+            sub_status = tp.get("subscription_status") or ("active" if plan_id != "trial" else "trial")
+            failed_charges = int(tp.get("failed_charges") or 0)
+
+            # Load plan price/currency
+            plan = plan_repo.get_plan(plan_id)
+            if not plan or not plan.get("active"):
+                skipped += 1
+                errors.append(f"Tenant {tenant_id}: plan {plan_id} not found/active")
+                continue
+            amount_minor = plan.get("price_minor")
+            currency = plan.get("currency") or "KZT"
+            if amount_minor is None:
+                skipped += 1
+                continue
+
+            # Get Kaspi token (payment method)
+            token = billing_svc.get_kaspi_token(tenant_id)
+            if not token:
+                failed_charges += 1
+                sub_status = "past_due"
+                failed += 1
+                err = f"Tenant {tenant_id}: missing kaspi_token"
+                errors.append(err)
+                logger.warning("kaspi_recurring_missing_token", extra={"tenant_id": tenant_id, "plan_id": plan_id})
+            else:
+                try:
+                    legacy_plan_id = "plan_pro" if plan_id == "pro" else "plan_enterprise"
+                    res = charge_token(
+                        token=token,
+                        amount_minor=amount_minor,
+                        currency=currency,
+                        tenant_id=tenant_id,
+                        plan_id=legacy_plan_id,
+                    )
+                    if not res or res.get("status") != "success":
+                        failed_charges += 1
+                        sub_status = "past_due"
+                        failed += 1
+                        err = f"Tenant {tenant_id}: charge failed ({res})"
+                        errors.append(err)
+                        logger.warning(
+                            "kaspi_recurring_charge_failed",
+                            extra={"tenant_id": tenant_id, "plan_id": plan_id, "failed_charges": failed_charges},
+                        )
+                    else:
+                        # extend expires_at idempotently
+                        base_dt = now
+                        if expires_at:
+                            try:
+                                exp_dt = datetime.fromisoformat(expires_at)
+                                if exp_dt > base_dt:
+                                    base_dt = exp_dt
+                            except Exception:
+                                pass
+                        new_expires = (base_dt + timedelta(days=period_days)).isoformat()
+
+                        tp_repo.update_subscription_state(
+                            tenant_id=tenant_id,
+                            expires_at=new_expires,
+                            subscription_status="active",
+                            failed_charges=0,
+                        )
+                        charged += 1
+                        logger.info(
+                            "kaspi_subscription_renewed",
+                            extra={
+                                "tenant_id": tenant_id,
+                                "plan_id": plan_id,
+                                "previous_expires_at": expires_at,
+                                "new_expires_at": new_expires,
+                            },
+                        )
+                        if event_service_local:
+                            try:
+                                event_service_local.emit(
+                                    event_type="billing.subscription.renewed",
+                                    tenant_id=tenant_id,
+                                    artifact_id=None,
+                                    payload={
+                                        "plan_id": plan_id,
+                                        "provider": "kaspi",
+                                        "previous_expires_at": expires_at,
+                                        "expires_at": new_expires,
+                                    },
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to emit billing.subscription.renewed: {e}")
+                        continue
+                except Exception as e:
+                    failed_charges += 1
+                    sub_status = "past_due"
+                    failed += 1
+                    errors.append(f"Tenant {tenant_id}: exception charging: {e}")
+                    logger.error("kaspi_recurring_exception", extra={"tenant_id": tenant_id, "plan_id": plan_id}, exc_info=True)
+
+            # failure path: update state / downgrade if needed
+            if failed_charges >= max_failed:
+                # cancel + downgrade
+                tp_repo.assign_plan(
+                    tenant_id=tenant_id,
+                    plan_id="trial",
+                    expires_at=now.isoformat(),
+                    subscription_status="canceled",
+                    failed_charges=failed_charges,
+                )
+                logger.warning(
+                    "kaspi_subscription_canceled",
+                    extra={"tenant_id": tenant_id, "previous_plan_id": plan_id, "failed_charges": failed_charges},
+                )
+                if event_service_local:
+                    try:
+                        event_service_local.emit(
+                            event_type="billing.subscription.canceled",
+                            tenant_id=tenant_id,
+                            artifact_id=None,
+                            payload={
+                                "plan_id": plan_id,
+                                "provider": "kaspi",
+                                "failed_charges": failed_charges,
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to emit billing.subscription.canceled: {e}")
+            else:
+                tp_repo.update_subscription_state(
+                    tenant_id=tenant_id,
+                    expires_at=expires_at,
+                    subscription_status="past_due",
+                    failed_charges=failed_charges,
+                )
+                if event_service_local:
+                    try:
+                        event_service_local.emit(
+                            event_type="billing.subscription.past_due",
+                            tenant_id=tenant_id,
+                            artifact_id=None,
+                            payload={
+                                "plan_id": plan_id,
+                                "provider": "kaspi",
+                                "failed_charges": failed_charges,
+                                "expires_at": expires_at,
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to emit billing.subscription.past_due: {e}")
+
+    finally:
+        session.close()
+
+    duration = time.time() - start_time
+    if metrics_enabled:
+        status = "failed" if failed > 0 else ("success" if charged > 0 else "skipped")
+        record_recurring_run("kaspi", status, duration)
+
+    return {"status": "ok", "charged": charged, "failed": failed, "skipped": skipped, "errors": errors}
 
 
 @app.get("/api/v1/export/status")

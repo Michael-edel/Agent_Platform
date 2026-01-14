@@ -3,6 +3,7 @@
 import uuid
 import logging
 import sqlite3
+import os
 from typing import Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
@@ -14,14 +15,34 @@ class ArtifactService:
     """Сервис для создания и управления артефактами."""
     
     def __init__(self, db_path: str = "platform.db", event_service=None):
+        if db_path == "platform.db":
+            db_path = os.getenv("PLATFORM_DB_PATH", db_path)
+        # Аналогично BillingService: для db_path=":memory:" используем shared in-memory URI,
+        # иначе каждая операция видит пустую БД (no such table: artifacts).
         self.db_path = db_path
+        self._sqlite_connect_target = db_path
+        self._sqlite_connect_kwargs = {}
+        self._keeper_conn: Optional[sqlite3.Connection] = None
+        if db_path == ":memory:":
+            self._sqlite_connect_target = f"file:artifacts_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._sqlite_connect_kwargs = {"uri": True}
+            self._keeper_conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
+            self._keeper_conn.row_factory = sqlite3.Row
         self.event_service = event_service
         self._init_database()
     
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def close(self) -> None:
+        """Закрыть keeper connection (для тестов/cleanup)."""
+        try:
+            if self._keeper_conn is not None:
+                self._keeper_conn.close()
+        except Exception:
+            pass
     
     def _init_database(self) -> None:
         """Инициализировать таблицы для артефактов."""
@@ -53,7 +74,8 @@ class ArtifactService:
         kind: str,
         source: str,
         data: Dict[str, Any],
-        tenant_id: Optional[str] = None
+        tenant_id: Optional[str] = None,
+        artifact_id: Optional[str] = None
     ) -> str:
         """
         Создать новый артефакт.
@@ -63,28 +85,36 @@ class ArtifactService:
             source: Источник артефакта (например, "doc_agent")
             data: Данные артефакта
             tenant_id: ID тенанта
+            artifact_id: Явно заданный ID артефакта (нужно для совместимости legacy→product).
             
         Returns:
             ID созданного артефакта
         """
         import json
         
-        artifact_id = str(uuid.uuid4())
+        # Важно: legacy endpoints могут генерировать artifact_id заранее и ожидать,
+        # что он будет использован как primary key (нельзя плодить "другие id" для того же документа).
+        artifact_id = artifact_id or str(uuid.uuid4())
         
         conn = self._get_connection()
         cur = conn.cursor()
         
-        cur.execute("""
-            INSERT INTO artifacts (id, kind, source, tenant_id, data, created_at)
+        # Идемпотентность по id: если запись уже существует, обновляем её (без смены id).
+        # Это важно для ретраев webhook'ов и для bridge legacy↔product.
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO artifacts (id, kind, source, tenant_id, data, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            artifact_id,
-            kind,
-            source,
-            tenant_id,
-            json.dumps(data, ensure_ascii=False),
-            datetime.now().isoformat()
-        ))
+            """,
+            (
+                artifact_id,
+                kind,
+                source,
+                tenant_id,
+                json.dumps(data, ensure_ascii=False),
+                datetime.now().isoformat(),
+            ),
+        )
         
         conn.commit()
         conn.close()

@@ -152,7 +152,7 @@ async def run_ocr_on_document(
     document_id: str,
     tenant_id: str = Depends(get_tenant_id),
     artifact_state_repo: ArtifactStateRepository = Depends(get_artifact_state_repo),
-    request: Optional = None  # Для получения services
+    request: Request = None  # Для получения services
 ):
     """
     Запустить OCR на документе (trigger doc_agent).
@@ -168,9 +168,100 @@ async def run_ocr_on_document(
         raise HTTPException(status_code=500, detail="Request not available")
     artifact_service = getattr(request.app.state, "artifact_service", None)
     agent_registry = getattr(request.app.state, "agent_registry", None)
+    billing_service = getattr(request.app.state, "billing_service", None)
+    event_service = getattr(request.app.state, "event_service", None)
+    entitlement_service = getattr(request.app.state, "entitlement_service", None)
     
     if not artifact_service or not agent_registry:
         raise HTTPException(status_code=500, detail="Services not initialized")
+    
+    # Проверка квот (enforcement)
+    try:
+        from cyberplat.product.application.billing_enforcement_service import (
+            BillingEnforcementService,
+            QuotaExceededError,
+            TrialExpiredError,
+            SubscriptionPastDueError,
+            SubscriptionCanceledError,
+        )
+        from cyberplat.product.infrastructure.database import get_sessionmaker
+        from cyberplat.product.infrastructure.plan_repositories_sqlalchemy import (
+            TenantPlanRepositoryImpl,
+            PlanRepositoryImpl,
+        )
+        from sqlalchemy.orm import Session
+        
+        SessionLocal = get_sessionmaker()
+        session: Session = SessionLocal()
+        try:
+            tenant_plan_repo = TenantPlanRepositoryImpl(session=session)
+            plan_repo = PlanRepositoryImpl(session=session)
+            billing_enforcement = BillingEnforcementService(
+                billing_service=billing_service,
+                event_service=event_service,
+                tenant_plan_repo=tenant_plan_repo,
+                plan_repo=plan_repo,
+                entitlement_service=entitlement_service
+            )
+        finally:
+            session.close()
+        
+        # Для MVP: page_processed=1 (можно расширить позже для реального количества страниц)
+        billing_enforcement.enforce(
+            tenant_id=tenant_id,
+            required_metrics={
+                "invoice_extracted": 1.0,
+                "page_processed": 1.0
+            },
+            operation_name="run_ocr"
+        )
+    except Exception as e:
+        if isinstance(e, TrialExpiredError):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "detail": "Пробный период истёк",
+                    "trial_expired": True,
+                    "expires_at": getattr(e, "expires_at", None),
+                    "upgrade_url": "/billing/upgrade",
+                },
+            )
+        if isinstance(e, SubscriptionPastDueError):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "detail": "Оплата просрочена",
+                    "subscription_status": "past_due",
+                    "expires_at": getattr(e, "expires_at", None),
+                    "failed_charges": getattr(e, "failed_charges", None),
+                    "upgrade_url": "/api/v1/billing/checkout/kaspi",
+                },
+            )
+        if isinstance(e, SubscriptionCanceledError):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "detail": "Подписка отменена",
+                    "subscription_status": "canceled",
+                    "upgrade_url": "/api/v1/billing/checkout/kaspi",
+                },
+            )
+        if isinstance(e, QuotaExceededError):
+            # 402 Payment Required
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "detail": "Квота превышена",
+                    "metric": e.metric,
+                    "period": e.period,
+                    "used_units": e.used_units,
+                    "monthly_quota": e.monthly_quota,
+                    "operation": e.operation,
+                    "upgrade_url": e.upgrade_url
+                }
+            )
+        # Другие ошибки - пробрасываем дальше
+        raise
     
     doc_agent = agent_registry.get("doc_agent")
     if not doc_agent:
@@ -182,10 +273,29 @@ async def run_ocr_on_document(
         artifact_service=artifact_service
     )
     
-    success, invoice_artifact_id, error_message = await use_case.execute(
-        tenant_id=tenant_id,
-        artifact_id=document_id
-    )
+    try:
+        success, invoice_artifact_id, error_message = await use_case.execute(
+            tenant_id=tenant_id,
+            artifact_id=document_id
+        )
+    except Exception as e:
+        from cyberplat.product.application.billing_enforcement_service import QuotaExceededError
+        if isinstance(e, QuotaExceededError):
+            # 402 Payment Required
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "detail": "Квота превышена",
+                    "metric": e.metric,
+                    "period": e.period,
+                    "used_units": e.used_units,
+                    "monthly_quota": e.monthly_quota,
+                    "operation": e.operation,
+                    "upgrade_url": e.upgrade_url
+                }
+            )
+        # Другие ошибки - пробрасываем дальше
+        raise
     
     from app.main import AgentRunResponse
     
@@ -337,7 +447,7 @@ async def export_invoice(
         export_repo=export_repo
     )
     
-    success, export_id, error_message = use_case.execute(
+    success, export_id, file_id, error_message = use_case.execute(
         tenant_id=tenant_id,
         artifact_id=invoice_id,
         export_type=export_request.export_type,
@@ -345,16 +455,32 @@ async def export_invoice(
     )
     
     if not success:
-        raise HTTPException(status_code=404, detail=error_message or f"Invoice {invoice_id} not found")
+        # Если export_id создан, но генерация не удалась - возвращаем ответ с ошибкой
+        if export_id:
+            return ExportInvoiceResponse(
+                success=False,
+                export_id=export_id,
+                artifact_id=invoice_id,
+                export_type=export_request.export_type,
+                status="failed",
+                file_id=None,
+                download_url=None,
+                message=error_message or "Export failed"
+            )
+        else:
+            # Если не удалось создать export - 404
+            raise HTTPException(status_code=404, detail=error_message or f"Invoice {invoice_id} not found")
     
-    # TODO: Здесь будет асинхронная генерация файла экспорта
-    # Пока возвращаем export_id для отслеживания статуса
+    # Определяем финальный статус
+    final_status = "completed" if success else "failed"
     
     return ExportInvoiceResponse(
-        success=True,
+        success=success,
         export_id=export_id,
         artifact_id=invoice_id,
         export_type=export_request.export_type,
-        status="pending",
-        message="Export queued"
+        status=final_status,
+        file_id=file_id,
+        download_url=(f"/files/{file_id}" if file_id else None),
+        message="Export completed" if success else (error_message or "Export failed"),
     )

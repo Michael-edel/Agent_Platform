@@ -40,6 +40,17 @@ class StorageService:
         for file_path in self.base_path.glob(f"{file_id}*"):
             if file_path.is_file():
                 return file_path
+
+        # Экспорты (product layer) сейчас генерируются в out/exports.
+        # Для удобства /files/{file_id} поддерживаем поиск и там (без изменения контрактов).
+        exports_dir = Path("out/exports")
+        if exports_dir.exists():
+            export_path = exports_dir / file_id
+            if export_path.exists():
+                return export_path
+            for file_path in exports_dir.glob(f"{file_id}*"):
+                if file_path.is_file():
+                    return file_path
         
         logger.warning(f"Файл не найден: {file_id}")
         return None
