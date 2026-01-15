@@ -88,3 +88,27 @@ DASHBOARD_URLS = {
     "orders": build_admin_list_url(ADMIN_ROUTES["billing_order"]),
     "webhooks": build_admin_list_url(ADMIN_ROUTES["billing_webhook_event"]),
 }
+
+# Quick links for dashboard operations
+QUICK_LINKS = {
+    "webhook_events": {
+        "label": "Webhook Events (newest)",
+        "url": build_admin_list_url(ADMIN_ROUTES["billing_webhook_event"]),
+        "icon": "fa-solid fa-bell",
+    },
+    "webhook_errors": {
+        "label": "Webhook Errors",
+        "url": build_admin_list_url(ADMIN_ROUTES["billing_webhook_event"], {"status": "failed"}),
+        "icon": "fa-solid fa-circle-exclamation",
+    },
+    "recent_orders": {
+        "label": "Orders (newest)",
+        "url": build_admin_list_url(ADMIN_ROUTES["billing_order"]),
+        "icon": "fa-solid fa-shopping-cart",
+    },
+    "subscriptions": {
+        "label": "Subscriptions",
+        "url": build_admin_list_url(ADMIN_ROUTES["tenant_subscription"]),
+        "icon": "fa-solid fa-receipt",
+    },
+}

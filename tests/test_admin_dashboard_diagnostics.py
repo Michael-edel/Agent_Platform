@@ -1,7 +1,8 @@
-"""Tests for admin dashboard system diagnostics."""
+"""Tests for admin dashboard system diagnostics and quick links."""
 
 import pytest
 from unittest.mock import MagicMock, patch
+from app.admin.links import QUICK_LINKS
 
 
 class TestBuildSystemDiagnostics:
@@ -98,3 +99,25 @@ class TestBuildSystemDiagnostics:
         
         assert result["readiness_status"] == "unknown"
         assert result["error"] is not None
+
+
+class TestQuickLinks:
+    """Tests for quick links configuration."""
+
+    def test_quick_links_not_empty(self):
+        """QUICK_LINKS has at least 4 entries."""
+        assert len(QUICK_LINKS) >= 4
+
+    def test_quick_links_have_required_fields(self):
+        """Each quick link has label, url, icon."""
+        for key, link in QUICK_LINKS.items():
+            assert "label" in link, f"{key} missing label"
+            assert "url" in link, f"{key} missing url"
+            assert "icon" in link, f"{key} missing icon"
+            assert link["url"], f"{key} has empty url"
+
+    def test_webhook_errors_has_status_filter(self):
+        """Webhook errors link includes status filter."""
+        assert "webhook_errors" in QUICK_LINKS
+        url = QUICK_LINKS["webhook_errors"]["url"]
+        assert "status=" in url

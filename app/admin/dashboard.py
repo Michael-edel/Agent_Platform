@@ -15,7 +15,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 )
 from cyberplat.product.infrastructure.models import TenantPlan
 from app.admin.auth import get_admin_role, get_admin_tenant_id
-from app.admin.links import DASHBOARD_URLS
+from app.admin.links import DASHBOARD_URLS, QUICK_LINKS
 from utils.db_migrations import check_database_migration
 
 logger = logging.getLogger(__name__)
@@ -152,5 +152,5 @@ class DashboardView(BaseView):
         return await self.templates.TemplateResponse(
             request,
             "admin/dashboard.html",
-            context={"stats": stats, "urls": DASHBOARD_URLS, "diagnostics": diagnostics},
+            context={"stats": stats, "urls": DASHBOARD_URLS, "diagnostics": diagnostics, "quick_links": QUICK_LINKS},
         )

@@ -273,6 +273,19 @@ Dashboard показывает системную диагностику (без
 alembic upgrade head
 ```
 
+### Dashboard: Quick Links
+
+Блок Quick Links предоставляет быстрый доступ к часто используемым представлениям:
+
+| Ссылка | Описание |
+|--------|----------|
+| Webhook Events (newest) | Все webhook события, новые первыми |
+| Webhook Errors | Webhook события с status=failed |
+| Orders (newest) | Все заказы, новые первыми |
+| Subscriptions | Все подписки |
+
+Все ссылки соблюдают tenant scoping — tenant_admin увидит только данные своего tenant.
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
