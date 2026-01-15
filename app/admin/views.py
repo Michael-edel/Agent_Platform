@@ -1,6 +1,7 @@
 """SQLAdmin model views for admin panel."""
 
 from typing import Any
+from markupsafe import Markup
 from sqladmin import ModelView
 from sqlalchemy import select, func, false as sql_false
 from starlette.requests import Request
@@ -31,6 +32,25 @@ from app.admin.auth import get_admin_role, get_admin_tenant_id
 def is_tenant_admin(request: Request) -> bool:
     """Check if current user is tenant_admin."""
     return get_admin_role(request) == "tenant_admin"
+
+
+def make_tenant_drill_links(tenant_id: str) -> Markup:
+    """Generate drill-down links for a tenant_id."""
+    if not tenant_id:
+        return Markup("")
+    
+    from markupsafe import escape
+    from urllib.parse import quote
+    
+    safe_display = escape(tenant_id)
+    safe_url = quote(str(tenant_id), safe='')
+    
+    links = [
+        f'<a href="/admin/tenant-subscription/list?tenant_id={safe_url}" title="Subscriptions"><i class="fa-solid fa-receipt"></i></a>',
+        f'<a href="/admin/billing-order/list?tenant_id={safe_url}" title="Orders"><i class="fa-solid fa-shopping-cart"></i></a>',
+        f'<a href="/admin/billing-webhook-event/list?tenant_id={safe_url}" title="Webhooks"><i class="fa-solid fa-bell"></i></a>',
+    ]
+    return Markup(f'{safe_display} ' + ' '.join(links))
 
 
 class TenantScopedMixin:
@@ -107,6 +127,10 @@ class TenantPlanAdmin(TenantScopedMixin, ModelView, model=TenantPlan):
     column_filters = ["plan_id", "subscription_status", "created_at"]
     column_sortable_list = ["tenant_id", "plan_id", "subscription_status", "created_at"]
     page_size = 50
+    
+    column_formatters = {
+        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+    }
 
 
 class WebhookAdmin(TenantScopedMixin, ModelView, model=Webhook):
@@ -238,6 +262,10 @@ class TenantSubscriptionAdmin(TenantScopedMixin, ModelView, model=TenantSubscrip
     column_filters = ["tenant_id", "provider", "status", "created_at"]
     column_sortable_list = ["tenant_id", "provider", "status", "created_at"]
     page_size = 50
+    
+    column_formatters = {
+        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+    }
 
 
 class BillingWebhookEventAdmin(TenantScopedMixin, ModelView, model=BillingWebhookEvent):
@@ -275,6 +303,10 @@ class BillingOrderAdmin(TenantScopedMixin, ModelView, model=BillingOrder):
     column_filters = ["tenant_id", "provider", "status", "created_at"]
     column_sortable_list = ["tenant_id", "provider", "status", "amount_minor", "created_at"]
     page_size = 50
+    
+    column_formatters = {
+        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+    }
 
 
 class BillingUsageAdmin(TenantScopedMixin, ModelView, model=BillingUsage):

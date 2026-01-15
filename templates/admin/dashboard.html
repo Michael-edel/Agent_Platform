@@ -12,39 +12,51 @@
     
     <div class="row">
         <div class="col-md-3 mb-4">
-            <div class="card text-bg-primary">
-                <div class="card-body">
-                    <h5 class="card-title">Tenants</h5>
-                    <p class="card-text display-4">{{ stats.tenants_count }}</p>
+            <a href="{{ request.url_for('admin:list', identity='tenant-plan') }}" class="text-decoration-none">
+                <div class="card text-bg-primary" style="cursor: pointer;">
+                    <div class="card-body">
+                        <h5 class="card-title">Tenants</h5>
+                        <p class="card-text display-4">{{ stats.tenants_count }}</p>
+                        <small><i class="fa-solid fa-arrow-right"></i> View all</small>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         
         <div class="col-md-3 mb-4">
-            <div class="card text-bg-success">
-                <div class="card-body">
-                    <h5 class="card-title">Subscriptions</h5>
-                    <p class="card-text display-4">{{ stats.subscriptions_count }}</p>
+            <a href="{{ request.url_for('admin:list', identity='tenant-subscription') }}" class="text-decoration-none">
+                <div class="card text-bg-success" style="cursor: pointer;">
+                    <div class="card-body">
+                        <h5 class="card-title">Subscriptions</h5>
+                        <p class="card-text display-4">{{ stats.subscriptions_count }}</p>
+                        <small><i class="fa-solid fa-arrow-right"></i> View all</small>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         
         <div class="col-md-3 mb-4">
-            <div class="card text-bg-warning">
-                <div class="card-body">
-                    <h5 class="card-title">Orders</h5>
-                    <p class="card-text display-4">{{ stats.orders_count }}</p>
+            <a href="{{ request.url_for('admin:list', identity='billing-order') }}" class="text-decoration-none">
+                <div class="card text-bg-warning" style="cursor: pointer;">
+                    <div class="card-body">
+                        <h5 class="card-title">Orders</h5>
+                        <p class="card-text display-4">{{ stats.orders_count }}</p>
+                        <small><i class="fa-solid fa-arrow-right"></i> View all</small>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         
         <div class="col-md-3 mb-4">
-            <div class="card text-bg-info">
-                <div class="card-body">
-                    <h5 class="card-title">Webhook Events</h5>
-                    <p class="card-text display-4">{{ stats.webhooks_count }}</p>
+            <a href="{{ request.url_for('admin:list', identity='billing-webhook-event') }}" class="text-decoration-none">
+                <div class="card text-bg-info" style="cursor: pointer;">
+                    <div class="card-body">
+                        <h5 class="card-title">Webhook Events</h5>
+                        <p class="card-text display-4">{{ stats.webhooks_count }}</p>
+                        <small><i class="fa-solid fa-arrow-right"></i> View all</small>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
     </div>
 </div>

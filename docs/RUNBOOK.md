@@ -216,6 +216,23 @@ ADMIN_TENANT_ID=your-tenant-id
 
 **Tenant scoping:** Фильтрация применяется как к спискам данных, так и к total/pagination (count query). Это предотвращает утечку информации о количестве записей других tenant'ов.
 
+### Навигация и drill-down
+
+Dashboard содержит кликабельные карточки для быстрого перехода:
+- Tenants → список tenant plans
+- Subscriptions → список подписок
+- Orders → список billing orders
+- Webhook Events → список webhook событий
+
+В списках колонка `tenant_id` содержит drill-down ссылки:
+- <i class="fa-solid fa-receipt"></i> → Subscriptions этого tenant
+- <i class="fa-solid fa-shopping-cart"></i> → Orders этого tenant
+- <i class="fa-solid fa-bell"></i> → Webhook events этого tenant
+
+При переходе по drill-down ссылкам tenant scoping сохраняется:
+- `platform_admin` видит все записи выбранного tenant
+- `tenant_admin` видит только свой tenant (scoping применяется серверно)
+
 ### Dashboard
 
 Страница `/admin/` (первый пункт меню) показывает key metrics:
