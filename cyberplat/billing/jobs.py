@@ -1,4 +1,8 @@
-"""Billing jobs processor (test-friendly, no external calls)."""
+"""Billing jobs processor (test-friendly, no sleep/cron).
+
+- In dry-run: marks invoice paid immediately.
+- In non-dry-run: creates provider payment and stores provider_ref; final paid/failed comes from webhooks.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select, update, text
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.database import get_engine
@@ -38,6 +42,7 @@ class DueJob:
     id: str
     tenant_id: str
     invoice_id: str
+    provider: str
     status: str
     attempt_count: int
     max_attempts: int
@@ -52,6 +57,7 @@ def fetch_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
                 BillingJob.id,
                 BillingJob.tenant_id,
                 BillingJob.invoice_id,
+                BillingJob.provider,
                 BillingJob.status,
                 BillingJob.attempt_count,
                 BillingJob.max_attempts,
@@ -71,10 +77,11 @@ def fetch_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
                 id=r[0],
                 tenant_id=r[1],
                 invoice_id=r[2],
-                status=r[3],
-                attempt_count=int(r[4] or 0),
-                max_attempts=int(r[5] or 0),
-                next_attempt_at=r[6],
+                provider=str(r[3] or ""),
+                status=r[4],
+                attempt_count=int(r[5] or 0),
+                max_attempts=int(r[6] or 0),
+                next_attempt_at=r[7],
             )
             for r in rows
         ]
@@ -135,27 +142,136 @@ def process_job(job: DueJob, now: str) -> None:
             session.commit()
             return
 
-        # Not implemented: fail with backoff
-        backoff = compute_backoff_seconds(attempt_count)
-        next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+        inv = session.execute(
+            select(UsageInvoice).where(UsageInvoice.id == job.invoice_id, UsageInvoice.tenant_id == job.tenant_id)
+        ).scalar_one_or_none()
+        if not inv:
+            # Nothing to do - mark failed with backoff.
+            backoff = compute_backoff_seconds(attempt_count)
+            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == job.id)
+                .where(BillingJob.status == "processing")
+                .values(
+                    status="failed",
+                    finished_at=now,
+                    updated_at=now,
+                    last_error_code="invoice_not_found",
+                    last_error_message="usage invoice not found",
+                    next_attempt_at=next_at,
+                )
+            )
+            session.commit()
+            return
+
+        provider_name = (job.provider or "").strip().lower()
+        # Import inside to keep tests monkeypatch-friendly
+        from cyberplat.billing.providers.registry import get_provider
+
+        provider = get_provider(provider_name)
+        if not provider:
+            backoff = compute_backoff_seconds(attempt_count)
+            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == job.id)
+                .where(BillingJob.status == "processing")
+                .values(
+                    status="failed",
+                    finished_at=now,
+                    updated_at=now,
+                    last_error_code="unknown_provider",
+                    last_error_message=f"unknown provider: {provider_name}",
+                    next_attempt_at=next_at,
+                )
+            )
+            session.execute(
+                update(UsageInvoice)
+                .where(UsageInvoice.id == job.invoice_id)
+                .where(UsageInvoice.tenant_id == job.tenant_id)
+                .values(payment_status="failed")
+            )
+            session.commit()
+            return
+
+        try:
+            result = provider.create_payment(inv)
+        except NotImplementedError as e:
+            backoff = compute_backoff_seconds(attempt_count)
+            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == job.id)
+                .where(BillingJob.status == "processing")
+                .values(
+                    status="failed",
+                    finished_at=now,
+                    updated_at=now,
+                    last_error_code="not_implemented",
+                    last_error_message=str(e),
+                    next_attempt_at=next_at,
+                )
+            )
+            session.execute(
+                update(UsageInvoice)
+                .where(UsageInvoice.id == job.invoice_id)
+                .where(UsageInvoice.tenant_id == job.tenant_id)
+                .values(payment_status="failed")
+            )
+            session.commit()
+            return
+        except Exception as e:
+            backoff = compute_backoff_seconds(attempt_count)
+            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == job.id)
+                .where(BillingJob.status == "processing")
+                .values(
+                    status="failed",
+                    finished_at=now,
+                    updated_at=now,
+                    last_error_code="provider_error",
+                    last_error_message=str(e)[:200],
+                    next_attempt_at=next_at,
+                )
+            )
+            session.execute(
+                update(UsageInvoice)
+                .where(UsageInvoice.id == job.invoice_id)
+                .where(UsageInvoice.tenant_id == job.tenant_id)
+                .values(payment_status="failed")
+            )
+            session.commit()
+            return
+
+        # Payment created successfully -> job succeeded; final paid/failed is reconciled by webhooks.
         session.execute(
             update(BillingJob)
             .where(BillingJob.id == job.id)
             .where(BillingJob.status == "processing")
             .values(
-                status="failed",
+                status="succeeded",
                 finished_at=now,
                 updated_at=now,
-                last_error_code="not_implemented",
-                last_error_message="billing provider integration not implemented",
-                next_attempt_at=next_at,
+                provider_ref=result.provider_ref,
+                last_error_code=None,
+                last_error_message=None,
+                next_attempt_at=None,
             )
         )
+        if result.status == "paid":
+            payment_status = "paid"
+        elif result.status == "failed":
+            payment_status = "failed"
+        else:
+            payment_status = "processing"
         session.execute(
             update(UsageInvoice)
             .where(UsageInvoice.id == job.invoice_id)
             .where(UsageInvoice.tenant_id == job.tenant_id)
-            .values(payment_status="failed")
+            .values(payment_status=payment_status)
         )
         session.commit()
 

@@ -8,6 +8,35 @@ from cyberplat.billing.domain.interfaces import SubscriptionRepository
 
 logger = logging.getLogger(__name__)
 
+from cyberplat.product.infrastructure.database import get_engine
+from cyberplat.product.infrastructure.models import BillingJob, UsageInvoice
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
+
+
+def _reconcile_usage_invoice_by_provider_ref(provider_ref: str, *, payment_status: str) -> Optional[str]:
+    if not provider_ref:
+        return None
+    engine = get_engine()
+    with Session(engine) as session:
+        job = session.execute(
+            select(BillingJob).where(BillingJob.provider == "kaspi", BillingJob.provider_ref == provider_ref)
+        ).scalar_one_or_none()
+        if not job:
+            return None
+        inv = session.execute(select(UsageInvoice).where(UsageInvoice.id == job.invoice_id)).scalar_one_or_none()
+        if not inv:
+            return None
+        if getattr(inv, "payment_status", None) != payment_status:
+            session.execute(
+                update(UsageInvoice)
+                .where(UsageInvoice.id == inv.id)
+                .where(UsageInvoice.tenant_id == inv.tenant_id)
+                .values(payment_status=payment_status)
+            )
+            session.commit()
+        return str(inv.tenant_id)
+
 
 def handle_kaspi_payment_paid(
     event: Dict[str, Any],
@@ -194,6 +223,19 @@ def create_kaspi_event_handlers(entitlement_service) -> Dict[str, callable]:
             if not order_id_from_event:
                 logger.warning("Kaspi event missing order_id")
                 return False, None, "Missing order_id in event"
+
+            # First, try to reconcile usage invoice billing jobs by provider_ref (idempotent).
+            # If a BillingJob exists with provider_ref == order_id, we update usage_invoices.payment_status
+            # and skip plan-order logic entirely.
+            event_type = event.get("type") or event.get("event_type") or ""
+            if event_type in ("payment.success", "payment.paid", "order.paid"):
+                tenant_id = _reconcile_usage_invoice_by_provider_ref(str(order_id_from_event), payment_status="paid")
+                if tenant_id is not None:
+                    return True, tenant_id, None
+            if event_type in ("payment.failed", "order.failed", "payment.canceled", "order.canceled"):
+                tenant_id = _reconcile_usage_invoice_by_provider_ref(str(order_id_from_event), payment_status="failed")
+                if tenant_id is not None:
+                    return True, tenant_id, None
             
             # Ищем заказ по ОБОИМ полям (id ИЛИ external_order_id)
             order = entitlement_service.get_order_by_external_id(order_id_from_event)

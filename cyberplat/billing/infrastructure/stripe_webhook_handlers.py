@@ -5,6 +5,10 @@ from typing import Tuple, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from cyberplat.billing.domain.interfaces import SubscriptionRepository
+from cyberplat.product.infrastructure.database import get_engine
+from cyberplat.product.infrastructure.models import BillingJob, UsageInvoice
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -242,5 +246,62 @@ def create_stripe_event_handlers() -> Dict[str, callable]:
         "checkout.session.completed": handle_stripe_checkout_completed,
         "invoice.paid": handle_stripe_invoice_paid,
         "customer.subscription.updated": handle_stripe_subscription_updated,
-        "customer.subscription.deleted": handle_stripe_subscription_updated
+        "customer.subscription.deleted": handle_stripe_subscription_updated,
+        # Usage invoice billing jobs reconciliation (payment_intent.*)
+        "payment_intent.succeeded": handle_stripe_payment_intent_succeeded,
+        "payment_intent.payment_failed": handle_stripe_payment_intent_failed,
     }
+
+
+def _reconcile_usage_invoice_by_provider_ref(
+    provider_ref: str,
+    *,
+    payment_status: str,
+) -> Optional[str]:
+    """
+    Find billing job by provider_ref and update usage_invoices.payment_status.
+    Returns tenant_id if invoice was found, else None.
+    """
+    if not provider_ref:
+        return None
+    engine = get_engine()
+    with Session(engine) as session:
+        job = session.execute(
+            select(BillingJob).where(BillingJob.provider == "stripe", BillingJob.provider_ref == provider_ref)
+        ).scalar_one_or_none()
+        if not job:
+            return None
+        inv = session.execute(select(UsageInvoice).where(UsageInvoice.id == job.invoice_id)).scalar_one_or_none()
+        if not inv:
+            return None
+        # Idempotent update: set only if different
+        if getattr(inv, "payment_status", None) != payment_status:
+            session.execute(
+                update(UsageInvoice)
+                .where(UsageInvoice.id == inv.id)
+                .where(UsageInvoice.tenant_id == inv.tenant_id)
+                .values(payment_status=payment_status)
+            )
+            session.commit()
+        return str(inv.tenant_id)
+
+
+def handle_stripe_payment_intent_succeeded(
+    event: Dict[str, Any],
+    subscription_repo: SubscriptionRepository,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    obj = event.get("data", {}).get("object", {}) or {}
+    intent_id = obj.get("id")
+    tenant_id = _reconcile_usage_invoice_by_provider_ref(str(intent_id or ""), payment_status="paid")
+    # Always return success to ensure webhook idempotency ledger is marked processed.
+    return True, tenant_id, None
+
+
+def handle_stripe_payment_intent_failed(
+    event: Dict[str, Any],
+    subscription_repo: SubscriptionRepository,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    obj = event.get("data", {}).get("object", {}) or {}
+    intent_id = obj.get("id")
+    tenant_id = _reconcile_usage_invoice_by_provider_ref(str(intent_id or ""), payment_status="failed")
+    return True, tenant_id, None

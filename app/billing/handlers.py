@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 def _is_dry_run() -> bool:
     return os.getenv("BILLING_DRY_RUN", "true").strip().lower() in {"1", "true", "yes"}
 
+def _default_provider() -> str:
+    raw = os.getenv("BILLING_DEFAULT_PROVIDER", "kaspi").strip().lower()
+    return raw if raw in {"kaspi", "stripe"} else "kaspi"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -83,7 +87,8 @@ def handle_usage_invoice_ready(event: UsageInvoiceReady) -> None:
 
     In dry-run mode we only enqueue a job; processing is done by the job processor.
     """
-    ensure_billing_job_for_invoice(event.tenant_id, event.invoice_id, provider="dry_run" if _is_dry_run() else "manual")
+    provider = "dry_run" if _is_dry_run() else _default_provider()
+    ensure_billing_job_for_invoice(event.tenant_id, event.invoice_id, provider=provider)
     logger.info(
         "UsageInvoiceReady queued: tenant=%s period=%s invoice_id=%s amount_cents=%s dry_run=%s",
         event.tenant_id,

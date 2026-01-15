@@ -163,6 +163,8 @@ class UsageInvoiceResponse(BaseModel):
     currency: str
     payment_status: str
     billing_job_id: Optional[str] = None
+    provider: Optional[str] = None
+    provider_ref: Optional[str] = None
     lines: List[UsageInvoiceLineItem]
     totals: UsageInvoiceTotals
 
@@ -513,15 +515,22 @@ async def finalize_usage_invoice_endpoint(
     ]
     # Find billing job id (if created by handler)
     billing_job_id = None
+    provider = None
+    provider_ref = None
     try:
         from cyberplat.product.infrastructure.models import BillingJob
 
         engine = get_engine()
         with engine.connect() as conn:
             row = conn.execute(
-                select(BillingJob.id).where(BillingJob.invoice_id == inv.id).limit(1)
+                select(BillingJob.id, BillingJob.provider, BillingJob.provider_ref)
+                .where(BillingJob.invoice_id == inv.id)
+                .limit(1)
             ).fetchone()
-            billing_job_id = row[0] if row else None
+            if row:
+                billing_job_id = row[0]
+                provider = row[1]
+                provider_ref = row[2]
     except Exception:
         billing_job_id = None
 
@@ -532,6 +541,8 @@ async def finalize_usage_invoice_endpoint(
         currency=inv.currency,
         payment_status=getattr(inv, "payment_status", "unpaid"),
         billing_job_id=billing_job_id,
+        provider=provider,
+        provider_ref=provider_ref,
         lines=lines,
         totals=UsageInvoiceTotals(amount_cents=int(inv.amount_cents)),
     )
@@ -569,15 +580,22 @@ async def get_usage_invoice_endpoint(
         for l in inv.lines
     ]
     billing_job_id = None
+    provider = None
+    provider_ref = None
     try:
         from cyberplat.product.infrastructure.models import BillingJob
 
         engine = get_engine()
         with engine.connect() as conn:
             row = conn.execute(
-                select(BillingJob.id).where(BillingJob.invoice_id == invoice.id).limit(1)
+                select(BillingJob.id, BillingJob.provider, BillingJob.provider_ref)
+                .where(BillingJob.invoice_id == invoice.id)
+                .limit(1)
             ).fetchone()
-            billing_job_id = row[0] if row else None
+            if row:
+                billing_job_id = row[0]
+                provider = row[1]
+                provider_ref = row[2]
     except Exception:
         billing_job_id = None
 
@@ -588,6 +606,8 @@ async def get_usage_invoice_endpoint(
         currency=invoice.currency,
         payment_status=getattr(invoice, "payment_status", "unpaid"),
         billing_job_id=billing_job_id,
+        provider=provider,
+        provider_ref=provider_ref,
         lines=lines,
         totals=UsageInvoiceTotals(amount_cents=int(invoice.amount_cents)),
     )

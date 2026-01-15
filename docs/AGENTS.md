@@ -341,7 +341,7 @@ Usage pricing хранится в `agent_skus` (v1):
 
 ### Flow
 
-`finalize` → `UsageInvoiceReady` → `billing_jobs` (pending) → `process_due_billing_jobs()` → update `payment_status`.
+`finalize` → `UsageInvoiceReady` → `billing_jobs` (pending) → `process_due_billing_jobs()` → provider `create_payment()` → webhook reconcile → update `payment_status`.
 
 ### Job states
 
@@ -356,6 +356,15 @@ Usage pricing хранится в `agent_skus` (v1):
 - `failed` jobs получают `next_attempt_at` (exponential backoff)
 - `process_due_billing_jobs()` берёт только due jobs (без sleep, test-friendly)
 - `POST /api/v1/tenant/billing/usage-invoices/{period}/retry` сбрасывает failed job обратно в pending
+
+### Providers (14A.2)
+
+- `BILLING_DEFAULT_PROVIDER`: `kaspi|stripe` (default: `kaspi`) — выбирается при создании `billing_jobs` в non-dry-run режиме
+- `BILLING_DRY_RUN=true` (default): процессор сразу выставляет `payment_status="paid"`
+- `STRIPE_API_KEY` (или legacy `STRIPE_SECRET_KEY`): ключ для создания Stripe PaymentIntent
+
+Job считается `succeeded` после успешного создания платежа и сохранения `provider_ref`.
+Финальный `payment_status` (`paid/failed`) выставляется по webhook’ам провайдера (reconciliation по `provider_ref`).
 
 ## Timeouts
 
