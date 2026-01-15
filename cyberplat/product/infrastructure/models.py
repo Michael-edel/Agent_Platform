@@ -314,6 +314,8 @@ class AgentExecution(Base):
     updated_at = Column(String, nullable=False)
     started_at = Column(String, nullable=True)
     finished_at = Column(String, nullable=True)
+    cancel_requested = Column(Boolean, nullable=False, default=False)
+    cancel_requested_at = Column(String, nullable=True)
     
     __table_args__ = (
         UniqueConstraint("tenant_id", "agent_sku_id", "idempotency_key", name="uq_execution_idempotency"),

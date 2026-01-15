@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import Optional
 from uuid import UUID
 
 from cyberplat.agents.runner import AgentRunner
+from cyberplat.agents.context import ExecutionContext
 
 
 _NON_WORD_RE = re.compile(r"[^\w\s]+", flags=re.UNICODE)
@@ -15,7 +17,7 @@ _EN_RE = re.compile(r"[a-z]", flags=re.IGNORECASE)
 
 
 class TextStatsRunner(AgentRunner):
-    def run(self, payload: dict, *, tenant_id: str, execution_id: UUID) -> dict:
+    def run(self, payload: dict, *, tenant_id: str, execution_id: UUID, ctx: Optional[ExecutionContext] = None) -> dict:
         text = payload.get("text")
         if not isinstance(text, str):
             raise ValueError("validation_error: payload.text is required and must be a string")

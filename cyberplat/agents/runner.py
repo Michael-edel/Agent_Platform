@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Optional, Protocol
 from uuid import UUID
+
+from cyberplat.agents.context import ExecutionContext
 
 
 class AgentRunner(Protocol):
@@ -14,6 +16,13 @@ class AgentRunner(Protocol):
     - Must raise exceptions on errors (executor will mark execution as failed).
     """
 
-    def run(self, payload: dict, *, tenant_id: str, execution_id: UUID) -> dict:  # noqa: D401
+    def run(
+        self,
+        payload: dict,
+        *,
+        tenant_id: str,
+        execution_id: UUID,
+        ctx: Optional[ExecutionContext] = None,
+    ) -> dict:  # noqa: D401
         ...
 

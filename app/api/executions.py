@@ -27,6 +27,7 @@ class CancelResponse(BaseModel):
     execution_id: str
     status: str
     error_code: Optional[str] = None
+    cancel_requested: bool = False
 
 
 @router.post("/{execution_id}/cancel", response_model=CancelResponse)
@@ -56,9 +57,20 @@ def cancel_execution(
             raise HTTPException(status_code=404, detail="Execution not found")
 
         if execution.status == "running":
-            raise HTTPException(
-                status_code=409,
-                detail={"error": "execution_running", "execution_id": execution_id, "cancellable": False},
+            now = now_iso()
+            session.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == execution_id)
+                .where(AgentExecution.tenant_id == tenant_id)
+                .where(AgentExecution.status == "running")
+                .values(cancel_requested=True, cancel_requested_at=now, updated_at=now)
+            )
+            session.commit()
+            return CancelResponse(
+                execution_id=execution.id,
+                status="running",
+                error_code=execution.error_code,
+                cancel_requested=True,
             )
 
         if execution.status != "accepted":
@@ -67,6 +79,7 @@ def cancel_execution(
                 execution_id=execution.id,
                 status=execution.status,
                 error_code=execution.error_code,
+                cancel_requested=bool(getattr(execution, "cancel_requested", False)),
             )
 
         sku = session.execute(select(AgentSKU).where(AgentSKU.id == execution.agent_sku_id)).scalar_one_or_none()

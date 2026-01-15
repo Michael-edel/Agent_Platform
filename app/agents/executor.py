@@ -26,6 +26,7 @@ from cyberplat.agents.errors import (
     runner_not_found,
     execution_error,
 )
+from cyberplat.agents.context import ExecutionContext, ExecutionCancelled
 from app.agents.metrics import inc_completed, inc_failed
 
 logger = logging.getLogger(__name__)
@@ -160,8 +161,16 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
 
         timeout_seconds = get_timeout_seconds(agent_code)
 
+        ctx = ExecutionContext(
+            tenant_id=execution.tenant_id,
+            execution_id=exec_uuid,
+            _engine=session.get_bind(),
+        )
+
         def _run():
-            return runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid)
+            # First check in case cancellation was requested right after claim.
+            ctx.check_cancelled()
+            return runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid, ctx=ctx)
 
         try:
             if timeout_seconds is None:
@@ -235,7 +244,9 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
     except Exception as e:
         duration_ms = int((time.monotonic() - started_monotonic) * 1000)
         # Normalize error taxonomy (no raw traceback stored).
-        if isinstance(e, (ValueError, KeyError)):
+        if isinstance(e, ExecutionCancelled):
+            err = e.err
+        elif isinstance(e, (ValueError, KeyError)):
             err: AgentExecutionError = validation_error(
                 message=str(e) or "validation_error",
                 details={"exception_type": type(e).__name__},

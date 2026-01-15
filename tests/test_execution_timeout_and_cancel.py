@@ -68,7 +68,7 @@ def test_timeout_marks_failed_with_timeout_error(tmp_path, monkeypatch):
     import cyberplat.agents.registry as reg
 
     class SlowRunner:
-        def run(self, payload: dict, *, tenant_id: str, execution_id):
+        def run(self, payload: dict, *, tenant_id: str, execution_id, ctx=None):
             time.sleep(0.2)
             return {"ok": True}
 

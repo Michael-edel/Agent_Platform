@@ -298,7 +298,7 @@ Best-effort отмена выполнения (tenant-scoped):
 
 - если execution в `accepted` → переводим в terminal `rejected` с `error_code="cancelled"`
 - если execution уже terminal → `200 OK` (идемпотентно)
-- если execution в `running` → `409 Conflict` (best-effort: running не отменяем)
+- если execution в `running` → `200 OK` + `cancel_requested=true`; завершение произойдёт только если runner cooperative и периодически вызывает `ctx.check_cancelled()`
 
 #### GET /api/v1/agents/executions/{execution_id}
 
