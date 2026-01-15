@@ -283,6 +283,11 @@ async def startup_event():
     app.include_router(billing_plans_router, prefix="/api/v1", tags=["billing-plans"])
     logger.info("Billing plans router подключен")
     
+    # Подключение Tenant Portal router
+    from app.api.tenant_portal import router as tenant_portal_router
+    app.include_router(tenant_portal_router, prefix="/api/v1", tags=["tenant-portal"])
+    logger.info("Tenant portal router подключен")
+    
     # Регистрация webhook subscriber для создания deliveries
     from cyberplat.product.infrastructure.database import get_sessionmaker
     from cyberplat.product.infrastructure.webhook_repositories_sqlalchemy import (

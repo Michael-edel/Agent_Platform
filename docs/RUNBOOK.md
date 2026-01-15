@@ -337,6 +337,34 @@ alembic upgrade head
 
 Данные tenant-scoped: tenant_admin видит только ошибки своего tenant. Поле `error` обрезается до 100 символов, `raw_json` не отображается.
 
+## Tenant Admin API (v1)
+
+Read-only self-service API для tenant'ов. Временный механизм аутентификации на основе shared key.
+
+### Аутентификация
+
+| Header | Описание |
+|--------|----------|
+| `X-Tenant-ID` | ID tenant'а (обязателен) |
+| `X-Tenant-Portal-Key` | Ключ доступа (обязателен) |
+
+**ENV**: `TENANT_PORTAL_KEY` — если не задан, все запросы вернут 503.
+
+### Endpoints
+
+**GET /api/v1/tenant/subscription**
+- Возвращает: plan_id, subscription_status, provider, current_period_end
+
+**GET /api/v1/tenant/usage?period=YYYY-MM**
+- Возвращает: агрегаты usage по метрикам за период (по умолчанию текущий месяц)
+
+**GET /api/v1/tenant/status**
+- Возвращает: webhooks_failed_24h, orders_failed_24h, last_error_at, status (ok/degraded/unknown)
+
+### Важно
+
+Это временный shared-key механизм для пилотов. Будет заменён полноценным tenant auth позже.
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
