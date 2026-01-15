@@ -414,6 +414,9 @@ class UsageInvoice(Base):
     amount_cents = Column(Integer, nullable=False, default=0)
     status = Column(String, nullable=False, default="finalized")
     payment_status = Column(String, nullable=False, default="unpaid")  # unpaid|processing|paid|failed
+    payment_status_updated_at = Column(String, nullable=True)
+    paid_at = Column(String, nullable=True)
+    failed_at = Column(String, nullable=True)
     created_at = Column(String, nullable=False)
     finalized_at = Column(String, nullable=True)
     event_emitted_at = Column(String, nullable=True)

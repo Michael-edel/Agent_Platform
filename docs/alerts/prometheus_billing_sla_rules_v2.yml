@@ -1,0 +1,30 @@
+groups:
+  - name: billing-sla-v2
+    rules:
+      - alert: BillingJobsQueueHighPending
+        expr: billing_jobs_queue_depth{status="pending"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing jobs pending queue is high"
+          description: "billing_jobs_queue_depth{status=\"pending\"} > 100 for 10m"
+
+      - alert: UsageInvoiceTimeToPaidP95High
+        expr: histogram_quantile(0.95, sum(rate(usage_invoice_time_to_paid_seconds_bucket[30m])) by (le)) > 300
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Time-to-paid p95 is high"
+          description: "p95(usage_invoice_time_to_paid_seconds) > 300s for 15m"
+
+      - alert: BillingJobFailuresSpike
+        expr: sum(rate(billing_jobs_failure_reasons_total[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing job failures spike"
+          description: "Failure reasons rate > 1 in last 10m"
+

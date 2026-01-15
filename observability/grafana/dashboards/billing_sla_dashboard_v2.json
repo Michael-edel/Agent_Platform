@@ -1,0 +1,136 @@
+{
+  "title": "Billing SLA / Invoices v2",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["billing", "sla"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Invoices Paid (snapshot)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "targets": [
+        { "expr": "usage_invoices_payment_status_total{status=\"paid\"}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Paid ratio now",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "targets": [
+        {
+          "expr": "usage_invoices_payment_status_total{status=\"paid\"} / sum(usage_invoices_payment_status_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker health",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
+      "targets": [
+        { "expr": "sum(billing_worker_up)", "refId": "A", "legendFormat": "worker_up" },
+        { "expr": "time() - max(billing_worker_last_success_timestamp)", "refId": "B", "legendFormat": "seconds_since_last_success" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Invoice funnel (snapshot)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "usage_invoices_payment_status_total{status=\"unpaid\"}", "refId": "A", "legendFormat": "unpaid" },
+        { "expr": "usage_invoices_payment_status_total{status=\"processing\"}", "refId": "B", "legendFormat": "processing" },
+        { "expr": "usage_invoices_payment_status_total{status=\"paid\"}", "refId": "C", "legendFormat": "paid" },
+        { "expr": "usage_invoices_payment_status_total{status=\"failed\"}", "refId": "D", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Time-to-paid (p50/p95)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(usage_invoice_time_to_paid_seconds_bucket[15m])) by (le))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(usage_invoice_time_to_paid_seconds_bucket[15m])) by (le))",
+          "refId": "B",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Billing job outcomes (rate 5m)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(billing_jobs_processed_total[5m])) by (result)", "refId": "A", "legendFormat": "{{result}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failure reasons (top 10, rate 15m)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(billing_jobs_failure_reasons_total[15m])) by (provider, error_code))",
+          "refId": "A",
+          "legendFormat": "{{provider}}/{{error_code}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "billing_jobs_queue_depth{status=~\"pending|pending_retry|processing\"}", "refId": "A", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retry lag (max overdue, seconds)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "billing_jobs_next_attempt_lag_seconds", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider refresh (rate 5m)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(billing_jobs_provider_refresh_total{result=\"ok\"}[5m])) by (provider)", "refId": "A", "legendFormat": "{{provider}} ok" },
+        { "expr": "sum(rate(billing_jobs_provider_refresh_total{result=\"error\"}[5m])) by (provider)", "refId": "B", "legendFormat": "{{provider}} error" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job processing duration p95 (seconds)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(billing_job_process_duration_seconds_bucket[5m])) by (le, provider))",
+          "refId": "A",
+          "legendFormat": "{{provider}} p95"
+        }
+      ]
+    }
+  ]
+}
+

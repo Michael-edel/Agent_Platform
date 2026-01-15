@@ -79,6 +79,24 @@ def single_iteration(*, batch_size: int, worker_id: str) -> Tuple[bool, Dict[str
         billing_metrics.inc_retry_scheduled(worker_id, out["retried_count"])
         billing_metrics.inc_processed(worker_id, "skipped", out["skipped_count"])
         billing_metrics.set_last_success(worker_id)
+        # Invoice funnel snapshot (best-effort): usage_invoices payment_status counts
+        try:
+            from cyberplat.product.infrastructure.models import UsageInvoice
+            from sqlalchemy import func, select
+            from sqlalchemy.orm import Session
+
+            counts = {"unpaid": 0, "processing": 0, "paid": 0, "failed": 0}
+            with Session(get_engine()) as session:
+                rows = session.execute(
+                    select(UsageInvoice.payment_status, func.count()).group_by(UsageInvoice.payment_status)
+                ).all()
+                for st, cnt in rows:
+                    if st is None:
+                        continue
+                    counts[str(st)] = int(cnt or 0)
+            billing_metrics.set_invoice_funnel_counts(counts)
+        except Exception as e:
+            billing_metrics.inc_worker_error(worker_id, f"invoice_funnel_{type(e).__name__}", 1)
         return True, out
     except Exception as e:
         duration_ms = int((time.monotonic() - t0) * 1000)

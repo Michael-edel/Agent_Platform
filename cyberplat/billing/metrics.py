@@ -94,6 +94,33 @@ billing_worker_errors_total = _get_or_create_collector(
     ),
 )
 
+usage_invoices_payment_status_total = _get_or_create_collector(
+    "usage_invoices_payment_status_total",
+    lambda: Gauge(
+        "usage_invoices_payment_status_total",
+        "Current count of usage_invoices by payment_status",
+        ["status"],  # unpaid|processing|paid|failed
+    ),
+)
+
+billing_jobs_failure_reasons_total = _get_or_create_collector(
+    "billing_jobs_failure_reasons_total",
+    lambda: Counter(
+        "billing_jobs_failure_reasons_total",
+        "Billing job failure reasons",
+        ["provider", "error_code"],
+    ),
+)
+
+usage_invoice_time_to_paid_seconds = _get_or_create_collector(
+    "usage_invoice_time_to_paid_seconds",
+    lambda: Histogram(
+        "usage_invoice_time_to_paid_seconds",
+        "Time from invoice.finalized_at to paid_at in seconds (observed once per invoice)",
+        buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 21600),
+    ),
+)
+
 
 # Histograms
 billing_worker_iteration_duration_seconds = _get_or_create_collector(
@@ -223,6 +250,28 @@ def observe_job_duration(worker_id: str, provider: str, seconds: float) -> None:
     billing_job_process_duration_seconds.labels(worker_id=str(worker_id or "unknown"), provider=str(provider or "unknown")).observe(
         max(0.0, float(seconds))
     )
+
+
+def set_invoice_funnel_counts(counts: Dict[str, int]) -> None:
+    if not _PROM_AVAILABLE:
+        return
+    for st in ["unpaid", "processing", "paid", "failed"]:
+        usage_invoices_payment_status_total.labels(status=st).set(int(counts.get(st, 0) or 0))
+
+
+def observe_invoice_time_to_paid(seconds: float) -> None:
+    if not _PROM_AVAILABLE:
+        return
+    usage_invoice_time_to_paid_seconds.observe(max(0.0, float(seconds)))
+
+
+def inc_job_failure_reason(provider: str, error_code: str, count: int = 1) -> None:
+    if not _PROM_AVAILABLE:
+        return
+    if int(count) > 0:
+        billing_jobs_failure_reasons_total.labels(provider=str(provider or "unknown"), error_code=str(error_code or "unknown")).inc(
+            int(count)
+        )
 
 
 def update_queue_gauges(*, now: Optional[datetime] = None) -> None:

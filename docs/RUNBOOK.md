@@ -339,6 +339,7 @@ docker-compose -f docker-compose.yml -f docker-compose.observability.nopublish.y
 Grafana автоматически провиженит:
 - datasource Prometheus (`http://prometheus:9090`)
 - dashboard “Billing Worker / Jobs”
+- dashboard “Billing SLA / Invoices v2”
 
 ### Production note
 
@@ -350,6 +351,16 @@ Grafana автоматически провиженит:
   Шаблон: `env.example` (копировать в `.env`).
 - **Не публикуйте порты** `3000/9090` наружу в staging/prod: используйте `docker-compose.observability.nopublish.yml` и/или сетевые политики.
 - **Prometheus retention**: `PROMETHEUS_RETENTION_TIME` (default `7d`), данные сохраняются в volume `prometheus-data`.
+
+## Grafana Dashboard v2 (SLA pack)
+
+Файл: `observability/grafana/dashboards/billing_sla_dashboard_v2.json`
+
+Покрывает:
+- invoice funnel (snapshot по `payment_status`)
+- time-to-paid (p50/p95)
+- failure reasons summary по jobs
+- provider refresh health
 
 ### Навигация и drill-down
 

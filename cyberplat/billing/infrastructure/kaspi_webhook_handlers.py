@@ -2,7 +2,7 @@
 
 import logging
 from typing import Tuple, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from cyberplat.billing.domain.interfaces import SubscriptionRepository
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from cyberplat.product.infrastructure.database import get_engine
 from cyberplat.product.infrastructure.models import BillingJob, UsageInvoice
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 
@@ -28,13 +28,45 @@ def _reconcile_usage_invoice_by_provider_ref(provider_ref: str, *, payment_statu
         if not inv:
             return None
         if getattr(inv, "payment_status", None) != payment_status:
+            paid_was_none = getattr(inv, "paid_at", None) in (None, "")
+            now_iso = datetime.now(timezone.utc).isoformat()
             session.execute(
                 update(UsageInvoice)
                 .where(UsageInvoice.id == inv.id)
                 .where(UsageInvoice.tenant_id == inv.tenant_id)
-                .values(payment_status=payment_status)
+                .values(
+                    **(
+                        {"payment_status": payment_status, "payment_status_updated_at": now_iso}
+                        | (
+                            {"paid_at": case((UsageInvoice.paid_at.is_(None), now_iso), else_=UsageInvoice.paid_at)}
+                            if payment_status == "paid"
+                            else {}
+                        )
+                        | (
+                            {"failed_at": case((UsageInvoice.failed_at.is_(None), now_iso), else_=UsageInvoice.failed_at)}
+                            if payment_status == "failed"
+                            else {}
+                        )
+                    )
+                )
             )
             session.commit()
+            if payment_status == "paid" and paid_was_none:
+                try:
+                    from cyberplat.billing.metrics import observe_invoice_time_to_paid
+
+                    finalized_at = getattr(inv, "finalized_at", None)
+                    paid_at = getattr(inv, "paid_at", None) or now_iso
+                    if finalized_at:
+                        dt_final = datetime.fromisoformat(str(finalized_at))
+                        dt_paid = datetime.fromisoformat(str(paid_at))
+                        if dt_final.tzinfo is None:
+                            dt_final = dt_final.replace(tzinfo=timezone.utc)
+                        if dt_paid.tzinfo is None:
+                            dt_paid = dt_paid.replace(tzinfo=timezone.utc)
+                        observe_invoice_time_to_paid(max(0.0, (dt_paid - dt_final).total_seconds()))
+                except Exception:
+                    pass
         return str(inv.tenant_id)
 
 
