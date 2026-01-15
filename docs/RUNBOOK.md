@@ -324,13 +324,17 @@ time() - billing_worker_last_success_timestamp > 300
 ### Запуск (docker-compose profile)
 
 ```bash
-docker-compose --profile observability up -d --build
+# demo (публикует порты 9090/3000 на localhost)
+docker-compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up -d --build
+
+# staging/prod (без публикации портов наружу)
+docker-compose -f docker-compose.yml -f docker-compose.observability.nopublish.yml --profile observability up -d --build
 ```
 
 ### URLs (local demo)
 
 - Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3000` (default: `admin/admin`)
+- Grafana: `http://localhost:3000` (default: `admin/admin` **только для локального демо**)
 
 Grafana автоматически провиженит:
 - datasource Prometheus (`http://prometheus:9090`)
@@ -338,7 +342,14 @@ Grafana автоматически провиженит:
 
 ### Production note
 
-- Смените `GF_SECURITY_ADMIN_PASSWORD` и не публикуйте порты наружу (уберите `ports:` или ограничьте firewall/ingress).
+### Security notes
+
+- **Grafana creds**: задавайте через env:
+  - `GRAFANA_ADMIN_USER`
+  - `GRAFANA_ADMIN_PASSWORD`
+  Шаблон: `env.example` (копировать в `.env`).
+- **Не публикуйте порты** `3000/9090` наружу в staging/prod: используйте `docker-compose.observability.nopublish.yml` и/или сетевые политики.
+- **Prometheus retention**: `PROMETHEUS_RETENTION_TIME` (default `7d`), данные сохраняются в volume `prometheus-data`.
 
 ### Навигация и drill-down
 

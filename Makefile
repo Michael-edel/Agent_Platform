@@ -1,7 +1,7 @@
 # Makefile для Agent Platform / CyberPlat
 # Работает на Linux/Mac и Windows (через Git Bash)
 
-.PHONY: help install test lint check run worker docker-worker-logs observability-up observability-down grafana-open prometheus-open recurring-kaspi recurring-stripe clean
+.PHONY: help install test lint check run worker docker-worker-logs observability-up observability-up-nopublish observability-down grafana-open prometheus-open recurring-kaspi recurring-stripe clean
 
 help: ## Показать справку по командам
 	@echo "Доступные команды:"
@@ -32,10 +32,13 @@ docker-worker-logs: ## Tail logs billing worker (docker-compose)
 	docker-compose logs -f worker
 
 observability-up: ## Запустить Prometheus+Grafana (docker-compose profile observability)
-	docker-compose --profile observability up -d --build
+	docker-compose -f docker-compose.yml -f docker-compose.observability.yml --profile observability up -d --build
+
+observability-up-nopublish: ## Запустить Prometheus+Grafana без публикации портов (staging/prod)
+	docker-compose -f docker-compose.yml -f docker-compose.observability.nopublish.yml --profile observability up -d --build
 
 observability-down: ## Остановить Prometheus+Grafana
-	docker-compose --profile observability down
+	docker-compose -f docker-compose.yml -f docker-compose.observability.yml -f docker-compose.observability.nopublish.yml --profile observability down
 
 grafana-open: ## Показать URL Grafana
 	@echo "Grafana: http://localhost:3000 (admin/admin)"
@@ -58,8 +61,8 @@ clean: ## Очистить временные файлы и кэши
 
 setup-env: ## Создать .env из шаблона (если не существует)
 	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		echo "✓ Создан .env из .env.example"; \
+		cp env.example .env; \
+		echo "✓ Создан .env из env.example"; \
 		echo "⚠️  Заполните значения в .env файле!"; \
 	else \
 		echo "⚠️  .env уже существует, пропуск"; \

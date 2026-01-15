@@ -106,13 +106,14 @@ services:
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./docs/alerts/prometheus_billing_worker_rules.yml:/etc/prometheus/rules/billing_worker_rules.yml:ro
+      - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-7d}
+      - --storage.tsdb.path=/prometheus
     depends_on:
       - app
       - worker
-    ports:
-      - "9090:9090"
     restart: unless-stopped
 
   grafana:
@@ -120,16 +121,14 @@ services:
     container_name: agent-platform-grafana
     profiles: ["observability"]
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
-    ports:
-      - "3000:3000"
     restart: unless-stopped
 
   app-test:
@@ -159,4 +158,6 @@ volumes:
   app-out:
     driver: local
   pg-data:
+    driver: local
+  prometheus-data:
     driver: local
