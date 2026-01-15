@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan
+from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan, AgentSKU, TenantAgent
 from cyberplat.billing.infrastructure.models_sqlalchemy import (
     TenantSubscription,
     BillingUsage,
@@ -93,6 +93,22 @@ class LimitsResponse(BaseModel):
     plan_id: Optional[str] = None
     limits: List[LimitMetric]
     notes: LimitsNotes
+
+
+class AgentCatalogItem(BaseModel):
+    """Single agent in tenant catalog view."""
+    code: str
+    name: str
+    description: Optional[str] = None
+    status: str  # SKU status (only active shown)
+    pricing_model: str
+    enabled: bool  # True if TenantAgent.status == "enabled"
+    tenant_status: Optional[str] = None  # enabled, disabled, suspended, or null
+
+
+class AgentCatalogResponse(BaseModel):
+    """Agent catalog for tenant."""
+    items: List[AgentCatalogItem]
 
 
 # ============================================
@@ -505,3 +521,61 @@ async def get_limits(
         raise HTTPException(status_code=503, detail="Service unavailable")
     
     return result
+
+
+@router.get("/tenant/agents", response_model=AgentCatalogResponse)
+async def get_agents_catalog(
+    tenant_id: str = Depends(tenant_portal_auth),
+) -> AgentCatalogResponse:
+    """
+    Get agent catalog for tenant.
+    
+    Returns all active AgentSKUs with tenant's enablement status.
+    Only active SKUs are shown (deprecated/disabled are hidden).
+    """
+    items: List[AgentCatalogItem] = []
+    
+    try:
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get all active SKUs
+            sku_query = (
+                select(AgentSKU)
+                .where(AgentSKU.status == "active")
+                .order_by(AgentSKU.name)
+            )
+            sku_rows = conn.execute(sku_query).fetchall()
+            
+            # Get all TenantAgent records for this tenant
+            tenant_agents = {}
+            ta_query = (
+                select(TenantAgent)
+                .where(TenantAgent.tenant_id == tenant_id)
+            )
+            ta_rows = conn.execute(ta_query).fetchall()
+            for ta_row in ta_rows:
+                m = ta_row._mapping
+                tenant_agents[m["agent_sku_id"]] = m["status"]
+            
+            # Build catalog items
+            for sku_row in sku_rows:
+                m = sku_row._mapping
+                sku_id = m["id"]
+                ta_status = tenant_agents.get(sku_id)
+                
+                items.append(AgentCatalogItem(
+                    code=m["code"],
+                    name=m["name"],
+                    description=m.get("description"),
+                    status=m["status"],
+                    pricing_model=m["pricing_model"],
+                    enabled=(ta_status == "enabled"),
+                    tenant_status=ta_status,
+                ))
+                
+    except Exception as e:
+        logger.exception(f"Error getting agents catalog for tenant {tenant_id}")
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    
+    return AgentCatalogResponse(items=items)

@@ -307,6 +307,54 @@ Execution API позволяет запускать агентов и отсле
 
 ---
 
+## Tenant Portal API: Agents Catalog
+
+### GET /api/v1/tenant/agents
+
+Возвращает каталог агентов, доступных для tenant'а.
+
+**Auth:** `X-Tenant-ID` + `X-Tenant-Portal-Key`
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "code": "sales_assistant",
+      "name": "Sales Assistant",
+      "description": "AI-powered sales assistant",
+      "status": "active",
+      "pricing_model": "subscription",
+      "enabled": true,
+      "tenant_status": "enabled"
+    },
+    {
+      "code": "support_bot",
+      "name": "Support Bot",
+      "description": null,
+      "status": "active",
+      "pricing_model": "usage_based",
+      "enabled": false,
+      "tenant_status": null
+    }
+  ]
+}
+```
+
+### Правила фильтрации
+
+- Возвращаются только SKU со статусом `active`
+- SKU со статусом `deprecated` или `disabled` скрыты
+
+### Семантика полей
+
+| Поле | Описание |
+|------|----------|
+| `enabled` | `true` если `TenantAgent.status == "enabled"` |
+| `tenant_status` | Статус TenantAgent: `enabled`, `disabled`, `suspended`, или `null` если не подключён |
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin
