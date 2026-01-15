@@ -18,13 +18,9 @@ if config.config_file_name is not None:
 # Read DATABASE_URL from environment variable
 # Alembic is only used for PostgreSQL (staging/production)
 # SQLite (dev) does not use migrations
-database_url = os.getenv("DATABASE_URL", "").strip()
+from utils.db_url import get_sqlalchemy_database_url
 
-# Нормализация DATABASE_URL для psycopg v3 (production-safe)
-# SQLAlchemy по умолчанию использует psycopg2, но у нас установлен psycopg v3
-from utils.db_url import normalize_database_url
-
-normalized_database_url = normalize_database_url(database_url)
+normalized_database_url = get_sqlalchemy_database_url()
 
 if normalized_database_url:
     # Override sqlalchemy.url from environment (с нормализованным драйвером)

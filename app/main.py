@@ -21,7 +21,7 @@ root_dir = PathLib(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
 from utils.config import load_settings, Settings
-from utils.db_url import normalize_database_url
+from utils.db_url import normalize_sqlalchemy_database_url, get_original_database_url
 
 # Импорты для observability
 from cyberplat.observability.logging import setup_structured_logging
@@ -410,11 +410,8 @@ async def ready(request: Request):
     }
     
     # Проверка БД
-    original_database_url = os.getenv("DATABASE_URL", "").strip()
-    
-    # Нормализация DATABASE_URL для psycopg v3 (production-safe)
-    # SQLAlchemy по умолчанию использует psycopg2, но у нас установлен psycopg v3
-    normalized_database_url = normalize_database_url(original_database_url)
+    original_database_url = get_original_database_url()
+    normalized_database_url = normalize_sqlalchemy_database_url(original_database_url)
     
     # Если указан PostgreSQL через DATABASE_URL
     # Проверяем оригинальный URL (до нормализации) для определения типа БД

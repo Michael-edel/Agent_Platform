@@ -1,9 +1,10 @@
 """Утилиты для нормализации DATABASE_URL для SQLAlchemy и psycopg v3."""
 
+import os
 from typing import Optional
 
 
-def normalize_database_url(url: Optional[str]) -> Optional[str]:
+def normalize_sqlalchemy_database_url(url: Optional[str]) -> Optional[str]:
     """
     Normalizes DATABASE_URL for SQLAlchemy to use psycopg v3.
     
@@ -11,38 +12,37 @@ def normalize_database_url(url: Optional[str]) -> Optional[str]:
     Но в проекте установлен psycopg v3 (psycopg[binary]), поэтому нужно явно указать драйвер.
     
     Правила нормализации:
+    - None -> None
+    - "" или whitespace -> None
     - postgresql://... -> postgresql+psycopg://... (замена только первого вхождения)
     - postgres://...   -> postgresql+psycopg://... (замена только первого вхождения)
     - postgresql+psycopg://... -> без изменений (уже нормализован)
     - sqlite://... -> без изменений (SQLite не требует нормализации)
-    - None -> None (без изменений)
-    - Пустая строка или строка из пробелов -> "" (после .strip())
-    - Остальные строки -> обрезка пробелов (.strip()) + нормализация схемы
     
     Args:
         url: DATABASE_URL строка или None
         
     Returns:
-        Нормализованный URL или None/пустая строка.
-        Пробелы в начале и конце строки обрезаются (.strip()).
+        Нормализованный URL или None.
         
     Examples:
-        >>> normalize_database_url("postgresql://user:pass@host:5432/db")
+        >>> normalize_sqlalchemy_database_url("postgresql://user:pass@host:5432/db")
         'postgresql+psycopg://user:pass@host:5432/db'
-        >>> normalize_database_url("postgres://user:pass@host:5432/db")
+        >>> normalize_sqlalchemy_database_url("postgres://user:pass@host:5432/db")
         'postgresql+psycopg://user:pass@host:5432/db'
-        >>> normalize_database_url("postgresql+psycopg://user:pass@host:5432/db")
+        >>> normalize_sqlalchemy_database_url("postgresql+psycopg://user:pass@host:5432/db")
         'postgresql+psycopg://user:pass@host:5432/db'
-        >>> normalize_database_url("sqlite:///./test.db")
+        >>> normalize_sqlalchemy_database_url("sqlite:///./test.db")
         'sqlite:///./test.db'
-        >>> normalize_database_url(None)
-        >>> normalize_database_url("")
-        ''
+        >>> normalize_sqlalchemy_database_url(None)
+        >>> normalize_sqlalchemy_database_url("")
     """
-    if not url:
-        return url
+    if url is None:
+        return None
     
     url = url.strip()
+    if not url:
+        return None
     
     # Если уже нормализован, вернуть как есть
     if url.startswith("postgresql+psycopg://"):
@@ -58,3 +58,34 @@ def normalize_database_url(url: Optional[str]) -> Optional[str]:
     
     # Для всех остальных схем (sqlite://, и т.д.) вернуть как есть
     return url
+
+
+def get_original_database_url() -> Optional[str]:
+    """
+    Получить оригинальный DATABASE_URL из окружения.
+    
+    Возвращает URL как есть, без нормализации.
+    Используется для psycopg.connect() который не понимает postgresql+psycopg://.
+    
+    Returns:
+        DATABASE_URL из os.environ или None если не задан/пустой.
+    """
+    url = os.getenv("DATABASE_URL", "").strip()
+    return url if url else None
+
+
+def get_sqlalchemy_database_url() -> Optional[str]:
+    """
+    Получить нормализованный DATABASE_URL для SQLAlchemy.
+    
+    Читает DATABASE_URL из окружения и нормализует для psycopg v3.
+    Используется для SQLAlchemy create_engine() и Alembic.
+    
+    Returns:
+        Нормализованный DATABASE_URL или None если не задан.
+    """
+    return normalize_sqlalchemy_database_url(get_original_database_url())
+
+
+# Backward compatibility alias
+normalize_database_url = normalize_sqlalchemy_database_url
