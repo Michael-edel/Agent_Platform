@@ -2,7 +2,7 @@
 
 from typing import Any
 from sqladmin import ModelView
-from sqlalchemy import select
+from sqlalchemy import select, func, false as sql_false
 from starlette.requests import Request
 
 # Product models
@@ -28,24 +28,45 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
 
+def is_tenant_admin(request: Request) -> bool:
+    """Check if current user is tenant_admin."""
+    return get_admin_role(request) == "tenant_admin"
+
+
 class TenantScopedMixin:
     """Mixin for tenant-scoped views (tenant_admin sees only own data)."""
     
-    def _apply_tenant_filter(self, request: Request, query):
-        """Apply tenant filter if user is tenant_admin."""
+    def _get_tenant_filter_params(self, request: Request):
+        """Get tenant filtering parameters."""
         role = get_admin_role(request)
         if role == "tenant_admin":
             tenant_id = get_admin_tenant_id(request)
+            return True, tenant_id
+        return False, None
+    
+    def list_query(self, request: Request):
+        """Override list query to apply tenant filtering."""
+        query = select(self.model)
+        scoped, tenant_id = self._get_tenant_filter_params(request)
+        if scoped:
             if tenant_id and hasattr(self.model, "tenant_id"):
-                query = query.filter(self.model.tenant_id == tenant_id)
+                query = query.where(self.model.tenant_id == tenant_id)
+            else:
+                # No tenant_id but tenant_admin role: return empty
+                query = query.where(sql_false())
         return query
     
-    async def get_model_objects(
-        self, request: Request, page: int = 1, page_size: int = 50
-    ):
-        """Override to apply tenant filtering."""
-        # This is a simplified approach - SQLAdmin handles pagination internally
-        return await super().get_model_objects(request, page, page_size)
+    def count_query(self, request: Request):
+        """Override count query to apply tenant filtering (prevents total count leaks)."""
+        query = select(func.count()).select_from(self.model)
+        scoped, tenant_id = self._get_tenant_filter_params(request)
+        if scoped:
+            if tenant_id and hasattr(self.model, "tenant_id"):
+                query = query.where(self.model.tenant_id == tenant_id)
+            else:
+                # No tenant_id but tenant_admin role: return 0
+                query = query.where(sql_false())
+        return query
 
 
 # ============================================
@@ -99,13 +120,11 @@ class WebhookAdmin(TenantScopedMixin, ModelView, model=Webhook):
     can_edit = False
     can_delete = False
     
+    # Note: secret column excluded by listing only safe columns
     column_list = ["id", "tenant_id", "url", "active", "created_at"]
     column_searchable_list = ["tenant_id", "url"]
     column_filters = ["tenant_id", "active", "created_at"]
     column_sortable_list = ["tenant_id", "active", "created_at"]
-    
-    # Hide secret column for security
-    column_exclude_list = ["secret"]
     page_size = 50
 
 
@@ -232,13 +251,11 @@ class BillingWebhookEventAdmin(TenantScopedMixin, ModelView, model=BillingWebhoo
     can_edit = False
     can_delete = False
     
+    # Note: raw_json excluded by listing only safe columns
     column_list = ["id", "provider", "event_id", "tenant_id", "status", "received_at", "processed_at"]
     column_searchable_list = ["event_id", "tenant_id", "provider"]
     column_filters = ["provider", "status", "tenant_id", "received_at"]
     column_sortable_list = ["provider", "status", "received_at", "processed_at"]
-    
-    # Hide raw_json for performance/security
-    column_exclude_list = ["raw_json"]
     page_size = 50
 
 

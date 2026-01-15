@@ -214,6 +214,8 @@ ADMIN_ROLE=tenant_admin
 ADMIN_TENANT_ID=your-tenant-id
 ```
 
+**Tenant scoping:** Фильтрация применяется как к спискам данных, так и к total/pagination (count query). Это предотвращает утечку информации о количестве записей других tenant'ов.
+
 ### Dashboard
 
 Страница `/admin/` (первый пункт меню) показывает key metrics:
