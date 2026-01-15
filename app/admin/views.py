@@ -1,6 +1,7 @@
 """SQLAdmin model views for admin panel."""
 
-from typing import Any
+import json
+from typing import Any, Optional
 from markupsafe import Markup
 from sqladmin import ModelView
 from sqlalchemy import select, func, false as sql_false
@@ -33,7 +34,14 @@ from cyberplat.product.infrastructure.models import TenantPortalToken, AgentSKU,
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
 
-from app.admin.links import tenant_drill_links
+from app.admin.links import (
+    tenant_drill_links,
+    ADMIN_ROUTES,
+    build_admin_detail_url,
+    build_admin_list_url,
+    safe_text,
+    safe_path,
+)
 
 
 def is_tenant_admin(request: Request) -> bool:
@@ -300,7 +308,89 @@ class BillingWebhookEventAdmin(TenantScopedMixin, ModelView, model=BillingWebhoo
     column_formatters = {
         "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if m.tenant_id else "",
         "error": lambda m, a: Markup(f'<span title="{truncate_error(m.error, 500)}">{truncate_error(m.error, 100)}</span>') if m.error else "",
+        "event_id": lambda m, a: Markup(
+            f'{safe_text(m.event_id)} {(_render_job_link_from_webhook_event(m) or "")}'
+        )
+        if getattr(m, "event_id", None)
+        else "",
     }
+
+
+def _count_billing_jobs_for_invoice(tenant_id: str, invoice_id: str) -> int:
+    from cyberplat.product.infrastructure.database import get_engine
+    from cyberplat.product.infrastructure.models import BillingJob
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        stmt = select(func.count()).select_from(BillingJob).where(
+            BillingJob.tenant_id == tenant_id,
+            BillingJob.invoice_id == invoice_id,
+        )
+        return int(conn.execute(stmt).scalar() or 0)
+
+
+def _extract_provider_ref_from_webhook_raw(raw_json: str) -> Optional[str]:
+    """
+    Best-effort extraction of provider_ref from webhook raw_json.
+    We only use it for linking/navigation and never display the raw payload.
+    """
+    if not raw_json:
+        return None
+    try:
+        data = json.loads(raw_json)
+    except Exception:
+        return None
+
+    # Stripe: data.object.id for payment_intent.* (pi_...)
+    obj = None
+    if isinstance(data, dict):
+        obj = (data.get("data") or {}).get("object") if isinstance(data.get("data"), dict) else None
+        if isinstance(obj, dict):
+            v = obj.get("id")
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+        # Kaspi: order_id/external_order_id at top-level or under data
+        for key in ("external_order_id", "kaspi_order_id", "order_id"):
+            v = data.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        d = data.get("data")
+        if isinstance(d, dict):
+            for key in ("external_order_id", "kaspi_order_id", "order_id"):
+                v = d.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+
+    return None
+
+
+def _render_job_link_from_webhook_event(event: BillingWebhookEvent) -> str:
+    """
+    Render a drill-down link from a billing webhook event to a BillingJob (if possible).
+    """
+    provider_ref = _extract_provider_ref_from_webhook_raw(getattr(event, "raw_json", "") or "")
+    tenant_id = getattr(event, "tenant_id", None)
+    if not provider_ref or not tenant_id:
+        return ""
+
+    from cyberplat.product.infrastructure.database import get_engine
+    from cyberplat.product.infrastructure.models import BillingJob
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        job_id = conn.execute(
+            select(BillingJob.id).where(
+                BillingJob.tenant_id == tenant_id,
+                BillingJob.provider_ref == provider_ref,
+            ).limit(1)
+        ).scalar_one_or_none()
+
+    if not job_id:
+        return ""
+
+    url = build_admin_detail_url(ADMIN_ROUTES["billing_job"], str(job_id))
+    return f'<a href="{url}" class="ms-1" title="Open Billing Job"><i class="fa-solid fa-tasks"></i></a>'
 
 
 class BillingOrderAdmin(TenantScopedMixin, ModelView, model=BillingOrder):
@@ -360,6 +450,7 @@ class UsageInvoiceAdmin(TenantScopedMixin, ModelView, model=UsageInvoice):
     name = "Usage Invoice"
     name_plural = "Usage Invoices"
     icon = "fa-solid fa-file-invoice-dollar"
+    identity = "usage-invoice"
 
     can_create = False
     can_edit = False
@@ -380,9 +471,24 @@ class UsageInvoiceAdmin(TenantScopedMixin, ModelView, model=UsageInvoice):
     ]
     column_searchable_list = ["tenant_id", "id"]
     column_filters = ["tenant_id", "payment_status", "period_year", "period_month", "created_at"]
+    # Operator comfort: include lifecycle status filter too.
+    column_filters += ["status"]
     column_sortable_list = ["created_at", "finalized_at"]
     column_default_sort = ("created_at", True)  # newest first
     page_size = 50
+
+    column_formatters = {
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if getattr(m, "tenant_id", None) else "",
+        # Show invoice id + jobs drill-down (count + link to Billing Jobs list with search=invoice_id).
+        "id": lambda m, a: Markup(
+            f'{safe_text(m.id)} '
+            f'<a class="ms-1" href="{build_admin_list_url(ADMIN_ROUTES["billing_job"], {"search": str(m.id)})}" '
+            f'title="Open Billing Jobs"><i class="fa-solid fa-tasks"></i> '
+            f'{_count_billing_jobs_for_invoice(str(m.tenant_id), str(m.id))}</a>'
+        )
+        if getattr(m, "id", None) and getattr(m, "tenant_id", None)
+        else safe_text(getattr(m, "id", "") or ""),
+    }
 
 
 class UsageInvoiceLineAdmin(ModelView, model=UsageInvoiceLine):
@@ -391,6 +497,7 @@ class UsageInvoiceLineAdmin(ModelView, model=UsageInvoiceLine):
     name = "Usage Invoice Line"
     name_plural = "Usage Invoice Lines"
     icon = "fa-solid fa-list"
+    identity = "usage-invoice-line"
 
     can_create = False
     can_edit = False
@@ -409,6 +516,7 @@ class BillingJobAdmin(TenantScopedMixin, ModelView, model=BillingJob):
     name = "Billing Job"
     name_plural = "Billing Jobs"
     icon = "fa-solid fa-tasks"
+    identity = "billing-job"
 
     can_create = False
     can_edit = False
@@ -436,6 +544,20 @@ class BillingJobAdmin(TenantScopedMixin, ModelView, model=BillingJob):
 
     column_formatters = {
         "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if getattr(m, "tenant_id", None) else "",
+        # invoice_id drill-down to UsageInvoice details
+        "invoice_id": lambda m, a: Markup(
+            f'<a href="{build_admin_detail_url(ADMIN_ROUTES["usage_invoice"], str(m.invoice_id))}">{safe_text(str(m.invoice_id))}</a>'
+        )
+        if getattr(m, "invoice_id", None)
+        else "",
+        # provider_ref drill-down to Search (webhooks by provider_ref are best-effort via raw_json)
+        "provider_ref": lambda m, a: Markup(
+            f'{safe_text(getattr(m, "provider_ref", "") or "")} '
+            f'<a class="ms-1" href="/admin/search?q={safe_path(str(getattr(m, "provider_ref", "") or ""))}" '
+            f'title="Search related webhooks"><i class="fa-solid fa-magnifying-glass"></i></a>'
+        )
+        if getattr(m, "provider_ref", None)
+        else "",
         "last_error_message": lambda m, a: Markup(
             f'<span title="{truncate_error(getattr(m, "last_error_message", "") or "", 500)}">'
             f'{truncate_error(getattr(m, "last_error_message", "") or "", 100)}</span>'

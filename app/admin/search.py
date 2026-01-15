@@ -1,10 +1,11 @@
 """Admin unified search view."""
 
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
+import re
 from sqlalchemy import select, or_
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, RedirectResponse
 from sqladmin import BaseView, expose
 
 from cyberplat.product.infrastructure.database import get_engine
@@ -15,6 +16,8 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 )
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 from app.admin.links import ADMIN_ROUTES, build_admin_list_url, build_admin_detail_url
+
+from cyberplat.product.infrastructure.models import BillingJob, UsageInvoice
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,8 @@ def build_search_results(
         Dict with webhook_events, orders, subscriptions lists and error if any
     """
     results = {
+        "billing_jobs": [],
+        "usage_invoices": [],
         "webhook_events": [],
         "orders": [],
         "subscriptions": [],
@@ -62,11 +67,103 @@ def build_search_results(
         engine = get_engine()
         
         with engine.connect() as conn:
+            # Search Billing Jobs (provider_ref / invoice_id / idempotency_key)
+            stmt = select(
+                BillingJob.id,
+                BillingJob.tenant_id,
+                BillingJob.invoice_id,
+                BillingJob.provider,
+                BillingJob.provider_ref,
+                BillingJob.status,
+                BillingJob.created_at,
+            ).where(
+                or_(
+                    BillingJob.provider_ref.ilike(f"%{q}%"),
+                    BillingJob.invoice_id.ilike(f"%{q}%"),
+                    BillingJob.idempotency_key.ilike(f"%{q}%"),
+                    BillingJob.id.ilike(f"%{q}%"),
+                )
+            )
+            if is_tenant_admin:
+                stmt = stmt.where(BillingJob.tenant_id == tenant_id)
+            stmt = stmt.limit(MAX_RESULTS)
+            rows = conn.execute(stmt).fetchall()
+            results["billing_jobs"] = [
+                {
+                    "id": r._mapping["id"],
+                    "tenant_id": r._mapping["tenant_id"],
+                    "invoice_id": r._mapping["invoice_id"],
+                    "provider": r._mapping["provider"],
+                    "provider_ref": r._mapping["provider_ref"],
+                    "status": r._mapping["status"],
+                    "created_at": r._mapping["created_at"],
+                    "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_job"], r._mapping["id"]),
+                }
+                for r in rows
+            ]
+
+            # Search Usage Invoices (id / tenant_id / period / payment_status)
+            period_match = re.match(r"^(\d{4})-(\d{2})$", q)
+            period_year = int(period_match.group(1)) if period_match else None
+            period_month = int(period_match.group(2)) if period_match else None
+
+            stmt = select(
+                UsageInvoice.id,
+                UsageInvoice.tenant_id,
+                UsageInvoice.period_year,
+                UsageInvoice.period_month,
+                UsageInvoice.amount_cents,
+                UsageInvoice.currency,
+                UsageInvoice.status,
+                UsageInvoice.payment_status,
+                UsageInvoice.created_at,
+            ).where(
+                or_(
+                    UsageInvoice.id.ilike(f"%{q}%"),
+                    UsageInvoice.tenant_id.ilike(f"%{q}%"),
+                    UsageInvoice.payment_status.ilike(f"%{q}%"),
+                    UsageInvoice.status.ilike(f"%{q}%"),
+                )
+            )
+            if period_year is not None and period_month is not None:
+                stmt = stmt.where(UsageInvoice.period_year == period_year, UsageInvoice.period_month == period_month)
+            if is_tenant_admin:
+                stmt = stmt.where(UsageInvoice.tenant_id == tenant_id)
+            stmt = stmt.limit(MAX_RESULTS)
+            rows = conn.execute(stmt).fetchall()
+            results["usage_invoices"] = [
+                {
+                    "id": r._mapping["id"],
+                    "tenant_id": r._mapping["tenant_id"],
+                    "period_year": r._mapping["period_year"],
+                    "period_month": r._mapping["period_month"],
+                    "amount_cents": r._mapping["amount_cents"],
+                    "currency": r._mapping["currency"],
+                    "status": r._mapping["status"],
+                    "payment_status": r._mapping["payment_status"],
+                    "created_at": r._mapping["created_at"],
+                    "detail_url": build_admin_detail_url(ADMIN_ROUTES["usage_invoice"], r._mapping["id"]),
+                }
+                for r in rows
+            ]
+
             # Search Webhook Events
-            stmt = select(BillingWebhookEvent).where(
+            # Note: provider_ref/request_id are not first-class columns in v1 schema, so we do best-effort match:
+            # - event_id (indexed)
+            # - provider
+            # - raw_json LIKE (limited results, never returned/displayed)
+            stmt = select(
+                BillingWebhookEvent.id,
+                BillingWebhookEvent.provider,
+                BillingWebhookEvent.event_id,
+                BillingWebhookEvent.tenant_id,
+                BillingWebhookEvent.status,
+                BillingWebhookEvent.received_at,
+            ).where(
                 or_(
                     BillingWebhookEvent.event_id.ilike(f"%{q}%"),
                     BillingWebhookEvent.provider.ilike(f"%{q}%"),
+                    BillingWebhookEvent.raw_json.ilike(f"%{q}%"),
                 )
             )
             if is_tenant_admin:
@@ -75,7 +172,15 @@ def build_search_results(
             
             result = conn.execute(stmt)
             results["webhook_events"] = [
-                {**dict(row._mapping), "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_webhook_event"], row._mapping["id"])}
+                {
+                    "id": row._mapping["id"],
+                    "provider": row._mapping["provider"],
+                    "event_id": row._mapping["event_id"],
+                    "tenant_id": row._mapping["tenant_id"],
+                    "status": row._mapping["status"],
+                    "received_at": row._mapping["received_at"],
+                    "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_webhook_event"], row._mapping["id"]),
+                }
                 for row in result.fetchall()
             ]
             
@@ -135,14 +240,21 @@ class SearchView(BaseView):
         
         query = ""
         results = None
-        
+
         if request.method == "POST":
             form = await request.form()
-            query = form.get("q", "")
+            query = (form.get("q", "") or "").strip()
+            # Redirect to GET for sharable links / drill-down.
+            return RedirectResponse(url=f"/admin/search?q={query}", status_code=303)
+
+        query = (request.query_params.get("q") or "").strip()
+        if query:
             results = build_search_results(query, role, tenant_id)
         
         # URLs for "Open in list" links
         list_urls = {
+            "billing_jobs": build_admin_list_url(ADMIN_ROUTES["billing_job"]),
+            "usage_invoices": build_admin_list_url(ADMIN_ROUTES["usage_invoice"]),
             "webhook_events": build_admin_list_url(ADMIN_ROUTES["billing_webhook_event"]),
             "orders": build_admin_list_url(ADMIN_ROUTES["billing_order"]),
             "subscriptions": build_admin_list_url(ADMIN_ROUTES["tenant_subscription"]),

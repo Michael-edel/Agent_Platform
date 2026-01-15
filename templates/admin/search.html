@@ -4,9 +4,9 @@
 <div class="container-fluid">
     <h3 class="mb-4">Unified Search</h3>
     
-    <form method="post" class="mb-4">
+    <form method="get" class="mb-4">
         <div class="input-group" style="max-width: 500px;">
-            <input type="text" name="q" class="form-control" placeholder="Search by event_id, order_id, subscription_id, provider..." value="{{ query }}" autofocus>
+            <input type="text" name="q" class="form-control" placeholder="Search by provider_ref, invoice_id, event_id, request_id, tenant_id..." value="{{ query }}" autofocus>
             <button type="submit" class="btn btn-primary">
                 <i class="fa-solid fa-magnifying-glass"></i> Search
             </button>
@@ -18,6 +18,78 @@
         <div class="alert alert-danger">
             <strong>Error:</strong> {{ results.error }}
         </div>
+        {% endif %}
+
+        <h5 class="mt-4">Billing Jobs ({{ results.billing_jobs|length }})</h5>
+        {% if results.billing_jobs %}
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tenant</th>
+                        <th>Invoice</th>
+                        <th>Provider</th>
+                        <th>Provider Ref</th>
+                        <th>Status</th>
+                        <th>Created At</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for j in results.billing_jobs %}
+                    <tr>
+                        <td>{{ j.id }}</td>
+                        <td>{{ j.tenant_id }}</td>
+                        <td>{{ j.invoice_id }}</td>
+                        <td>{{ j.provider }}</td>
+                        <td>{{ j.provider_ref or "-" }}</td>
+                        <td>{{ j.status }}</td>
+                        <td>{{ j.created_at }}</td>
+                        <td><a href="{{ j.detail_url }}" class="btn btn-sm btn-outline-primary">View</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ list_urls.billing_jobs }}" class="btn btn-outline-secondary btn-sm mb-3">Open in list</a>
+        {% else %}
+        <p class="text-muted">No billing jobs found.</p>
+        {% endif %}
+
+        <h5 class="mt-4">Usage Invoices ({{ results.usage_invoices|length }})</h5>
+        {% if results.usage_invoices %}
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tenant</th>
+                        <th>Period</th>
+                        <th>Payment Status</th>
+                        <th>Amount</th>
+                        <th>Created At</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in results.usage_invoices %}
+                    <tr>
+                        <td>{{ i.id }}</td>
+                        <td>{{ i.tenant_id }}</td>
+                        <td>{{ "%04d-%02d"|format(i.period_year, i.period_month) }}</td>
+                        <td>{{ i.payment_status }}</td>
+                        <td>{{ i.amount_cents }} {{ i.currency }}</td>
+                        <td>{{ i.created_at }}</td>
+                        <td><a href="{{ i.detail_url }}" class="btn btn-sm btn-outline-primary">View</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ list_urls.usage_invoices }}" class="btn btn-outline-secondary btn-sm mb-3">Open in list</a>
+        {% else %}
+        <p class="text-muted">No usage invoices found.</p>
         {% endif %}
         
         <h5 class="mt-4">Webhook Events ({{ results.webhook_events|length }})</h5>

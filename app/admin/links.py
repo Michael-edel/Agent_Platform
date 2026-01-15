@@ -12,6 +12,9 @@ ADMIN_ROUTES = {
     "billing_order": "billing-order",
     "billing_webhook_event": "billing-webhook-event",
     "billing_usage": "billing-usage",
+    "billing_job": "billing-job",
+    "usage_invoice": "usage-invoice",
+    "usage_invoice_line": "usage-invoice-line",
     "webhook": "webhook",
     "kaspi_order": "kaspi-order",
 }
