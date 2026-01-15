@@ -229,6 +229,10 @@ Dashboard содержит кликабельные карточки для бы
 - <i class="fa-solid fa-shopping-cart"></i> → Orders этого tenant
 - <i class="fa-solid fa-bell"></i> → Webhook events этого tenant
 
+Drill-down доступен из: Tenant Plans, Subscriptions, Orders, Webhook Events, Usage.
+
+**Безопасность ссылок:** Все URL формируются через централизованные helpers (`app/admin/links.py`) с HTML escaping и URL encoding для защиты от XSS.
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)

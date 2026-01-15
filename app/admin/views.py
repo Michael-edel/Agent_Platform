@@ -29,28 +29,12 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
 
+from app.admin.links import tenant_drill_links
+
+
 def is_tenant_admin(request: Request) -> bool:
     """Check if current user is tenant_admin."""
     return get_admin_role(request) == "tenant_admin"
-
-
-def make_tenant_drill_links(tenant_id: str) -> Markup:
-    """Generate drill-down links for a tenant_id."""
-    if not tenant_id:
-        return Markup("")
-    
-    from markupsafe import escape
-    from urllib.parse import quote
-    
-    safe_display = escape(tenant_id)
-    safe_url = quote(str(tenant_id), safe='')
-    
-    links = [
-        f'<a href="/admin/tenant-subscription/list?tenant_id={safe_url}" title="Subscriptions"><i class="fa-solid fa-receipt"></i></a>',
-        f'<a href="/admin/billing-order/list?tenant_id={safe_url}" title="Orders"><i class="fa-solid fa-shopping-cart"></i></a>',
-        f'<a href="/admin/billing-webhook-event/list?tenant_id={safe_url}" title="Webhooks"><i class="fa-solid fa-bell"></i></a>',
-    ]
-    return Markup(f'{safe_display} ' + ' '.join(links))
 
 
 class TenantScopedMixin:
@@ -129,7 +113,7 @@ class TenantPlanAdmin(TenantScopedMixin, ModelView, model=TenantPlan):
     page_size = 50
     
     column_formatters = {
-        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
     }
 
 
@@ -264,7 +248,7 @@ class TenantSubscriptionAdmin(TenantScopedMixin, ModelView, model=TenantSubscrip
     page_size = 50
     
     column_formatters = {
-        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
     }
 
 
@@ -285,6 +269,10 @@ class BillingWebhookEventAdmin(TenantScopedMixin, ModelView, model=BillingWebhoo
     column_filters = ["provider", "status", "tenant_id", "received_at"]
     column_sortable_list = ["provider", "status", "received_at", "processed_at"]
     page_size = 50
+    
+    column_formatters = {
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if m.tenant_id else "",
+    }
 
 
 class BillingOrderAdmin(TenantScopedMixin, ModelView, model=BillingOrder):
@@ -305,7 +293,7 @@ class BillingOrderAdmin(TenantScopedMixin, ModelView, model=BillingOrder):
     page_size = 50
     
     column_formatters = {
-        "tenant_id": lambda m, a: make_tenant_drill_links(m.tenant_id),
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
     }
 
 
@@ -325,3 +313,7 @@ class BillingUsageAdmin(TenantScopedMixin, ModelView, model=BillingUsage):
     column_filters = ["tenant_id", "metric", "period", "created_at"]
     column_sortable_list = ["tenant_id", "metric", "units", "amount_minor", "created_at"]
     page_size = 50
+    
+    column_formatters = {
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
+    }

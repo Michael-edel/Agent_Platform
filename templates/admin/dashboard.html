@@ -12,7 +12,7 @@
     
     <div class="row">
         <div class="col-md-3 mb-4">
-            <a href="{{ request.url_for('admin:list', identity='tenant-plan') }}" class="text-decoration-none">
+            <a href="{{ urls.tenants }}" class="text-decoration-none">
                 <div class="card text-bg-primary" style="cursor: pointer;">
                     <div class="card-body">
                         <h5 class="card-title">Tenants</h5>
@@ -24,7 +24,7 @@
         </div>
         
         <div class="col-md-3 mb-4">
-            <a href="{{ request.url_for('admin:list', identity='tenant-subscription') }}" class="text-decoration-none">
+            <a href="{{ urls.subscriptions }}" class="text-decoration-none">
                 <div class="card text-bg-success" style="cursor: pointer;">
                     <div class="card-body">
                         <h5 class="card-title">Subscriptions</h5>
@@ -36,7 +36,7 @@
         </div>
         
         <div class="col-md-3 mb-4">
-            <a href="{{ request.url_for('admin:list', identity='billing-order') }}" class="text-decoration-none">
+            <a href="{{ urls.orders }}" class="text-decoration-none">
                 <div class="card text-bg-warning" style="cursor: pointer;">
                     <div class="card-body">
                         <h5 class="card-title">Orders</h5>
@@ -48,7 +48,7 @@
         </div>
         
         <div class="col-md-3 mb-4">
-            <a href="{{ request.url_for('admin:list', identity='billing-webhook-event') }}" class="text-decoration-none">
+            <a href="{{ urls.webhooks }}" class="text-decoration-none">
                 <div class="card text-bg-info" style="cursor: pointer;">
                     <div class="card-body">
                         <h5 class="card-title">Webhook Events</h5>

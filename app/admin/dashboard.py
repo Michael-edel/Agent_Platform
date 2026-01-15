@@ -15,6 +15,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 )
 from cyberplat.product.infrastructure.models import TenantPlan
 from app.admin.auth import get_admin_role, get_admin_tenant_id
+from app.admin.links import DASHBOARD_URLS
 
 logger = logging.getLogger(__name__)
 
@@ -103,5 +104,5 @@ class DashboardView(BaseView):
         return await self.templates.TemplateResponse(
             request,
             "admin/dashboard.html",
-            context={"stats": stats},
+            context={"stats": stats, "urls": DASHBOARD_URLS},
         )
