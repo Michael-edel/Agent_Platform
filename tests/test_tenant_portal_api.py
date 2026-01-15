@@ -1,6 +1,5 @@
-"""Tests for Tenant Portal API v1."""
+"""Tests for Tenant Portal API v1 with per-tenant tokens."""
 
-import os
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
@@ -13,13 +12,43 @@ def disable_metrics(monkeypatch):
     monkeypatch.setenv("METRICS_ENABLED", "false")
 
 
+class TestTokenHelpers:
+    """Tests for token generation and hashing."""
+
+    def test_generate_portal_token_length(self):
+        """Generated token has appropriate length."""
+        from app.api.tenant_portal import generate_portal_token
+        
+        token = generate_portal_token()
+        assert len(token) >= 32
+
+    def test_hash_token_deterministic(self):
+        """Hashing same token gives same result."""
+        from app.api.tenant_portal import hash_token
+        
+        token = "test-token-123"
+        hash1 = hash_token(token)
+        hash2 = hash_token(token)
+        
+        assert hash1 == hash2
+        assert len(hash1) == 64  # SHA256 hex
+
+    def test_hash_token_different_for_different_tokens(self):
+        """Different tokens give different hashes."""
+        from app.api.tenant_portal import hash_token
+        
+        hash1 = hash_token("token1")
+        hash2 = hash_token("token2")
+        
+        assert hash1 != hash2
+
+
 class TestTenantPortalAuth:
     """Tests for tenant portal authentication."""
 
     @pytest.fixture
     def client(self, monkeypatch):
         """Create test client."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "")  # Not configured
         from starlette.testclient import TestClient
         from app.api.tenant_portal import router
         from fastapi import FastAPI
@@ -28,50 +57,75 @@ class TestTenantPortalAuth:
         app.include_router(router, prefix="/api/v1")
         return TestClient(app)
 
-    def test_no_portal_key_configured_returns_503(self, client, monkeypatch):
-        """Returns 503 when TENANT_PORTAL_KEY is not configured."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "")
-        
-        response = client.get(
-            "/api/v1/tenant/subscription",
-            headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "any"},
-        )
-        
-        assert response.status_code == 503
-        assert "not configured" in response.json()["detail"]
-
-    def test_missing_portal_key_header_returns_403(self, client, monkeypatch):
+    def test_missing_portal_key_header_returns_403(self, client):
         """Returns 403 when X-Tenant-Portal-Key header is missing."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "secret123")
-        
-        response = client.get(
-            "/api/v1/tenant/subscription",
-            headers={"X-Tenant-ID": "t1"},
-        )
-        
-        assert response.status_code == 403
-
-    def test_invalid_portal_key_returns_403(self, client, monkeypatch):
-        """Returns 403 when X-Tenant-Portal-Key is invalid."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "secret123")
-        
-        response = client.get(
-            "/api/v1/tenant/subscription",
-            headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "wrong"},
-        )
+        with patch("app.api.tenant_portal.get_engine"):
+            response = client.get(
+                "/api/v1/tenant/subscription",
+                headers={"X-Tenant-ID": "t1"},
+            )
         
         assert response.status_code == 403
 
-    def test_missing_tenant_id_returns_400(self, client, monkeypatch):
+    def test_missing_tenant_id_returns_400(self, client):
         """Returns 400 when X-Tenant-ID is missing."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "secret123")
-        
-        response = client.get(
-            "/api/v1/tenant/subscription",
-            headers={"X-Tenant-Portal-Key": "secret123"},
-        )
+        with patch("app.api.tenant_portal.get_engine"):
+            response = client.get(
+                "/api/v1/tenant/subscription",
+                headers={"X-Tenant-Portal-Key": "any"},
+            )
         
         assert response.status_code == 400
+
+    def test_no_active_token_returns_403(self, client):
+        """Returns 403 when no active token exists for tenant."""
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.execute.return_value.fetchone.return_value = None
+        
+        with patch("app.api.tenant_portal.get_engine", return_value=mock_engine):
+            response = client.get(
+                "/api/v1/tenant/subscription",
+                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "any"},
+            )
+        
+        assert response.status_code == 403
+
+    def test_invalid_token_returns_403(self, client):
+        """Returns 403 when token doesn't match."""
+        from app.api.tenant_portal import hash_token
+        
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        
+        # Return a token with different hash
+        mock_row = MagicMock()
+        mock_row._mapping = {"token_hash": hash_token("correct-token")}
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        
+        with patch("app.api.tenant_portal.get_engine", return_value=mock_engine):
+            response = client.get(
+                "/api/v1/tenant/subscription",
+                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "wrong-token"},
+            )
+        
+        assert response.status_code == 403
+
+    def test_db_error_returns_503(self, client):
+        """Returns 503 on database error (fail-closed)."""
+        with patch("app.api.tenant_portal.get_engine") as mock_engine:
+            mock_engine.side_effect = Exception("DB down")
+            
+            response = client.get(
+                "/api/v1/tenant/subscription",
+                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "any"},
+            )
+        
+        assert response.status_code == 503
 
 
 class TestTenantPortalSchemas:
@@ -113,10 +167,8 @@ class TestTenantPortalSchemas:
 class TestTenantPortalWithMockedDb:
     """Tests with mocked database."""
 
-    def test_subscription_graceful_on_db_error(self, monkeypatch):
-        """Subscription endpoint handles DB errors gracefully."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "test-key")
-        
+    def test_auth_db_error_returns_503(self):
+        """Auth returns 503 on DB error (fail-closed)."""
         from starlette.testclient import TestClient
         from app.api.tenant_portal import router
         from fastapi import FastAPI
@@ -132,55 +184,5 @@ class TestTenantPortalWithMockedDb:
                 headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "test-key"},
             )
         
-        assert response.status_code == 200
-        data = response.json()
-        assert data["tenant_id"] == "t1"
-        assert data["plan_id"] is None
-
-    def test_usage_graceful_on_db_error(self, monkeypatch):
-        """Usage endpoint handles DB errors gracefully."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "test-key")
-        
-        from starlette.testclient import TestClient
-        from app.api.tenant_portal import router
-        from fastapi import FastAPI
-        
-        app = FastAPI()
-        app.include_router(router, prefix="/api/v1")
-        
-        with patch("app.api.tenant_portal.get_engine") as mock_engine:
-            mock_engine.side_effect = Exception("DB down")
-            client = TestClient(app)
-            response = client.get(
-                "/api/v1/tenant/usage",
-                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "test-key"},
-            )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["tenant_id"] == "t1"
-        assert data["totals"] == []
-
-    def test_status_returns_unknown_on_db_error(self, monkeypatch):
-        """Status endpoint returns 'unknown' on DB errors."""
-        monkeypatch.setenv("TENANT_PORTAL_KEY", "test-key")
-        
-        from starlette.testclient import TestClient
-        from app.api.tenant_portal import router
-        from fastapi import FastAPI
-        
-        app = FastAPI()
-        app.include_router(router, prefix="/api/v1")
-        
-        with patch("app.api.tenant_portal.get_engine") as mock_engine:
-            mock_engine.side_effect = Exception("DB down")
-            client = TestClient(app)
-            response = client.get(
-                "/api/v1/tenant/status",
-                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "test-key"},
-            )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["tenant_id"] == "t1"
-        assert data["status"] == "unknown"
+        # Fail-closed: 503 on DB error during auth
+        assert response.status_code == 503

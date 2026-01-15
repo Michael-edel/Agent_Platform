@@ -32,6 +32,7 @@ def setup_admin(app: FastAPI) -> None:
         from app.admin.auth import AdminAuthBackend
         from app.admin.dashboard import DashboardView
         from app.admin.search import SearchView
+        from app.admin.access_rotate import TokenRotateView
         from app.admin.views import (
             # Product views
             PlanAdmin,
@@ -47,6 +48,7 @@ def setup_admin(app: FastAPI) -> None:
             BillingWebhookEventAdmin,
             BillingOrderAdmin,
             BillingUsageAdmin,
+            TenantPortalTokenAdmin,
         )
         
         # Get secret key for sessions
@@ -88,6 +90,8 @@ def setup_admin(app: FastAPI) -> None:
         admin.add_view(BillingWebhookEventAdmin)
         admin.add_view(BillingOrderAdmin)
         admin.add_view(BillingUsageAdmin)
+        admin.add_view(TenantPortalTokenAdmin)
+        admin.add_view(TokenRotateView)
         
         logger.info("Admin panel enabled at /admin")
         

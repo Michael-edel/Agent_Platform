@@ -207,3 +207,22 @@ class KaspiOrder(Base):
         Index("idx_kaspi_orders_status", "status"),
         Index("idx_kaspi_orders_kaspi_order_id", "kaspi_order_id"),
     )
+
+
+class TenantPortalToken(Base):
+    """SQLAlchemy model for per-tenant portal access tokens."""
+    
+    __tablename__ = "tenant_portal_tokens"
+    
+    id = Column(String, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    token_hash = Column(String, nullable=False)  # SHA256 hex
+    token_prefix = Column(String, nullable=False)  # First 8 chars for display
+    created_at = Column(String, nullable=False)
+    revoked_at = Column(String, nullable=True, index=True)
+    
+    __table_args__ = (
+        Index("idx_tenant_portal_tokens_tenant_id", "tenant_id"),
+        Index("idx_tenant_portal_tokens_revoked_at", "revoked_at"),
+        Index("idx_tenant_portal_tokens_tenant_active", "tenant_id", "revoked_at"),
+    )

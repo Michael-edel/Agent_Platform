@@ -7,8 +7,10 @@ Provides:
 - GET /tenant/status - Tenant health status
 """
 
-import os
+import hashlib
 import logging
+import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
@@ -17,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPlan
+from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken
 from cyberplat.billing.infrastructure.models_sqlalchemy import (
     TenantSubscription,
     BillingUsage,
@@ -69,44 +71,123 @@ class StatusResponse(BaseModel):
 
 
 # ============================================
+# Token Helpers
+# ============================================
+
+def generate_portal_token() -> str:
+    """Generate a secure random token for portal access."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """Hash token using SHA256."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_portal_token(tenant_id: str) -> tuple[str, str]:
+    """
+    Create a new portal token for tenant.
+    
+    Returns:
+        Tuple of (plain_token, token_id) - plain_token should be shown once
+    """
+    plain_token = generate_portal_token()
+    token_id = str(uuid.uuid4())
+    token_hash = hash_token(plain_token)
+    token_prefix = plain_token[:8]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    engine = get_engine()
+    
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        
+        # Revoke existing active tokens for this tenant
+        conn.execute(
+            text("""
+                UPDATE tenant_portal_tokens 
+                SET revoked_at = :now 
+                WHERE tenant_id = :tenant_id AND revoked_at IS NULL
+            """),
+            {"tenant_id": tenant_id, "now": now_iso},
+        )
+        
+        # Insert new token
+        conn.execute(
+            text("""
+                INSERT INTO tenant_portal_tokens (id, tenant_id, token_hash, token_prefix, created_at)
+                VALUES (:id, :tenant_id, :token_hash, :token_prefix, :created_at)
+            """),
+            {
+                "id": token_id,
+                "tenant_id": tenant_id,
+                "token_hash": token_hash,
+                "token_prefix": token_prefix,
+                "created_at": now_iso,
+            },
+        )
+        conn.commit()
+    
+    return plain_token, token_id
+
+
+# ============================================
 # Auth Dependency
 # ============================================
 
 def tenant_portal_auth(
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     x_tenant_portal_key: Optional[str] = Header(None, alias="X-Tenant-Portal-Key"),
-) -> None:
+) -> str:
     """
-    Validate tenant portal access key.
+    Validate per-tenant portal token.
+    
+    Returns:
+        tenant_id on success
     
     Raises:
-        HTTPException 503: If TENANT_PORTAL_KEY is not configured
-        HTTPException 403: If key is missing or invalid
+        HTTPException 400: Missing X-Tenant-ID
+        HTTPException 403: Missing or invalid token
+        HTTPException 503: Database error (fail-closed)
     """
-    portal_key = os.getenv("TENANT_PORTAL_KEY", "")
-    
-    if not portal_key:
-        logger.warning("TENANT_PORTAL_KEY not configured, denying access")
-        raise HTTPException(
-            status_code=503,
-            detail="TENANT_PORTAL_KEY is not configured",
-        )
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="Missing X-Tenant-ID header")
     
     if not x_tenant_portal_key:
         logger.warning("Missing X-Tenant-Portal-Key header")
         raise HTTPException(status_code=403, detail="Missing portal key")
     
-    if x_tenant_portal_key != portal_key:
-        logger.warning("Invalid X-Tenant-Portal-Key provided")
-        raise HTTPException(status_code=403, detail="Invalid portal key")
-
-
-def get_tenant_id(
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-) -> str:
-    """Extract and validate tenant ID from header."""
-    if not x_tenant_id:
-        raise HTTPException(status_code=400, detail="Missing X-Tenant-ID header")
-    return x_tenant_id
+    try:
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get active token for tenant
+            query = (
+                select(TenantPortalToken)
+                .where(TenantPortalToken.tenant_id == x_tenant_id)
+                .where(TenantPortalToken.revoked_at.is_(None))
+                .limit(1)
+            )
+            row = conn.execute(query).fetchone()
+            
+            if not row:
+                logger.warning(f"No active token for tenant {x_tenant_id}")
+                raise HTTPException(status_code=403, detail="Invalid portal key")
+            
+            stored_hash = row._mapping["token_hash"]
+            provided_hash = hash_token(x_tenant_portal_key)
+            
+            if stored_hash != provided_hash:
+                logger.warning(f"Token mismatch for tenant {x_tenant_id}")
+                raise HTTPException(status_code=403, detail="Invalid portal key")
+            
+            return x_tenant_id
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Database error during portal auth")
+        raise HTTPException(status_code=503, detail="Service unavailable")
 
 
 # ============================================
@@ -115,8 +196,7 @@ def get_tenant_id(
 
 @router.get("/tenant/subscription", response_model=SubscriptionResponse)
 async def get_subscription(
-    tenant_id: str = Depends(get_tenant_id),
-    _auth: None = Depends(tenant_portal_auth),
+    tenant_id: str = Depends(tenant_portal_auth),
 ) -> SubscriptionResponse:
     """
     Get current subscription info for tenant.
@@ -175,9 +255,8 @@ async def get_subscription(
 
 @router.get("/tenant/usage", response_model=UsageResponse)
 async def get_usage(
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(tenant_portal_auth),
     period: Optional[str] = Query(None, description="Period in YYYY-MM format"),
-    _auth: None = Depends(tenant_portal_auth),
 ) -> UsageResponse:
     """
     Get usage metrics for a period.
@@ -223,8 +302,7 @@ async def get_usage(
 
 @router.get("/tenant/status", response_model=StatusResponse)
 async def get_status(
-    tenant_id: str = Depends(get_tenant_id),
-    _auth: None = Depends(tenant_portal_auth),
+    tenant_id: str = Depends(tenant_portal_auth),
 ) -> StatusResponse:
     """
     Get tenant health status.

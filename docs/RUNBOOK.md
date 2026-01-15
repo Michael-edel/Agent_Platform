@@ -339,16 +339,25 @@ alembic upgrade head
 
 ## Tenant Admin API (v1)
 
-Read-only self-service API для tenant'ов. Временный механизм аутентификации на основе shared key.
+Read-only self-service API для tenant'ов с per-tenant токенами.
 
 ### Аутентификация
 
 | Header | Описание |
 |--------|----------|
 | `X-Tenant-ID` | ID tenant'а (обязателен) |
-| `X-Tenant-Portal-Key` | Ключ доступа (обязателен) |
+| `X-Tenant-Portal-Key` | Per-tenant токен (обязателен) |
 
-**ENV**: `TENANT_PORTAL_KEY` — если не задан, все запросы вернут 503.
+**Получение токена:**
+1. Войти в Admin Panel (`/admin`)
+2. Перейти в "Rotate Token" (`/admin/rotate-token`)
+3. Ввести `tenant_id` и нажать "Rotate Token"
+4. Скопировать токен — он показывается только один раз
+
+**Ротация/ревокация:**
+- При ротации старый токен немедленно отзывается
+- Новый токен генерируется и показывается один раз
+- В БД хранится только хэш токена (SHA256)
 
 ### Endpoints
 
@@ -361,9 +370,12 @@ Read-only self-service API для tenant'ов. Временный механиз
 **GET /api/v1/tenant/status**
 - Возвращает: webhooks_failed_24h, orders_failed_24h, last_error_at, status (ok/degraded/unknown)
 
-### Важно
+### Безопасность
 
-Это временный shared-key механизм для пилотов. Будет заменён полноценным tenant auth позже.
+- Каждый tenant имеет свой уникальный токен
+- Токен показывается только при создании/ротации
+- При DB ошибках — 503 (fail-closed)
+- Неверный токен — 403
 
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant

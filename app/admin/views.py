@@ -25,6 +25,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
     BillingOrder,
     BillingUsage,
 )
+from cyberplat.product.infrastructure.models import TenantPortalToken
 
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
@@ -343,3 +344,23 @@ class BillingUsageAdmin(TenantScopedMixin, ModelView, model=BillingUsage):
     column_formatters = {
         "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
     }
+
+
+class TenantPortalTokenAdmin(ModelView, model=TenantPortalToken):
+    """Admin view for Tenant Portal Tokens (read-only, platform_admin only)."""
+    
+    name = "Portal Token"
+    name_plural = "Portal Tokens"
+    icon = "fa-solid fa-key"
+    
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+    
+    column_list = ["id", "tenant_id", "token_prefix", "created_at", "revoked_at"]
+    column_searchable_list = ["tenant_id", "token_prefix"]
+    column_filters = ["tenant_id", "revoked_at"]
+    column_sortable_list = ["tenant_id", "created_at", "revoked_at"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
