@@ -12,6 +12,13 @@
     </ol>
 </nav>
 
+<div class="mb-3">
+    <a href="/tenant/agents/{{ agent_code }}/executions" class="btn btn-sm btn-outline-secondary">
+        Refresh
+    </a>
+    <small class="text-muted ms-2">Executions may take a moment to complete.</small>
+</div>
+
 {% if error %}
 <div class="alert alert-warning">
     <strong>Temporarily unavailable.</strong> Please try again later.

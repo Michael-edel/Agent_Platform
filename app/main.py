@@ -311,6 +311,11 @@ async def startup_event():
     app.include_router(agents_router, tags=["agents"])
     logger.info("Agent execution router подключен")
     
+    # Start Agent Executor (if enabled)
+    from app.agents.executor import start_executor
+    start_executor(engine)
+    logger.info("Agent executor initialized")
+    
     # Подключение Tenant Portal Web UI
     portal_session_secret = os.getenv("TENANT_PORTAL_SESSION_SECRET", "").strip()
     if portal_session_secret:

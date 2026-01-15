@@ -264,27 +264,25 @@ def execute_agent(
                 },
             )
         
-        # Create successful execution
-        stub_result = {"ok": True, "echo": request.input}
-        
+        # Create execution with status="accepted" (async processing)
         execution = AgentExecution(
             id=execution_id,
             tenant_id=tenant_id,
             agent_sku_id=sku.id,
-            status="completed",
+            status="accepted",
             idempotency_key=request.idempotency_key,
             input_json=json.dumps(request.input),
-            result_json=json.dumps(stub_result),
+            result_json=None,
             created_at=now,
             updated_at=now,
-            started_at=now,
-            finished_at=now,
+            started_at=None,
+            finished_at=None,
         )
         
         session.add(execution)
         session.commit()
     
-    # Record usage after successful execution (outside session)
+    # Record usage at accept time (before execution)
     try:
         record_execution_usage(engine, tenant_id, execution_id, agent_code, period)
     except Exception:
@@ -292,8 +290,8 @@ def execute_agent(
     
     return ExecuteResponse(
         execution_id=execution_id,
-        status="completed",
-        result=stub_result,
+        status="accepted",
+        result=None,
     )
 
 

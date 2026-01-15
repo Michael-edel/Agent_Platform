@@ -158,11 +158,23 @@ Execution API позволяет запускать агентов и отсле
 
 ⚠️ **Текущая версия**: синхронная заглушка (echo). Оркестрация и LLM будут добавлены позже.
 
+### Async Execution (v2)
+
+**Поведение:**
+1. `POST /execute` создаёт execution со статусом `accepted` и сразу возвращает `execution_id`
+2. Встроенный executor (background thread) подхватывает `accepted`, переводит в `running`, выполняет, завершает `completed`/`failed`
+3. Клиент делает polling через `GET /executions/{id}` для получения результата
+
+**Executor:**
+- Включается через `AGENT_EXECUTOR_ENABLED=true`
+- Poll interval: `AGENT_EXECUTOR_POLL_INTERVAL_MS` (default 1000ms)
+- Если executor отключён, executions остаются в `accepted` (UI показывает pending)
+
 ### Эндпоинты
 
 #### POST /api/v1/agents/{agent_code}/execute
 
-Запуск агента.
+Создать execution агента.
 
 **Headers:**
 - `X-Tenant-ID`: UUID tenant'а (обязательно)
@@ -179,10 +191,17 @@ Execution API позволяет запускать агентов и отсле
 ```json
 {
   "execution_id": "uuid",
-  "status": "completed",
-  "result": {"ok": true, "echo": {...}}
+  "status": "accepted",
+  "result": null
 }
 ```
+
+**Статусы:**
+- `accepted` — создан, ожидает обработки
+- `running` — выполняется
+- `completed` — успешно завершён
+- `failed` — ошибка выполнения
+- `rejected` — отклонён (лимиты/pricing)
 
 **Errors:**
 - `404`: `{"error": "agent_not_found", "agent_code": "..."}`
