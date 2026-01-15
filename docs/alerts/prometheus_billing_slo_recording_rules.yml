@@ -1,0 +1,30 @@
+groups:
+  - name: billing-slo-recording-v1
+    rules:
+      # SLO target: 99% paid within 5 minutes (300s)
+      # Scope: provider!="unknown"
+
+      - record: billing:sli_time_to_paid_good_rate5m
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_bucket{le="300",provider!="unknown"}[5m])) by (provider)
+
+      - record: billing:sli_time_to_paid_total_rate5m
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_count{provider!="unknown"}[5m])) by (provider)
+
+      - record: billing:sli_time_to_paid_good_rate30m
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_bucket{le="300",provider!="unknown"}[30m])) by (provider)
+
+      - record: billing:sli_time_to_paid_total_rate30m
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_count{provider!="unknown"}[30m])) by (provider)
+
+      - record: billing:sli_time_to_paid_good_rate1h
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_bucket{le="300",provider!="unknown"}[1h])) by (provider)
+
+      - record: billing:sli_time_to_paid_total_rate1h
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_count{provider!="unknown"}[1h])) by (provider)
+
+      - record: billing:sli_time_to_paid_good_rate6h
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_bucket{le="300",provider!="unknown"}[6h])) by (provider)
+
+      - record: billing:sli_time_to_paid_total_rate6h
+        expr: sum(rate(usage_invoice_time_to_paid_seconds_count{provider!="unknown"}[6h])) by (provider)
+

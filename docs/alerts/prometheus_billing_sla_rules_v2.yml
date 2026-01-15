@@ -49,3 +49,58 @@ groups:
           summary: "Invoice failures spike by provider"
           description: "failed transitions rate > 0.5/s per provider over 10m"
 
+      # SLO pack v1: % invoices paid within 5 minutes (300s), target 99% (error budget 1%).
+      # burn_rate = error_rate / error_budget = (1 - good/total) / 0.01
+
+      - alert: BillingSLOTimeToPaidFastBurn
+        expr: |
+          (
+            (
+              (1 - (billing:sli_time_to_paid_good_rate5m / clamp_min(billing:sli_time_to_paid_total_rate5m, 1e-9)))
+              / 0.01
+            ) > 14
+          )
+          and on(provider)
+          (
+            (
+              (1 - (billing:sli_time_to_paid_good_rate1h / clamp_min(billing:sli_time_to_paid_total_rate1h, 1e-9)))
+              / 0.01
+            ) > 14
+          )
+          and on(provider) (billing:sli_time_to_paid_total_rate5m > 0.01)
+          and on(provider) (billing:sli_time_to_paid_total_rate1h > 0.01)
+        for: 5m
+        labels:
+          severity: page
+          service: billing
+          slo: time_to_paid_5m
+        annotations:
+          summary: "Fast SLO burn: time-to-paid ≤ 5m (provider={{ $labels.provider }})"
+          description: "Burn rate > 14 on 5m and 1h windows (SLO=99% within 300s)."
+
+      - alert: BillingSLOTimeToPaidSlowBurn
+        expr: |
+          (
+            (
+              (1 - (billing:sli_time_to_paid_good_rate30m / clamp_min(billing:sli_time_to_paid_total_rate30m, 1e-9)))
+              / 0.01
+            ) > 2
+          )
+          and on(provider)
+          (
+            (
+              (1 - (billing:sli_time_to_paid_good_rate6h / clamp_min(billing:sli_time_to_paid_total_rate6h, 1e-9)))
+              / 0.01
+            ) > 2
+          )
+          and on(provider) (billing:sli_time_to_paid_total_rate30m > 0.01)
+          and on(provider) (billing:sli_time_to_paid_total_rate6h > 0.01)
+        for: 30m
+        labels:
+          severity: ticket
+          service: billing
+          slo: time_to_paid_5m
+        annotations:
+          summary: "Slow SLO burn: time-to-paid ≤ 5m (provider={{ $labels.provider }})"
+          description: "Burn rate > 2 on 30m and 6h windows (SLO=99% within 300s)."
+

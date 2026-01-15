@@ -107,6 +107,7 @@ services:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./docs/alerts/prometheus_billing_worker_rules.yml:/etc/prometheus/rules/billing_worker_rules.yml:ro
       - ./docs/alerts/prometheus_billing_sla_rules_v2.yml:/etc/prometheus/rules/billing_sla_rules_v2.yml:ro
+      - ./docs/alerts/prometheus_billing_slo_recording_rules.yml:/etc/prometheus/rules/billing_slo_recording_rules.yml:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml

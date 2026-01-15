@@ -365,6 +365,51 @@ Grafana автоматически провиженит:
 
 ### Навигация и drill-down
 
+## SLO: Time-to-paid ≤ 5m (burn-rate alerts)
+
+### Definition
+
+- **SLO target**: **99%** invoices should transition to `paid` within **5 minutes** (\(\le 300s\)) after `finalized_at`.
+- **Scope**: `provider!="unknown"` (Stripe/Kaspi only; unknown provider is excluded to avoid noisy alerts).
+- **Signals**:
+  - Histogram: `usage_invoice_time_to_paid_seconds_bucket{provider}`
+  - Recording rules: `billing:sli_time_to_paid_good_rate*` / `billing:sli_time_to_paid_total_rate*`
+
+### Alert interpretation (multi-window burn-rate)
+
+- **Fast burn (page)**: `BillingSLOTimeToPaidFastBurn` (5m & 1h windows)
+  - Means: error budget is burning very fast right now; likely an incident.
+- **Slow burn (ticket)**: `BillingSLOTimeToPaidSlowBurn` (30m & 6h windows)
+  - Means: sustained degradation; investigate and remediate.
+
+Low-traffic guard is applied via `billing:sli_time_to_paid_total_rate*` thresholds to avoid alerts on near-zero traffic.
+
+### What to check (in order)
+
+- **Queue**:
+  - `billing_jobs_queue_depth{status="pending"}` and `billing_jobs_queue_depth{status="pending_retry"}`
+  - `billing_jobs_next_attempt_lag_seconds` (overdue retry lag)
+- **Failures**:
+  - `topk(10, sum(rate(billing_jobs_failure_reasons_total[15m])) by (provider, error_code))`
+  - `sum(rate(usage_invoices_payment_status_transitions_total{to="failed"}[10m])) by (provider)`
+- **Worker health / latency**:
+  - `billing_worker_up`
+  - `time() - max(billing_worker_last_success_timestamp)`
+  - `histogram_quantile(0.95, sum(rate(billing_worker_iteration_duration_seconds_bucket[5m])) by (le))`
+- **Providers / webhooks**:
+  - allowlist rejections / signature issues (Stripe/Kaspi webhook handlers + event logs)
+  - webhook delivery lag / retries (if provider-side visibility is available)
+- **DB health**:
+  - DB latency, locks, connection saturation (especially if jobs are stuck in `processing`)
+
+### Quick mitigations (ops)
+
+- Increase worker throughput (if CPU/DB allows):
+  - raise `BILLING_WORKER_BATCH_SIZE`
+  - decrease `BILLING_WORKER_INTERVAL_SECONDS`
+- If business allows: **temporarily switch default provider** via `BILLING_DEFAULT_PROVIDER` (or per-tenant override).
+- For isolation in **staging only**: enable `BILLING_DRY_RUN=true` to validate pipeline without real payments.
+
 ## Tenant onboarding via Admin (v1)
 
 Операционный onboarding делается через SQLAdmin (без отдельного фронта).
