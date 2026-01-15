@@ -74,7 +74,7 @@ def assert_agent_enabled(session: Session, tenant_id: str, agent_code: str) -> T
     return tenant_agent
 
 
-def assert_agent_addon_active(session: Session, tenant_id: str, agent_code: str) -> TenantAgentSubscription:
+def assert_agent_addon_active(session: Session, tenant_id: str, agent_code: str) -> Optional[TenantAgentSubscription]:
     """
     Check if agent add-on subscription is active for tenant.
     
@@ -97,6 +97,10 @@ def assert_agent_addon_active(session: Session, tenant_id: str, agent_code: str)
     
     if not sku:
         raise AgentNotFoundError(agent_code)
+
+    # Free/built-in agents do not require add-on subscription.
+    if (sku.pricing_model or "").lower() in {"free"}:
+        return None
     
     # Find TenantAgentSubscription
     subscription = session.execute(

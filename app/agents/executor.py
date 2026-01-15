@@ -11,11 +11,13 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy import select, update, text
 from sqlalchemy.orm import Session
 
-from cyberplat.product.infrastructure.models import AgentExecution
+from cyberplat.product.infrastructure.models import AgentExecution, AgentSKU
+from cyberplat.agents.registry import get_runner
 
 logger = logging.getLogger(__name__)
 
@@ -81,56 +83,96 @@ def claim_next_execution(session: Session) -> Optional[AgentExecution]:
 
 def run_execution(session: Session, execution: AgentExecution) -> None:
     """
-    Run a single execution (stub implementation).
+    Run a single execution.
     
-    - Sets status to running if not already
-    - Executes stub logic (echo input)
+    - Executes runner based on agent_code (from AgentSKU)
     - Sets status to completed or failed
+    - Safe no-op if execution already completed/failed/rejected
     """
     execution_id = execution.id
-    now = now_iso()
+    if getattr(execution, "status", None) in {"completed", "failed", "rejected"}:
+        return
     
     try:
-        # Parse input
-        input_data = {}
-        if execution.input_json:
-            try:
-                input_data = json.loads(execution.input_json)
-            except json.JSONDecodeError:
-                input_data = {}
-        
-        # Stub execution: echo input
-        result = {"ok": True, "echo": input_data}
-        
-        # Mark completed
-        session.execute(
-            update(AgentExecution)
-            .where(AgentExecution.id == execution_id)
-            .values(
-                status="completed",
-                result_json=json.dumps(result),
-                finished_at=now_iso(),
-                updated_at=now_iso(),
-            )
-        )
-        session.commit()
-        
-        logger.debug(f"Execution {execution_id} completed")
-        
-    except Exception as e:
-        # Mark failed
-        error_msg = str(e)[:500]  # Truncate long messages
-        
-        try:
+        # Load agent_code from SKU
+        sku = session.execute(
+            select(AgentSKU).where(AgentSKU.id == execution.agent_sku_id)
+        ).scalar_one_or_none()
+        agent_code = sku.code if sku else None
+        if not agent_code:
+            raise RuntimeError("agent_code not found for execution")
+
+        runner = get_runner(agent_code)
+        if not runner:
+            now = now_iso()
             session.execute(
                 update(AgentExecution)
                 .where(AgentExecution.id == execution_id)
+                .where(AgentExecution.status == "running")
                 .values(
                     status="failed",
-                    error_code="execution_failed",
+                    error_code="runner_not_found",
+                    error_message=f"runner_not_found: {agent_code}",
+                    finished_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+            return
+
+        # Parse payload
+        payload: dict = {}
+        if execution.input_json:
+            payload = json.loads(execution.input_json)
+
+        # Execute runner
+        try:
+            exec_uuid = UUID(str(execution_id))
+        except Exception:
+            exec_uuid = UUID(int=0)
+
+        result = runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid)
+        if not isinstance(result, dict):
+            raise TypeError("runner_result_invalid: runner must return dict")
+
+        # Ensure JSON-serializable
+        result_json = json.dumps(result)
+
+        now = now_iso()
+        session.execute(
+            update(AgentExecution)
+            .where(AgentExecution.id == execution_id)
+            .where(AgentExecution.status == "running")
+            .values(
+                status="completed",
+                result_json=result_json,
+                error_code=None,
+                error_message=None,
+                finished_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+
+        logger.debug(f"Execution {execution_id} completed (agent_code={agent_code})")
+        
+    except Exception as e:
+        # Mark failed
+        error_code = "validation_error" if isinstance(e, ValueError) else "execution_failed"
+        error_msg = f"{type(e).__name__}: {e}"[:500]  # Truncate long messages
+        
+        try:
+            now = now_iso()
+            session.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == execution_id)
+                .where(AgentExecution.status == "running")
+                .values(
+                    status="failed",
+                    error_code=error_code,
                     error_message=error_msg,
-                    finished_at=now_iso(),
-                    updated_at=now_iso(),
+                    finished_at=now,
+                    updated_at=now,
                 )
             )
             session.commit()

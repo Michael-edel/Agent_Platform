@@ -210,6 +210,20 @@ Execution API позволяет запускать агентов и отсле
 **Idempotency:**
 Повторный запрос с тем же `(tenant_id, agent_code, idempotency_key)` возвращает существующий execution без создания дубликата.
 
+### Пример: demo.text_stats (free)
+
+Встроенный demo-агент без внешних сервисов. Не требует `TenantAgentSubscription` (pricing_model=`free`), но требует `TenantAgent.status=enabled`.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/agents/demo.text_stats/execute" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: tenant-demo" \
+  -d '{
+    "input": { "text": "Привет мир\nHello world" },
+    "idempotency_key": "demo-1"
+  }'
+```
+
 #### GET /api/v1/agents/executions/{execution_id}
 
 Получить детали выполнения.
