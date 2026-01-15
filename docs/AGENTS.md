@@ -281,6 +281,36 @@ curl -X POST "http://localhost:8000/api/v1/agents/demo.sentiment_basic/execute" 
 
 Для `failed`: поле `error.meta.duration_ms` (мс) — длительность до ошибки.
 
+## Usage pricing v1 (invoice preview)
+
+### Правила
+
+- **Billable usage**: только executions со статусом `completed`
+- `failed` / `timeout` / `cancelled` / `rejected` **не биллим**
+- **Период**: календарный месяц в UTC, формат `YYYY-MM`
+
+### Конфигурация pricing (AgentSKU)
+
+Usage pricing хранится в `agent_skus` (v1):
+
+- `usage_enabled` (bool)
+- `usage_unit` (string, default `execution`)
+- `usage_price_cents` (int)
+- `usage_included_per_month` (int)
+
+### Агрегация
+
+При переходе execution в `completed`:
+
+- инкрементируется `tenant_usage_monthly.completed_executions` по `(tenant_id, agent_code, year, month)`
+- идемпотентность через `AgentExecution.usage_counted_at` (если уже выставлен — повторно не считаем)
+
+### Invoice preview endpoint
+
+`GET /api/v1/tenant/billing/usage-preview?period=YYYY-MM`
+
+Возвращает preview начислений по usage pricing v1 для tenant'а за период.
+
 ## Timeouts
 
 Таймауты задаются на уровне registry (без изменений схемы БД):

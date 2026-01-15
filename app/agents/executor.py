@@ -32,6 +32,45 @@ from app.agents.metrics import inc_completed, inc_failed
 logger = logging.getLogger(__name__)
 
 
+def _month_key_utc(now: datetime) -> tuple[int, int]:
+    return now.year, now.month
+
+
+def _increment_monthly_usage(engine, tenant_id: str, agent_code: str, year: int, month: int, now: str) -> None:
+    """
+    Increment tenant_usage_monthly.completed_executions (best-effort, idempotent via caller guard).
+    """
+    import uuid as _uuid
+    usage_id = str(_uuid.uuid4())
+
+    stmt = text(
+        """
+        INSERT INTO tenant_usage_monthly
+          (id, tenant_id, agent_code, year, month, completed_executions, updated_at)
+        VALUES
+          (:id, :tenant_id, :agent_code, :year, :month, 1, :updated_at)
+        ON CONFLICT (tenant_id, agent_code, year, month)
+        DO UPDATE SET
+          completed_executions = tenant_usage_monthly.completed_executions + 1,
+          updated_at = excluded.updated_at
+        """
+    )
+    # SQLite and Postgres both support this ON CONFLICT form.
+    with engine.connect() as conn:
+        conn.execute(
+            stmt,
+            {
+                "id": usage_id,
+                "tenant_id": tenant_id,
+                "agent_code": agent_code,
+                "year": year,
+                "month": month,
+                "updated_at": now,
+            },
+        )
+        conn.commit()
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -237,6 +276,29 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
         )
         session.commit()
         if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+            # Usage-based billing: count only completed executions and only once.
+            try:
+                # Skip if already counted.
+                counted = session.execute(
+                    select(AgentExecution.usage_counted_at).where(AgentExecution.id == execution_id)
+                ).scalar_one_or_none()
+                if not counted and bool(getattr(sku, "usage_enabled", False)):
+                    # Mark counted first (idempotency), then increment aggregate.
+                    mark = session.execute(
+                        update(AgentExecution)
+                        .where(AgentExecution.id == execution_id)
+                        .where(AgentExecution.usage_counted_at.is_(None))
+                        .values(usage_counted_at=now, updated_at=now)
+                    )
+                    session.commit()
+                    if getattr(mark, "rowcount", 0) and getattr(mark, "rowcount", 0) > 0:
+                        dt_now = datetime.now(timezone.utc)
+                        year, month = _month_key_utc(dt_now)
+                        _increment_monthly_usage(session.get_bind(), execution.tenant_id, agent_code, year, month, now)
+            except Exception:
+                # Billing aggregation should not break execution completion.
+                logger.warning("Failed to record usage-based billing aggregate", exc_info=True)
+
             inc_completed(agent_code)
 
         logger.debug(f"Execution {execution_id} completed (agent_code={agent_code})")

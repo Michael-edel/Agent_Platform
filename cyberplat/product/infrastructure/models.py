@@ -239,6 +239,11 @@ class AgentSKU(Base):
     description = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="active", index=True)  # active, deprecated, disabled
     pricing_model = Column(String, nullable=False)  # subscription, usage_based
+    # Usage pricing v1 (minimal schema)
+    usage_enabled = Column(Boolean, nullable=False, default=False)
+    usage_price_cents = Column(Integer, nullable=True)
+    usage_included_per_month = Column(Integer, nullable=False, default=0)
+    usage_unit = Column(String, nullable=False, default="execution")
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
     
@@ -316,9 +321,30 @@ class AgentExecution(Base):
     finished_at = Column(String, nullable=True)
     cancel_requested = Column(Boolean, nullable=False, default=False)
     cancel_requested_at = Column(String, nullable=True)
+    usage_counted_at = Column(String, nullable=True)
     
     __table_args__ = (
         UniqueConstraint("tenant_id", "agent_sku_id", "idempotency_key", name="uq_execution_idempotency"),
         Index("idx_agent_executions_tenant_created", "tenant_id", "created_at"),
         Index("idx_agent_executions_status", "status"),
+    )
+
+
+class TenantUsageMonthly(Base):
+    """Monthly usage aggregation for usage-based billing (completed executions only)."""
+
+    __tablename__ = "tenant_usage_monthly"
+
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    agent_code = Column(String, nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    completed_executions = Column(Integer, nullable=False, default=0)
+    updated_at = Column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_code", "year", "month", name="uq_tenant_usage_monthly"),
+        Index("idx_tenant_usage_monthly_tenant_period", "tenant_id", "year", "month"),
+        Index("idx_tenant_usage_monthly_agent_period", "agent_code", "year", "month"),
     )

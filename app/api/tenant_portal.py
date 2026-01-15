@@ -20,7 +20,15 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan, AgentSKU, TenantAgent, TenantAgentSubscription
+from cyberplat.product.infrastructure.models import (
+    TenantPlan,
+    TenantPortalToken,
+    Plan,
+    AgentSKU,
+    TenantAgent,
+    TenantAgentSubscription,
+    TenantUsageMonthly,
+)
 from cyberplat.billing.infrastructure.models_sqlalchemy import (
     TenantSubscription,
     BillingUsage,
@@ -111,6 +119,27 @@ class AgentCatalogItem(BaseModel):
 class AgentCatalogResponse(BaseModel):
     """Agent catalog for tenant."""
     items: List[AgentCatalogItem]
+
+
+class UsagePreviewLine(BaseModel):
+    agent_code: str
+    unit: str
+    used: int
+    included: int
+    billable: int
+    price_cents: int
+    amount_cents: int
+
+
+class UsagePreviewTotals(BaseModel):
+    amount_cents: int
+
+
+class UsagePreviewResponse(BaseModel):
+    period: str
+    currency: str
+    lines: List[UsagePreviewLine]
+    totals: UsagePreviewTotals
 
 
 # ============================================
@@ -341,6 +370,92 @@ async def get_usage(
         logger.exception(f"Error getting usage for tenant {tenant_id}")
     
     return result
+
+
+@router.get("/tenant/billing/usage-preview", response_model=UsagePreviewResponse)
+async def get_usage_preview(
+    tenant_id: str = Depends(tenant_portal_auth),
+    period: Optional[str] = Query(None, description="Period in YYYY-MM format"),
+) -> UsagePreviewResponse:
+    """
+    Usage-based billing preview for a period (calendar month UTC).
+
+    Rules:
+    - Billable usage = completed executions only (aggregated table)
+    - Only agents with usage pricing enabled AND enabled for tenant are shown
+    """
+    if not period:
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    try:
+        year_s, month_s = period.split("-", 1)
+        year = int(year_s)
+        month = int(month_s)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid period format, expected YYYY-MM")
+
+    engine = get_engine()
+    lines: List[UsagePreviewLine] = []
+    total_amount = 0
+
+    with engine.connect() as conn:
+        # Agents enabled for tenant with usage pricing enabled.
+        sku_rows = conn.execute(
+            select(
+                AgentSKU.code,
+                AgentSKU.usage_unit,
+                AgentSKU.usage_price_cents,
+                AgentSKU.usage_included_per_month,
+            )
+            .join(TenantAgent, TenantAgent.agent_sku_id == AgentSKU.id)
+            .where(TenantAgent.tenant_id == tenant_id)
+            .where(TenantAgent.status == "enabled")
+            .where(AgentSKU.status == "active")
+            .where(AgentSKU.usage_enabled.is_(True))
+            .order_by(AgentSKU.code)
+        ).fetchall()
+
+        agent_codes = [r[0] for r in sku_rows]
+
+        usage_map: dict[str, int] = {}
+        if agent_codes:
+            usage_rows = conn.execute(
+                select(TenantUsageMonthly.agent_code, TenantUsageMonthly.completed_executions)
+                .where(TenantUsageMonthly.tenant_id == tenant_id)
+                .where(TenantUsageMonthly.year == year)
+                .where(TenantUsageMonthly.month == month)
+                .where(TenantUsageMonthly.agent_code.in_(agent_codes))
+            ).fetchall()
+            for row in usage_rows:
+                usage_map[row[0]] = int(row[1] or 0)
+
+        for code, unit, price_cents, included in sku_rows:
+            used = usage_map.get(code, 0)
+            included = int(included or 0)
+            price_cents = int(price_cents or 0)
+            unit = str(unit or "execution")
+            billable = max(0, used - included)
+            amount = billable * price_cents
+            total_amount += amount
+
+            lines.append(
+                UsagePreviewLine(
+                    agent_code=code,
+                    unit=unit,
+                    used=used,
+                    included=included,
+                    billable=billable,
+                    price_cents=price_cents,
+                    amount_cents=amount,
+                )
+            )
+
+    return UsagePreviewResponse(
+        period=period,
+        currency="KZT",
+        lines=lines,
+        totals=UsagePreviewTotals(amount_cents=total_amount),
+    )
 
 
 @router.get("/tenant/status", response_model=StatusResponse)
