@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.database import get_engine
 from cyberplat.product.infrastructure.models import BillingJob, UsageInvoice
+from cyberplat.billing.payment_status import set_invoice_payment_status
 
 
 def now_iso() -> str:
@@ -189,41 +190,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                     next_attempt_at=None,
                 )
             )
-            inv_row = session.execute(
-                select(UsageInvoice.finalized_at, UsageInvoice.paid_at)
-                .where(UsageInvoice.id == job.invoice_id)
-                .where(UsageInvoice.tenant_id == job.tenant_id)
-                .limit(1)
-            ).fetchone()
-            finalized_at = inv_row[0] if inv_row else None
-            paid_was_none = (inv_row[1] if inv_row else None) in (None, "")
-            session.execute(
-                update(UsageInvoice)
-                .where(UsageInvoice.id == job.invoice_id)
-                .where(UsageInvoice.tenant_id == job.tenant_id)
-                .where(UsageInvoice.payment_status != "paid")
-                .values(
-                    payment_status="paid",
-                    payment_status_updated_at=now,
-                    paid_at=case((UsageInvoice.paid_at.is_(None), now), else_=UsageInvoice.paid_at),
-                )
-            )
-            session.commit()
-            # Observe time-to-paid once (best-effort)
-            if paid_was_none:
-                try:
-                    if finalized_at:
-                        dt_final = datetime.fromisoformat(str(finalized_at))
-                        if dt_final.tzinfo is None:
-                            dt_final = dt_final.replace(tzinfo=timezone.utc)
-                        dt_now = datetime.fromisoformat(str(now))
-                        if dt_now.tzinfo is None:
-                            dt_now = dt_now.replace(tzinfo=timezone.utc)
-                        from cyberplat.billing.metrics import observe_invoice_time_to_paid
-
-                        observe_invoice_time_to_paid(max(0.0, (dt_now - dt_final).total_seconds()))
-                except Exception:
-                    pass
+            inv = session.execute(
+                select(UsageInvoice).where(UsageInvoice.id == job.invoice_id, UsageInvoice.tenant_id == job.tenant_id)
+            ).scalar_one_or_none()
+            if inv:
+                set_invoice_payment_status(inv, "paid", provider=str(job.provider or "unknown"), now=now)
+                session.commit()
             try:
                 from cyberplat.billing.metrics import observe_job_duration
 
@@ -286,35 +258,7 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                             inc_provider_refresh(str(getattr(db_job, "locked_by", "") or "unknown"), "stripe", "ok", 1)
                         except Exception:
                             pass
-                        session.execute(
-                            update(UsageInvoice)
-                            .where(UsageInvoice.id == inv.id)
-                            .where(UsageInvoice.tenant_id == inv.tenant_id)
-                            .where(UsageInvoice.payment_status != payment_status)
-                            .values(
-                                **(
-                                    {
-                                        "payment_status": payment_status,
-                                        "payment_status_updated_at": now,
-                                    }
-                                    | (
-                                        {"paid_at": case((UsageInvoice.paid_at.is_(None), now), else_=UsageInvoice.paid_at)}
-                                        if payment_status == "paid"
-                                        else {}
-                                    )
-                                    | (
-                                        {
-                                            "failed_at": case(
-                                                (UsageInvoice.failed_at.is_(None), now),
-                                                else_=UsageInvoice.failed_at,
-                                            )
-                                        }
-                                        if payment_status == "failed"
-                                        else {}
-                                    )
-                                )
-                            )
-                        )
+                        set_invoice_payment_status(inv, payment_status, provider="stripe", now=now)
                         session.execute(
                             update(BillingJob)
                             .where(BillingJob.id == db_job.id)
@@ -328,21 +272,6 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                             )
                         )
                         session.commit()
-                        if payment_status == "paid" and getattr(inv, "paid_at", None) in (None, ""):
-                            try:
-                                finalized_at = getattr(inv, "finalized_at", None)
-                                if finalized_at:
-                                    dt_final = datetime.fromisoformat(str(finalized_at))
-                                    if dt_final.tzinfo is None:
-                                        dt_final = dt_final.replace(tzinfo=timezone.utc)
-                                    dt_now = datetime.fromisoformat(str(now))
-                                    if dt_now.tzinfo is None:
-                                        dt_now = dt_now.replace(tzinfo=timezone.utc)
-                                    from cyberplat.billing.metrics import observe_invoice_time_to_paid
-
-                                    observe_invoice_time_to_paid(max(0.0, (dt_now - dt_final).total_seconds()))
-                            except Exception:
-                                pass
                         try:
                             from cyberplat.billing.metrics import observe_job_duration
 
@@ -449,17 +378,7 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                         last_error_message=err_msg,
                     )
                 )
-                session.execute(
-                    update(UsageInvoice)
-                    .where(UsageInvoice.id == inv.id)
-                    .where(UsageInvoice.tenant_id == inv.tenant_id)
-                    .where(UsageInvoice.payment_status != "failed")
-                    .values(
-                        payment_status="failed",
-                        payment_status_updated_at=now,
-                        failed_at=case((UsageInvoice.failed_at.is_(None), now), else_=UsageInvoice.failed_at),
-                    )
-                )
+                set_invoice_payment_status(inv, "failed", provider=str(provider_name or "unknown"), now=now)
                 session.commit()
                 try:
                     from cyberplat.billing.metrics import inc_job_failure_reason
@@ -492,13 +411,7 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 )
             )
             # Keep invoice in processing for a retryable failure.
-            session.execute(
-                update(UsageInvoice)
-                .where(UsageInvoice.id == inv.id)
-                .where(UsageInvoice.tenant_id == inv.tenant_id)
-                .where(UsageInvoice.payment_status != "processing")
-                .values(payment_status="processing", payment_status_updated_at=now)
-            )
+            set_invoice_payment_status(inv, "processing", provider=str(provider_name or "unknown"), now=now)
             session.commit()
             try:
                 from cyberplat.billing.metrics import observe_job_duration
@@ -526,47 +439,8 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
             )
         )
         payment_status = "paid" if result.status == "paid" else ("failed" if result.status == "failed" else "processing")
-        paid_was_none = getattr(inv, "paid_at", None) in (None, "")
-        session.execute(
-            update(UsageInvoice)
-            .where(UsageInvoice.id == job.invoice_id)
-            .where(UsageInvoice.tenant_id == job.tenant_id)
-            .where(UsageInvoice.payment_status != payment_status)
-            .values(
-                **(
-                    {
-                        "payment_status": payment_status,
-                        "payment_status_updated_at": now,
-                    }
-                    | (
-                        {"paid_at": case((UsageInvoice.paid_at.is_(None), now), else_=UsageInvoice.paid_at)}
-                        if payment_status == "paid"
-                        else {}
-                    )
-                    | (
-                        {"failed_at": case((UsageInvoice.failed_at.is_(None), now), else_=UsageInvoice.failed_at)}
-                        if payment_status == "failed"
-                        else {}
-                    )
-                )
-            )
-        )
+        set_invoice_payment_status(inv, payment_status, provider=str(provider_name or "unknown"), now=now)
         session.commit()
-        if payment_status == "paid" and paid_was_none:
-            try:
-                finalized_at = getattr(inv, "finalized_at", None)
-                if finalized_at:
-                    dt_final = datetime.fromisoformat(str(finalized_at))
-                    if dt_final.tzinfo is None:
-                        dt_final = dt_final.replace(tzinfo=timezone.utc)
-                    dt_now = datetime.fromisoformat(str(now))
-                    if dt_now.tzinfo is None:
-                        dt_now = dt_now.replace(tzinfo=timezone.utc)
-                    from cyberplat.billing.metrics import observe_invoice_time_to_paid
-
-                    observe_invoice_time_to_paid(max(0.0, (dt_now - dt_final).total_seconds()))
-            except Exception:
-                pass
         try:
             from cyberplat.billing.metrics import observe_job_duration
 

@@ -112,11 +112,21 @@ billing_jobs_failure_reasons_total = _get_or_create_collector(
     ),
 )
 
+usage_invoices_payment_status_transitions_total = _get_or_create_collector(
+    "usage_invoices_payment_status_transitions_total",
+    lambda: Counter(
+        "usage_invoices_payment_status_transitions_total",
+        "Usage invoice payment_status transitions",
+        ["from", "to", "provider"],  # unpaid|processing|paid|failed
+    ),
+)
+
 usage_invoice_time_to_paid_seconds = _get_or_create_collector(
     "usage_invoice_time_to_paid_seconds",
     lambda: Histogram(
         "usage_invoice_time_to_paid_seconds",
         "Time from invoice.finalized_at to paid_at in seconds (observed once per invoice)",
+        ["provider"],  # stripe|kaspi|unknown
         buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 21600),
     ),
 )
@@ -259,10 +269,23 @@ def set_invoice_funnel_counts(counts: Dict[str, int]) -> None:
         usage_invoices_payment_status_total.labels(status=st).set(int(counts.get(st, 0) or 0))
 
 
-def observe_invoice_time_to_paid(seconds: float) -> None:
+def observe_invoice_time_to_paid(provider: str, seconds: float) -> None:
     if not _PROM_AVAILABLE:
         return
-    usage_invoice_time_to_paid_seconds.observe(max(0.0, float(seconds)))
+    usage_invoice_time_to_paid_seconds.labels(provider=str(provider or "unknown")).observe(max(0.0, float(seconds)))
+
+
+def inc_invoice_payment_status_transition(from_status: str, to_status: str, provider: Optional[str]) -> None:
+    if not _PROM_AVAILABLE:
+        return
+    f = str(from_status or "").strip().lower()
+    t = str(to_status or "").strip().lower()
+    if not f or not t or f == t:
+        return
+    p = (provider or "").strip().lower()
+    if p not in {"stripe", "kaspi"}:
+        p = "unknown"
+    usage_invoices_payment_status_transitions_total.labels(**{"from": f, "to": t, "provider": p}).inc()
 
 
 def inc_job_failure_reason(provider: str, error_code: str, count: int = 1) -> None:

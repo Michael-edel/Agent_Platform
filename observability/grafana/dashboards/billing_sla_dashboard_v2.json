@@ -52,27 +52,45 @@
     },
     {
       "type": "timeseries",
-      "title": "Time-to-paid (p50/p95)",
+      "title": "Time-to-paid p95 (by provider)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(usage_invoice_time_to_paid_seconds_bucket[15m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(usage_invoice_time_to_paid_seconds_bucket[15m])) by (le, provider))",
           "refId": "A",
-          "legendFormat": "p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(usage_invoice_time_to_paid_seconds_bucket[15m])) by (le))",
-          "refId": "B",
-          "legendFormat": "p95"
+          "legendFormat": "{{provider}} p95"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Billing job outcomes (rate 5m)",
+      "title": "Paid / Failed rate (5m)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "sum(rate(usage_invoices_payment_status_transitions_total{to=\"paid\"}[5m]))", "refId": "A", "legendFormat": "paid" },
+        { "expr": "sum(rate(usage_invoices_payment_status_transitions_total{to=\"failed\"}[5m]))", "refId": "B", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Conversion processing → paid (24h)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(usage_invoices_payment_status_transitions_total{from=\"processing\",to=\"paid\"}[24h])) / clamp_min(sum(increase(usage_invoices_payment_status_transitions_total{from=\"processing\"}[24h])), 1)",
+          "refId": "A"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Billing job outcomes (rate 5m)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 8 },
       "targets": [
         { "expr": "sum(rate(billing_jobs_processed_total[5m])) by (result)", "refId": "A", "legendFormat": "{{result}}" }
       ]
@@ -81,7 +99,7 @@
       "type": "timeseries",
       "title": "Failure reasons (top 10, rate 15m)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 8 },
       "targets": [
         {
           "expr": "topk(10, sum(rate(billing_jobs_failure_reasons_total[15m])) by (provider, error_code))",
@@ -94,7 +112,7 @@
       "type": "timeseries",
       "title": "Queue depth",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
       "targets": [
         { "expr": "billing_jobs_queue_depth{status=~\"pending|pending_retry|processing\"}", "refId": "A", "legendFormat": "{{status}}" }
       ]
@@ -103,7 +121,7 @@
       "type": "timeseries",
       "title": "Retry lag (max overdue, seconds)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
       "targets": [
         { "expr": "billing_jobs_next_attempt_lag_seconds", "refId": "A" }
       ]
@@ -112,7 +130,7 @@
       "type": "timeseries",
       "title": "Provider refresh (rate 5m)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "x": 0, "y": 30, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 38, "w": 12, "h": 8 },
       "targets": [
         { "expr": "sum(rate(billing_jobs_provider_refresh_total{result=\"ok\"}[5m])) by (provider)", "refId": "A", "legendFormat": "{{provider}} ok" },
         { "expr": "sum(rate(billing_jobs_provider_refresh_total{result=\"error\"}[5m])) by (provider)", "refId": "B", "legendFormat": "{{provider}} error" }
@@ -122,7 +140,7 @@
       "type": "timeseries",
       "title": "Job processing duration p95 (seconds)",
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "x": 12, "y": 30, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 38, "w": 12, "h": 8 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(billing_job_process_duration_seconds_bucket[5m])) by (le, provider))",

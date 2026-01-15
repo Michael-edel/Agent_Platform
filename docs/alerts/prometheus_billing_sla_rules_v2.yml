@@ -28,3 +28,24 @@ groups:
           summary: "Billing job failures spike"
           description: "Failure reasons rate > 1 in last 10m"
 
+      - alert: UsageInvoiceConversionDropProcessingToPaid
+        expr: |
+          (sum(increase(usage_invoices_payment_status_transitions_total{from="processing",to="paid"}[30m])) == 0)
+          and
+          (sum(increase(usage_invoices_payment_status_transitions_total{from="processing"}[30m])) > 0)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No processing→paid conversions while processing transitions exist"
+          description: "processing→paid == 0 for 30m, but processing→* > 0"
+
+      - alert: UsageInvoiceFailedSpikeByProvider
+        expr: sum(rate(usage_invoices_payment_status_transitions_total{to="failed",provider!="unknown"}[10m])) by (provider) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Invoice failures spike by provider"
+          description: "failed transitions rate > 0.5/s per provider over 10m"
+
