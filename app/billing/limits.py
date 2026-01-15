@@ -10,6 +10,17 @@ from sqlalchemy import select, func
 logger = logging.getLogger(__name__)
 
 
+class PlanLimitExceededError(Exception):
+    """Raised when a plan limit would be exceeded."""
+    
+    def __init__(self, metric: str, limit: int, used: int, tenant_id: str = ""):
+        self.metric = metric
+        self.limit = limit
+        self.used = used
+        self.tenant_id = tenant_id
+        super().__init__(f"Plan limit exceeded for {metric}: {used}/{limit}")
+
+
 @dataclass
 class LimitCheckResult:
     """Result of a limit check."""

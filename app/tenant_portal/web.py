@@ -234,6 +234,26 @@ async def dashboard(request: Request):
                 "webhooks_failed_24h": webhook_errors,
                 "orders_failed_24h": order_errors,
             }
+            
+            # Check for limit exceeded errors in last 24h
+            limit_exceeded_q = (
+                select(BillingWebhookEvent.error)
+                .where(BillingWebhookEvent.tenant_id == tenant_id)
+                .where(BillingWebhookEvent.status.in_(["failed", "rejected"]))
+                .where(BillingWebhookEvent.received_at >= since_24h.isoformat())
+                .where(BillingWebhookEvent.error.like("%plan_limit_exceeded%"))
+                .limit(50)
+            )
+            limit_rows = conn.execute(limit_exceeded_q).fetchall()
+            
+            exceeded_metrics = set()
+            for row in limit_rows:
+                if row[0] and "plan_limit_exceeded:" in row[0]:
+                    parts = row[0].split("plan_limit_exceeded:")
+                    if len(parts) > 1:
+                        exceeded_metrics.add(parts[1].split()[0])
+            
+            status_data["limit_exceeded_metrics"] = list(exceeded_metrics)
     except Exception as e:
         logger.exception("Dashboard data fetch error")
     
@@ -307,6 +327,7 @@ async def dashboard(request: Request):
         "subscription": subscription_data,
         "limits": limits_data,
         "period": current_period,
+        "limit_exceeded_metrics": status_data.get("limit_exceeded_metrics", []),
     })
 
 

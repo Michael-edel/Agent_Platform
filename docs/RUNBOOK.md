@@ -450,6 +450,12 @@ Bundle содержит tenant-scoped метаданные для обращен
 | >= 80% лимита | Warning в UI |
 | >= 100% лимита | Операция отклоняется |
 
+### Где применяется
+
+- Webhook ingestion (`/api/v1/billing/webhook/stripe`, `/api/v1/billing/webhook/kaspi`)
+- Order creation
+- Document upload events
+
 ### HTTP ответы при превышении
 
 При превышении лимита операция возвращает:
@@ -459,11 +465,26 @@ Bundle содержит tenant-scoped метаданные для обращен
   "error": "plan_limit_exceeded",
   "metric": "documents",
   "limit": 1000,
-  "used": 1000
+  "used": 1000,
+  "tenant_id": "t1"
 }
 ```
 
 HTTP код: `429 Too Many Requests`
+
+### Что сохраняется в БД
+
+При отклонении из-за лимита:
+- `BillingWebhookEvent.status = "rejected"` или `"failed"`
+- `BillingWebhookEvent.error = "plan_limit_exceeded:documents"`
+- Без `raw_json` / `payload`
+
+### Idempotency
+
+Повторный запрос с тем же `event_id`:
+- Возвращает тот же HTTP 429
+- Не создаёт дублей записей
+- Не увеличивает usage
 
 ### Что видит клиент
 

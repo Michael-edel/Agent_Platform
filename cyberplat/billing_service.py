@@ -11,14 +11,8 @@ from calendar import monthrange
 logger = logging.getLogger(__name__)
 
 
-class PlanLimitExceededError(Exception):
-    """Raised when a plan limit would be exceeded."""
-    
-    def __init__(self, metric: str, limit: int, used: int):
-        self.metric = metric
-        self.limit = limit
-        self.used = used
-        super().__init__(f"Plan limit exceeded for {metric}: {used}/{limit}")
+# Import from central location
+from app.billing.limits import PlanLimitExceededError
 
 
 class BillingService:
@@ -265,6 +259,7 @@ class BillingService:
                     metric=metric,
                     limit=limit_result.limit,
                     used=limit_result.used,
+                    tenant_id=tenant_id,
                 )
         except PlanLimitExceededError:
             raise

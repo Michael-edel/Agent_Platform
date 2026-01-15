@@ -5,6 +5,13 @@
 {% block content %}
 <h4 class="mb-4">Dashboard</h4>
 
+{% if limit_exceeded_metrics %}
+<div class="alert alert-danger mb-4">
+    <strong>Plan limit exceeded for:</strong> {{ limit_exceeded_metrics | join(", ") }}.
+    Some operations may be rejected. Consider upgrading your plan or contact support.
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-md-6">
         <div class="card">

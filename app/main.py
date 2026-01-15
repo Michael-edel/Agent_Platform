@@ -73,6 +73,24 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Exception handler for plan limit exceeded
+from app.billing.limits import PlanLimitExceededError
+
+@app.exception_handler(PlanLimitExceededError)
+async def plan_limit_exceeded_handler(request: Request, exc: PlanLimitExceededError):
+    """Return 429 with structured JSON for plan limit exceeded."""
+    logger.warning(f"Plan limit exceeded: tenant={exc.tenant_id}, metric={exc.metric}")
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "plan_limit_exceeded",
+            "metric": exc.metric,
+            "limit": exc.limit,
+            "used": exc.used,
+            "tenant_id": exc.tenant_id,
+        },
+    )
+
 # Настройка admin panel (SQLAdmin)
 from app.admin.setup import setup_admin
 setup_admin(app)

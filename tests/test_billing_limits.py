@@ -174,17 +174,19 @@ class TestPlanLimitExceededError:
 
     def test_error_has_attributes(self):
         """Error has expected attributes."""
-        from cyberplat.billing_service import PlanLimitExceededError
+        from app.billing.limits import PlanLimitExceededError
         
         error = PlanLimitExceededError(
             metric="documents",
             limit=100,
             used=100,
+            tenant_id="t1",
         )
         
         assert error.metric == "documents"
         assert error.limit == 100
         assert error.used == 100
+        assert error.tenant_id == "t1"
         assert "documents" in str(error)
         assert "100" in str(error)
 
