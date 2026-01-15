@@ -247,3 +247,25 @@ class AgentSKU(Base):
         Index("idx_agent_skus_code", "code"),
         Index("idx_agent_skus_status", "status"),
     )
+
+
+class TenantAgent(Base):
+    """SQLAlchemy model for tenant-agent enablement."""
+    
+    __tablename__ = "tenant_agents"
+    
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    agent_sku_id = Column(String, ForeignKey("agent_skus.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="enabled", index=True)  # enabled, disabled, suspended
+    activated_at = Column(String, nullable=True)
+    disabled_at = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_sku_id", name="uq_tenant_agent"),
+        Index("idx_tenant_agents_tenant_id", "tenant_id"),
+        Index("idx_tenant_agents_agent_sku_id", "agent_sku_id"),
+        Index("idx_tenant_agents_status", "status"),
+    )

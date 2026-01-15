@@ -80,6 +80,76 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
+---
+
+## TenantAgent (подключение к tenant)
+
+### Обзор
+
+TenantAgent — это связь между tenant'ом и AgentSKU. Определяет, какие агенты доступны конкретному tenant'у.
+
+### Таблица: `tenant_agents`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK на tenant |
+| `agent_sku_id` | UUID | FK на agent_skus |
+| `status` | enum | `enabled`, `disabled`, `suspended` |
+| `activated_at` | timestamp | Когда агент был включён (nullable) |
+| `disabled_at` | timestamp | Когда агент был отключён (nullable) |
+| `created_at` | timestamp | Дата создания |
+| `updated_at` | timestamp | Дата обновления |
+
+### Ограничения
+
+- Уникальная пара `(tenant_id, agent_sku_id)`
+- FK на `agent_skus.id`
+
+### Статусы
+
+| Статус | Описание |
+|--------|----------|
+| `enabled` | Агент доступен для вызова |
+| `disabled` | Отключён вручную |
+| `suspended` | Отключён по политике (неоплата и т.п.) |
+
+### Guards (проверка доступа)
+
+Модуль `app/agents/guards.py` предоставляет функцию:
+
+```python
+from app.agents.guards import assert_agent_enabled, AgentNotFoundError, AgentNotEnabledError
+
+# Проверка доступа
+try:
+    tenant_agent = assert_agent_enabled(session, tenant_id, "sales_assistant")
+except AgentNotFoundError:
+    # Агент не существует
+except AgentNotEnabledError:
+    # Агент не включён для tenant'а
+```
+
+### Admin Panel
+
+Доступ через `/admin` → "Tenant Agents":
+
+- **Просмотр списка**: tenant_id, agent_sku_id, status, activated_at, disabled_at
+- **Создание**: Подключение агента к tenant'у
+- **Редактирование**: Изменение статуса
+- **Удаление**: Запрещено (используйте `status=disabled`)
+
+**Доступ**: только `platform_admin`
+
+### Важно
+
+⚠️ **Execution НЕ реализован**
+
+На данном этапе guards готовят проверку доступа для будущего Execution API.
+Сам вызов агентов будет добавлен в следующих итерациях.
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin
