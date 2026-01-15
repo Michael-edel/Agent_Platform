@@ -470,9 +470,30 @@ curl http://localhost:8000/ready    # Проверка готовности (з�
 Docker healthcheck настроен автоматически в `docker-compose.yml`.
 
 **Readiness для PostgreSQL:**
-- Проверяет подключение к БД
-- Проверяет, что версия схемы Alembic соответствует head
-- Возвращает `503` если схема не актуальна
+- Проверяет подключение к БД через `psycopg.connect()` (оригинальный DATABASE_URL)
+- Создаёт SQLAlchemy engine с нормализованным URL (`postgresql+psycopg://`)
+- Проверяет миграции через единую функцию `check_database_migration(engine)`
+- Отображает используемый драйвер в ответе (`database_driver`)
+
+**Пример ответа `/ready` (PostgreSQL):**
+```json
+{
+  "status": "ok",
+  "checks": {
+    "database": "ok (postgresql, driver: psycopg)",
+    "database_driver": "psycopg",
+    "database_migration": "ok (revision: abc123def456)",
+    "billing_service": "ok",
+    "entitlement_service": "ok"
+  }
+}
+```
+
+**Важно о DATABASE_URL:**
+- `postgresql://...` и `postgres://...` (Heroku style) автоматически нормализуются
+- `psycopg.connect()` использует оригинальный URL (без `+psycopg`)
+- SQLAlchemy/Alembic используют нормализованный URL (`postgresql+psycopg://`)
+- Если указан явный драйвер (`postgresql+asyncpg://`), он не модифицируется
 
 ### Observability
 

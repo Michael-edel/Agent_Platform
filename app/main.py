@@ -446,38 +446,31 @@ async def ready(request: Request):
                 cur.execute("SELECT 1")
                 cur.fetchone()
             
-            # Проверяем версию схемы Alembic (только для PostgreSQL)
+            # Проверяем версию схемы Alembic через единую функцию
+            # Используем тот же SQLAlchemy engine что и остальное приложение
             try:
-                from alembic.config import Config
-                from alembic import command
-                from alembic.script import ScriptDirectory
-                from alembic.runtime.migration import MigrationContext
                 from sqlalchemy import create_engine
+                from utils.db_migrations import check_database_migration
                 
-                # Получаем текущую версию из БД
-                # Используем нормализованный database_url с postgresql+psycopg:// для SQLAlchemy
+                # Создаём engine с нормализованным URL (postgresql+psycopg://)
                 engine = create_engine(normalized_database_url, pool_pre_ping=True)
-                with engine.connect() as migration_conn:
-                    context = MigrationContext.configure(migration_conn)
-                    current_rev = context.get_current_revision()
-                
-                # Получаем head версию из миграций
-                alembic_cfg = Config("alembic.ini")
-                script = ScriptDirectory.from_config(alembic_cfg)
-                head_rev = script.get_current_head()
                 
                 # Извлекаем имя драйвера из engine
                 driver_name = engine.dialect.driver
                 
-                if current_rev != head_rev:
-                    checks["checks"]["database"] = f"error: schema version mismatch (current: {current_rev or 'none'}, expected: {head_rev})"
-                    checks["checks"]["database_migration"] = "not_up_to_date"
-                    checks["checks"]["database_driver"] = driver_name
-                    checks["status"] = "degraded"
+                # Проверяем миграции через централизованную функцию
+                migration_ok, migration_message = check_database_migration(engine)
+                
+                checks["checks"]["database_driver"] = driver_name
+                checks["checks"]["database_migration"] = migration_message
+                
+                if migration_ok:
+                    checks["checks"]["database"] = f"ok (postgresql, driver: {driver_name})"
                 else:
                     checks["checks"]["database"] = f"ok (postgresql, driver: {driver_name})"
-                    checks["checks"]["database_migration"] = f"ok (revision: {current_rev})"
-                    checks["checks"]["database_driver"] = driver_name
+                    # Миграции не критичны для readiness, но отмечаем degraded если есть pending
+                    if "pending" in migration_message:
+                        checks["status"] = "degraded"
                 
                 engine.dispose()
             except Exception as migration_error:
@@ -485,7 +478,7 @@ async def ready(request: Request):
                 logger.warning(f"Failed to check Alembic migration version: {migration_error}")
                 checks["checks"]["database"] = "ok (postgresql, migration check failed)"
                 checks["checks"]["database_migration"] = f"warning: {str(migration_error)[:50]}"
-                checks["checks"]["database_driver"] = "psycopg"  # Известно из normalized_database_url
+                checks["checks"]["database_driver"] = "unknown"
             
             conn.close()
         except ImportError:
