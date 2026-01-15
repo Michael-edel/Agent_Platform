@@ -484,6 +484,73 @@ update_agent_subscription_via_event(
 
 ---
 
+## Webhook Mapping (Kaspi/Stripe Ready)
+
+### Обзор
+
+Входящие webhook payload от платежных систем нормализуются в `NormalizedBillingSignal`,
+который затем преобразуется в `AgentAddonSubscriptionUpdated` событие.
+
+### NormalizedBillingSignal
+
+```python
+@dataclass
+class NormalizedBillingSignal:
+    source: str  # stripe, kaspi, admin, test
+    event_type: str
+    tenant_id: str
+    agent_code: str
+    status: str  # active, inactive, canceled, past_due
+    external_ref: Optional[str] = None
+    effective_at: Optional[str] = None
+```
+
+### Mappers
+
+**Stripe:**
+- Event types: `customer.subscription.updated`, `customer.subscription.deleted`
+- Требуется `metadata.addon_type = "agent"`
+- Требуется `metadata.tenant_id`, `metadata.agent_code`
+
+**Kaspi:**
+- Event type: `SUBSCRIPTION_STATUS_CHANGED`
+- Требуется `addon_type = "agent"`
+- Требуется `tenant_id`, `agent_code`
+
+### Status Mapping
+
+| Stripe | Kaspi | Internal |
+|--------|-------|----------|
+| active, trialing | ACTIVE | active |
+| past_due, unpaid | PAST_DUE, SUSPENDED | past_due |
+| canceled | CANCELED | canceled |
+| incomplete | PENDING | inactive |
+
+### Dry-Run Mode
+
+Переменная окружения `BILLING_WEBHOOK_DRY_RUN=true`:
+- Маппинг выполняется
+- События логируются
+- БД **не изменяется**
+
+Полезно для тестирования webhook интеграции без риска.
+
+### Использование
+
+```python
+from cyberplat.billing.application.agent_addons_mapper import process_webhook_for_agent_addons
+
+# В webhook handler:
+process_webhook_for_agent_addons(
+    source="stripe",  # или "kaspi"
+    payload=webhook_payload,
+    session=db_session,
+    dry_run=False,  # или None для использования ENV
+)
+```
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin
