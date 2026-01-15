@@ -280,7 +280,7 @@ alembic upgrade head
 | Ссылка | Описание |
 |--------|----------|
 | Webhook Events (newest) | Все webhook события, новые первыми |
-| Webhook Errors | Webhook события с status=failed |
+| Webhook Errors | Webhook события с `status=failed` (ошибочные) |
 | Orders (newest) | Все заказы, новые первыми |
 | Subscriptions | Все подписки |
 

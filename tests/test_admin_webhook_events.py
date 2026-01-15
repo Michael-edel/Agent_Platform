@@ -128,3 +128,30 @@ class TestTruncateError:
         
         assert truncate_error(None) == ""
         assert truncate_error("") == ""
+
+
+class TestWebhookErrorsQuickLink:
+    """Tests for webhook errors quick link integration."""
+
+    def test_quick_link_uses_status_filter(self):
+        """Webhook Errors quick link has status=failed filter."""
+        from app.admin.links import QUICK_LINKS
+        
+        assert "webhook_errors" in QUICK_LINKS
+        url = QUICK_LINKS["webhook_errors"]["url"]
+        assert "status=failed" in url
+
+    def test_view_has_status_filter(self):
+        """BillingWebhookEventAdmin has status in column_filters."""
+        from app.admin.views import BillingWebhookEventAdmin
+        
+        view = BillingWebhookEventAdmin()
+        assert "status" in view.column_filters
+
+    def test_quick_link_url_is_valid(self):
+        """Quick link URL points to correct admin resource."""
+        from app.admin.links import QUICK_LINKS, ADMIN_ROUTES
+        
+        url = QUICK_LINKS["webhook_errors"]["url"]
+        expected_resource = ADMIN_ROUTES["billing_webhook_event"]
+        assert f"/admin/{expected_resource}/list" in url
