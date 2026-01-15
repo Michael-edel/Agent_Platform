@@ -252,26 +252,48 @@ class TenantSubscriptionAdmin(TenantScopedMixin, ModelView, model=TenantSubscrip
     }
 
 
+def truncate_error(text: str, max_length: int = 200) -> str:
+    """Truncate error text for safe display."""
+    if not text:
+        return ""
+    from markupsafe import escape
+    safe_text = str(escape(text))
+    if len(safe_text) > max_length:
+        return safe_text[:max_length] + "..."
+    return safe_text
+
+
 class BillingWebhookEventAdmin(TenantScopedMixin, ModelView, model=BillingWebhookEvent):
     """Admin view for Billing Webhook Events (read-only)."""
-    
+
     name = "Billing Webhook Event"
     name_plural = "Billing Webhook Events"
     icon = "fa-solid fa-bell"
-    
+
     can_create = False
     can_edit = False
     can_delete = False
+    can_view_details = True
+
+    # Security: raw_json excluded - only safe columns shown
+    column_list = ["id", "provider", "event_id", "tenant_id", "status", "error", "received_at", "processed_at"]
+    column_details_exclude_list = ["raw_json"]
     
-    # Note: raw_json excluded by listing only safe columns
-    column_list = ["id", "provider", "event_id", "tenant_id", "status", "received_at", "processed_at"]
-    column_searchable_list = ["event_id", "tenant_id", "provider"]
+    # Search by key identifiers
+    column_searchable_list = ["event_id", "tenant_id", "provider", "status"]
+    
+    # Filters for quick navigation
     column_filters = ["provider", "status", "tenant_id", "received_at"]
-    column_sortable_list = ["provider", "status", "received_at", "processed_at"]
-    page_size = 50
     
+    # Sorting by time fields
+    column_sortable_list = ["provider", "status", "received_at", "processed_at", "tenant_id"]
+    column_default_sort = ("received_at", True)  # Newest first
+    
+    page_size = 50
+
     column_formatters = {
         "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if m.tenant_id else "",
+        "error": lambda m, a: Markup(f'<span title="{truncate_error(m.error, 500)}">{truncate_error(m.error, 100)}</span>') if m.error else "",
     }
 
 

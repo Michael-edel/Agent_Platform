@@ -233,6 +233,26 @@ Drill-down доступен из: Tenant Plans, Subscriptions, Orders, Webhook E
 
 **Безопасность ссылок:** Все URL формируются через централизованные helpers (`app/admin/links.py`) с HTML escaping и URL encoding для защиты от XSS.
 
+### Webhook Events: поиск и фильтры
+
+Страница Billing Webhook Events поддерживает:
+
+**Поиск по:**
+- `event_id` — идентификатор события от провайдера
+- `provider` — Stripe, Kaspi и др.
+- `status` — pending, processed, failed
+- `tenant_id`
+
+**Фильтры:**
+- Provider (dropdown)
+- Status (dropdown)
+- Tenant ID
+- Received At (дата)
+
+**Сортировка:** по умолчанию newest first (`received_at` desc).
+
+**Безопасность:** Поле `raw_json` (сырой payload webhook) скрыто как в списке, так и в детальном просмотре. Поле `error` обрезается до 200 символов с HTML escaping.
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
