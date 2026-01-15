@@ -224,6 +224,23 @@ curl -X POST "http://localhost:8000/api/v1/agents/demo.text_stats/execute" \
   }'
 ```
 
+### Пример: demo.sentiment_basic (paid)
+
+Платный demo-агент (pricing_model=`subscription`). Требует активную add-on подписку:
+
+- `TenantAgent.status == "enabled"`
+- `TenantAgentSubscription.status == "active"` (иначе `HTTP 402 agent_addon_inactive`)
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/agents/demo.sentiment_basic/execute" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: tenant-demo" \
+  -d '{
+    "input": { "text": "good excellent" },
+    "idempotency_key": "paid-demo-1"
+  }'
+```
+
 ## Execution errors
 
 Единый контракт ошибок для `failed` (и `rejected` в части pricing/limits на API уровне).
