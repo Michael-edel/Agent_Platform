@@ -1,7 +1,7 @@
 # Makefile для Agent Platform / CyberPlat
 # Работает на Linux/Mac и Windows (через Git Bash)
 
-.PHONY: help install test lint check run recurring-kaspi recurring-stripe clean
+.PHONY: help install test lint check run worker docker-worker-logs recurring-kaspi recurring-stripe clean
 
 help: ## Показать справку по командам
 	@echo "Доступные команды:"
@@ -24,6 +24,12 @@ check: lint test ## Запустить lint + test
 
 run: ## Запустить FastAPI сервер
 	uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+worker: ## Запустить Billing Worker локально
+	@PYTHONPATH=. python -m cyberplat.billing.worker
+
+docker-worker-logs: ## Tail logs billing worker (docker-compose)
+	docker-compose logs -f worker
 
 recurring-kaspi: ## Запустить Kaspi recurring billing вручную
 	python scripts/run_kaspi_recurring.py

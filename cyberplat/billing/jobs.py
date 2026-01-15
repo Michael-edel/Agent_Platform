@@ -14,7 +14,7 @@ import random
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Literal, Optional
 
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
@@ -70,6 +70,8 @@ class DueJob:
     max_attempts: int
     next_attempt_at: Optional[str]
 
+JobOutcome = Literal["succeeded", "failed", "retried", "skipped"]
+
 
 def _eligible_query(now: str):
     return (
@@ -82,7 +84,7 @@ def _eligible_query(now: str):
     )
 
 
-def claim_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
+def claim_due_jobs(now: str, limit: int = 50, *, worker_id: Optional[str] = None) -> List[DueJob]:
     """
     Claim a batch of due jobs safely.
     - Postgres: uses SKIP LOCKED.
@@ -90,7 +92,7 @@ def claim_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
     """
     engine = get_engine()
     dialect = engine.dialect.name
-    worker = _worker_id()
+    worker = (worker_id or "").strip() or _worker_id()
     claimed: List[DueJob] = []
 
     with Session(engine) as session:
@@ -158,15 +160,15 @@ def claim_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
         return claimed
 
 
-def process_job(job: DueJob, now: str) -> None:
+def process_job(job: DueJob, now: str) -> JobOutcome:
     engine = get_engine()
     with Session(engine) as session:
         db_job = session.execute(select(BillingJob).where(BillingJob.id == job.id)).scalar_one_or_none()
         if not db_job:
-            return
+            return "skipped"
         # idempotency: if already terminal, do nothing
         if db_job.status in {"succeeded"}:
-            return
+            return "skipped"
 
         if _is_dry_run():
             # Mark succeeded and mark invoice paid
@@ -192,7 +194,7 @@ def process_job(job: DueJob, now: str) -> None:
                 .values(payment_status="paid")
             )
             session.commit()
-            return
+            return "succeeded"
 
         inv = session.execute(
             select(UsageInvoice).where(UsageInvoice.id == job.invoice_id, UsageInvoice.tenant_id == job.tenant_id)
@@ -215,7 +217,7 @@ def process_job(job: DueJob, now: str) -> None:
                 )
             )
             session.commit()
-            return
+            return "failed"
 
         provider_name = (job.provider or "").strip().lower()
         # If provider_ref already exists, never create another payment.
@@ -249,7 +251,7 @@ def process_job(job: DueJob, now: str) -> None:
                             )
                         )
                         session.commit()
-                        return
+                        return "skipped"
                 except Exception:
                     # Fall through to retry scheduling (but never create new payment).
                     pass
@@ -267,7 +269,7 @@ def process_job(job: DueJob, now: str) -> None:
                 )
             )
             session.commit()
-            return
+            return "skipped"
 
         # Import inside to keep tests monkeypatch-friendly
         from cyberplat.billing.providers.registry import get_provider
@@ -291,7 +293,7 @@ def process_job(job: DueJob, now: str) -> None:
                 )
             )
             session.commit()
-            return
+            return "retried"
 
         try:
             result = provider.create_payment(inv)
@@ -331,7 +333,7 @@ def process_job(job: DueJob, now: str) -> None:
                     .values(payment_status="failed")
                 )
                 session.commit()
-                return
+                return "failed"
 
             next_at = compute_next_attempt_at(current_attempt).isoformat()
             session.execute(
@@ -357,7 +359,7 @@ def process_job(job: DueJob, now: str) -> None:
                 .values(payment_status="processing")
             )
             session.commit()
-            return
+            return "retried"
 
         # Payment created successfully -> job succeeded; final paid/failed is reconciled by webhooks.
         session.execute(
@@ -384,14 +386,43 @@ def process_job(job: DueJob, now: str) -> None:
             .values(payment_status=payment_status)
         )
         session.commit()
+        return "succeeded"
 
 
 def process_due_billing_jobs(limit: int = 50) -> int:
+    stats = process_due_billing_jobs_stats(limit=limit)
+    return int(stats.get("processed_count", 0) or 0)
+
+
+def process_due_billing_jobs_stats(
+    *, limit: int = 50, worker_id: Optional[str] = None
+) -> Dict[str, int]:
+    """
+    Process due billing jobs and return iteration stats.
+    Intended for the billing worker (logging/ops).
+    """
     now = now_iso()
-    due = claim_due_jobs(now, limit=limit)
-    processed = 0
+    due = claim_due_jobs(now, limit=limit, worker_id=worker_id)
+    succeeded = 0
+    failed = 0
+    retried = 0
+    skipped = 0
     for job in due:
-        process_job(job, now)
-        processed += 1
-    return processed
+        outcome = process_job(job, now)
+        if outcome == "succeeded":
+            succeeded += 1
+        elif outcome == "failed":
+            failed += 1
+        elif outcome == "retried":
+            retried += 1
+        else:
+            skipped += 1
+
+    return {
+        "processed_count": len(due),
+        "succeeded_count": succeeded,
+        "failed_count": failed,
+        "retried_count": retried,
+        "skipped_count": skipped,
+    }
 

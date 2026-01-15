@@ -66,6 +66,34 @@ services:
     #       cpus: '0.5'
     #       memory: 512M
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-platform-worker
+    command: ["python", "-m", "cyberplat.billing.worker"]
+    env_file:
+      - .env
+    environment:
+      - PLATFORM_DB_PATH=${PLATFORM_DB_PATH:-platform.db}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - BILLING_WORKER_INTERVAL_SECONDS=${BILLING_WORKER_INTERVAL_SECONDS:-5}
+      - BILLING_WORKER_BATCH_SIZE=${BILLING_WORKER_BATCH_SIZE:-50}
+      - BILLING_WORKER_JITTER_SECONDS=${BILLING_WORKER_JITTER_SECONDS:-0}
+      - BILLING_WORKER_ID=${BILLING_WORKER_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - app-data:/app/data
+      - app-out:/app/out
+
   app-test:
     build:
       context: .

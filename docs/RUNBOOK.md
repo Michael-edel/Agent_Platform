@@ -254,6 +254,30 @@ ADMIN_TENANT_ID=your-tenant-id
 - Retry action в админке **не делает списаний** — только переводит job в `pending_retry`.
 - Если у job уже есть `provider_ref`, процессор **не создаёт новый payment**, а делает best-effort reconcile/refresh (для Stripe — `PaymentIntent.retrieve`).
 
+## Billing Worker
+
+Отдельный процесс для обработки `billing_jobs` (не привязан к HTTP серверу). Делает polling due jobs и применяет retry policy.
+
+### Запуск через docker-compose
+
+```bash
+docker-compose up --build
+```
+
+Сервис: `worker` (без портов).
+
+### ENV
+
+- `BILLING_WORKER_ENABLED` (default: `true`)
+- `BILLING_WORKER_INTERVAL_SECONDS` (default: `5`)
+- `BILLING_WORKER_BATCH_SIZE` (default: `50`)
+- `BILLING_WORKER_ID` (default: hostname)
+- `BILLING_WORKER_JITTER_SECONDS` (default: `0`)
+
+### Graceful shutdown
+
+При `docker-compose stop` worker получает `SIGTERM`, выставляет stop flag, **не запускает новые итерации**, дожидается окончания текущей и выходит `0`.
+
 ### Навигация и drill-down
 
 Dashboard содержит кликабельные карточки для быстрого перехода:
