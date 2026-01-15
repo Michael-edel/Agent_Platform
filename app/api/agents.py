@@ -6,17 +6,20 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.database import get_engine
 from cyberplat.product.infrastructure.models import AgentSKU, AgentExecution
+from cyberplat.billing.infrastructure.models_sqlalchemy import BillingUsage
 from app.agents.guards import (
     assert_agent_enabled,
     AgentNotFoundError,
     AgentNotEnabledError,
 )
+from app.billing.limits import check_plan_limit, PlanLimitExceededError
 
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
@@ -66,9 +69,43 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def current_period() -> str:
+    """Get current billing period in YYYY-MM format."""
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def record_execution_usage(
+    engine,
+    tenant_id: str,
+    execution_id: str,
+    agent_code: str,
+    period: str,
+) -> None:
+    """Record usage for agent execution."""
+    from sqlalchemy.orm import Session
+    
+    with Session(engine) as session:
+        usage = BillingUsage(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            event_id=f"exec:{execution_id}",
+            artifact_id=None,
+            event_type="agent_execution",
+            metric="agent_executions",
+            units=1,
+            unit_price_minor=0,  # Pricing logic elsewhere
+            amount_minor=0,
+            currency="USD",
+            period=period,
+            created_at=now_iso(),
+        )
+        session.add(usage)
+        session.commit()
+
+
 # --- Endpoints ---
 
-@router.post("/{agent_code}/execute", response_model=ExecuteResponse)
+@router.post("/{agent_code}/execute")
 def execute_agent(
     agent_code: str,
     request: ExecuteRequest,
@@ -78,12 +115,14 @@ def execute_agent(
     Execute an agent for the tenant.
     
     - Checks agent is enabled for tenant (guards)
+    - Checks plan limits (agent_executions metric)
     - Idempotent: same (tenant_id, agent_sku_id, idempotency_key) returns existing execution
-    - Currently returns synchronous stub result (echo input)
+    - Rejected executions return 429 and are idempotent
     """
     tenant_id = x_tenant_id
-    
     engine = get_engine()
+    period = current_period()
+    
     with Session(engine) as session:
         # Guard: check agent enabled
         try:
@@ -115,6 +154,18 @@ def execute_agent(
         
         if existing:
             # Return existing execution (idempotent)
+            if existing.status == "rejected":
+                # Return same 429 for rejected execution
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "plan_limit_exceeded",
+                        "metric": "agent_executions",
+                        "limit": 0,  # Original limit unknown from stored execution
+                        "used": 0,
+                        "tenant_id": tenant_id,
+                    },
+                )
             result = json.loads(existing.result_json) if existing.result_json else None
             return ExecuteResponse(
                 execution_id=existing.id,
@@ -122,18 +173,57 @@ def execute_agent(
                 result=result,
             )
         
-        # Create new execution
+        # Check plan limits before creating execution
+        limit_check = check_plan_limit(
+            tenant_id=tenant_id,
+            metric="agent_executions",
+            increment=1,
+            period=period,
+            engine=engine,
+        )
+        
         now = now_iso()
         execution_id = str(uuid.uuid4())
         
-        # Stub result: echo input
+        if not limit_check.allowed and limit_check.reason == "limit_exceeded":
+            # Create rejected execution for idempotency
+            execution = AgentExecution(
+                id=execution_id,
+                tenant_id=tenant_id,
+                agent_sku_id=sku.id,
+                status="rejected",
+                idempotency_key=request.idempotency_key,
+                input_json=json.dumps(request.input),
+                result_json=None,
+                error_code="plan_limit_exceeded",
+                error_message=f"Limit exceeded for agent_executions: {limit_check.used}/{limit_check.limit}",
+                created_at=now,
+                updated_at=now,
+                started_at=None,
+                finished_at=now,
+            )
+            session.add(execution)
+            session.commit()
+            
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "plan_limit_exceeded",
+                    "metric": "agent_executions",
+                    "limit": limit_check.limit or 0,
+                    "used": limit_check.used,
+                    "tenant_id": tenant_id,
+                },
+            )
+        
+        # Create successful execution
         stub_result = {"ok": True, "echo": request.input}
         
         execution = AgentExecution(
             id=execution_id,
             tenant_id=tenant_id,
             agent_sku_id=sku.id,
-            status="completed",  # Synchronous stub
+            status="completed",
             idempotency_key=request.idempotency_key,
             input_json=json.dumps(request.input),
             result_json=json.dumps(stub_result),
@@ -145,12 +235,18 @@ def execute_agent(
         
         session.add(execution)
         session.commit()
-        
-        return ExecuteResponse(
-            execution_id=execution_id,
-            status="completed",
-            result=stub_result,
-        )
+    
+    # Record usage after successful execution (outside session)
+    try:
+        record_execution_usage(engine, tenant_id, execution_id, agent_code, period)
+    except Exception:
+        pass  # Usage recording failure should not fail the execution
+    
+    return ExecuteResponse(
+        execution_id=execution_id,
+        status="completed",
+        result=stub_result,
+    )
 
 
 @router.get("/executions/{execution_id}", response_model=ExecutionDetailResponse)

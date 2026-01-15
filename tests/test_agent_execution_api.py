@@ -97,6 +97,57 @@ class TestIdempotency:
         assert len(constraints) == 1
 
 
+class TestUsageMetering:
+    """Tests for execution usage metering."""
+
+    def test_record_execution_usage_function_exists(self):
+        """record_execution_usage function exists."""
+        from app.api.agents import record_execution_usage
+        
+        assert callable(record_execution_usage)
+
+    def test_current_period_format(self):
+        """current_period returns YYYY-MM format."""
+        from app.api.agents import current_period
+        
+        period = current_period()
+        assert len(period) == 7
+        assert period[4] == "-"
+
+
+class TestPlanLimitsEnforcement:
+    """Tests for plan limits enforcement in execution."""
+
+    def test_limit_check_used_in_execute(self):
+        """Execute endpoint uses check_plan_limit."""
+        import inspect
+        from app.api.agents import execute_agent
+        
+        source = inspect.getsource(execute_agent)
+        assert "check_plan_limit" in source
+        assert "agent_executions" in source
+
+    def test_rejected_status_on_limit_exceeded(self):
+        """Execution gets rejected status when limit exceeded."""
+        import inspect
+        from app.api.agents import execute_agent
+        
+        source = inspect.getsource(execute_agent)
+        assert 'status="rejected"' in source
+        assert "plan_limit_exceeded" in source
+
+    def test_429_response_format(self):
+        """429 response has correct format."""
+        import inspect
+        from app.api.agents import execute_agent
+        
+        source = inspect.getsource(execute_agent)
+        assert "JSONResponse" in source
+        assert "status_code=429" in source
+        assert '"error": "plan_limit_exceeded"' in source
+        assert '"metric": "agent_executions"' in source
+
+
 class TestGetExecution:
     """Tests for GET /api/v1/agents/executions/{execution_id}."""
 
