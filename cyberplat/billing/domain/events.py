@@ -60,3 +60,13 @@ class AgentAddonSubscriptionUpdated:
     source: str  # admin, kaspi, stripe
     external_ref: Optional[str] = None
     effective_at: Optional[str] = None  # ISO format
+
+
+@dataclass(frozen=True)
+class UsageInvoiceReady:
+    """Event emitted when a usage invoice has been finalized and is ready."""
+
+    tenant_id: str
+    period: str  # YYYY-MM
+    invoice_id: str
+    amount_cents: int

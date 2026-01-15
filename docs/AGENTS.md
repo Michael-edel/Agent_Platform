@@ -311,6 +311,32 @@ Usage pricing хранится в `agent_skus` (v1):
 
 Возвращает preview начислений по usage pricing v1 для tenant'а за период.
 
+## Usage invoice finalization (dry-run)
+
+### Preview vs finalized
+
+- **Preview** (`usage-preview`) — рассчитывается на лету из `tenant_usage_monthly` и конфигурации SKU.
+- **Finalized invoice** — фиксированный snapshot в `usage_invoices` + `usage_invoice_lines`. После финализации суммы не меняются от будущих executions.
+
+### Finalize
+
+`POST /api/v1/tenant/billing/usage-invoices/{period}/finalize`
+
+- идемпотентно: повторный вызов возвращает тот же `invoice_id`
+- эмитит доменное событие `UsageInvoiceReady` **один раз** (поле `event_emitted_at`)
+
+### Get invoice
+
+`GET /api/v1/tenant/billing/usage-invoices/{period}`
+
+### UsageInvoiceReady event
+
+Событие: `UsageInvoiceReady(tenant_id, period, invoice_id, amount_cents)`.
+
+### Dry-run billing integration
+
+Флаг `BILLING_DRY_RUN=true` (default) — обработчик события только логирует, без списаний и внешних вызовов.
+
 ## Timeouts
 
 Таймауты задаются на уровне registry (без изменений схемы БД):

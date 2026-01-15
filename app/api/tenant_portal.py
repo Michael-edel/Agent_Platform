@@ -142,6 +142,29 @@ class UsagePreviewResponse(BaseModel):
     totals: UsagePreviewTotals
 
 
+class UsageInvoiceLineItem(BaseModel):
+    agent_code: str
+    unit: str
+    used: int
+    included: int
+    billable: int
+    price_cents: int
+    amount_cents: int
+
+
+class UsageInvoiceTotals(BaseModel):
+    amount_cents: int
+
+
+class UsageInvoiceResponse(BaseModel):
+    invoice_id: str
+    period: str
+    status: str
+    currency: str
+    lines: List[UsageInvoiceLineItem]
+    totals: UsageInvoiceTotals
+
+
 # ============================================
 # Token Helpers
 # ============================================
@@ -455,6 +478,85 @@ async def get_usage_preview(
         currency="KZT",
         lines=lines,
         totals=UsagePreviewTotals(amount_cents=total_amount),
+    )
+
+
+@router.post("/tenant/billing/usage-invoices/{period}/finalize", response_model=UsageInvoiceResponse)
+async def finalize_usage_invoice_endpoint(
+    period: str,
+    tenant_id: str = Depends(tenant_portal_auth),
+) -> UsageInvoiceResponse:
+    try:
+        year_s, month_s = period.split("-", 1)
+        year = int(year_s)
+        month = int(month_s)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid period format, expected YYYY-MM")
+
+    from cyberplat.billing.usage_invoices import finalize_usage_invoice
+
+    finalized = finalize_usage_invoice(tenant_id=tenant_id, year=year, month=month, currency="KZT")
+    inv = finalized.invoice
+    lines = [
+        UsageInvoiceLineItem(
+            agent_code=l.agent_code,
+            unit=l.unit,
+            used=int(l.used),
+            included=int(l.included),
+            billable=int(l.billable),
+            price_cents=int(l.price_cents),
+            amount_cents=int(l.amount_cents),
+        )
+        for l in finalized.lines
+    ]
+    return UsageInvoiceResponse(
+        invoice_id=inv.id,
+        period=period,
+        status=inv.status,
+        currency=inv.currency,
+        lines=lines,
+        totals=UsageInvoiceTotals(amount_cents=int(inv.amount_cents)),
+    )
+
+
+@router.get("/tenant/billing/usage-invoices/{period}", response_model=UsageInvoiceResponse)
+async def get_usage_invoice_endpoint(
+    period: str,
+    tenant_id: str = Depends(tenant_portal_auth),
+) -> UsageInvoiceResponse:
+    try:
+        year_s, month_s = period.split("-", 1)
+        year = int(year_s)
+        month = int(month_s)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid period format, expected YYYY-MM")
+
+    from cyberplat.billing.usage_invoices import get_usage_invoice
+
+    inv = get_usage_invoice(tenant_id=tenant_id, year=year, month=month)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Usage invoice not found")
+
+    invoice = inv.invoice
+    lines = [
+        UsageInvoiceLineItem(
+            agent_code=l.agent_code,
+            unit=l.unit,
+            used=int(l.used),
+            included=int(l.included),
+            billable=int(l.billable),
+            price_cents=int(l.price_cents),
+            amount_cents=int(l.amount_cents),
+        )
+        for l in inv.lines
+    ]
+    return UsageInvoiceResponse(
+        invoice_id=invoice.id,
+        period=period,
+        status=invoice.status,
+        currency=invoice.currency,
+        lines=lines,
+        totals=UsageInvoiceTotals(amount_cents=int(invoice.amount_cents)),
     )
 
 

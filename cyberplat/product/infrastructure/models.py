@@ -348,3 +348,46 @@ class TenantUsageMonthly(Base):
         Index("idx_tenant_usage_monthly_tenant_period", "tenant_id", "year", "month"),
         Index("idx_tenant_usage_monthly_agent_period", "agent_code", "year", "month"),
     )
+
+
+class UsageInvoice(Base):
+    """Finalized usage invoice snapshot for a billing period."""
+
+    __tablename__ = "usage_invoices"
+
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    period_year = Column(Integer, nullable=False)
+    period_month = Column(Integer, nullable=False)
+    currency = Column(String, nullable=False)
+    amount_cents = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default="finalized")
+    created_at = Column(String, nullable=False)
+    finalized_at = Column(String, nullable=True)
+    event_emitted_at = Column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "period_year", "period_month", name="uq_usage_invoice_period"),
+        Index("idx_usage_invoices_tenant_period", "tenant_id", "period_year", "period_month"),
+    )
+
+
+class UsageInvoiceLine(Base):
+    """Finalized usage invoice line item."""
+
+    __tablename__ = "usage_invoice_lines"
+
+    id = Column(String, primary_key=True)  # UUID
+    invoice_id = Column(String, ForeignKey("usage_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_code = Column(String, nullable=False, index=True)
+    unit = Column(String, nullable=False, default="execution")
+    used = Column(Integer, nullable=False, default=0)
+    included = Column(Integer, nullable=False, default=0)
+    billable = Column(Integer, nullable=False, default=0)
+    price_cents = Column(Integer, nullable=False, default=0)
+    amount_cents = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("idx_usage_invoice_lines_invoice", "invoice_id"),
+        Index("idx_usage_invoice_lines_agent", "agent_code"),
+    )
