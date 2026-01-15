@@ -165,9 +165,15 @@ async def startup_event():
     queue = JobQueue()
     
     # Запуск воркера
-    stop_event = threading.Event()
-    worker = DocumentWorker(queue, stop_event)
-    worker.start()
+    openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not openai_api_key:
+        logger.warning("OPENAI_API_KEY is empty; DocumentWorker will not be started")
+        stop_event = None
+        worker = None
+    else:
+        stop_event = threading.Event()
+        worker = DocumentWorker(queue, stop_event)
+        worker.start()
     
     # Инициализация платформы агентов
     # Создаем сервисы с циклической зависимостью (event_service нужен artifact_service, и наоборот)
@@ -313,7 +319,8 @@ async def startup_event():
     
     # Start Agent Executor (if enabled)
     from app.agents.executor import start_executor
-    start_executor(engine)
+    from cyberplat.product.infrastructure.database import get_engine
+    start_executor(get_engine())
     logger.info("Agent executor initialized")
     
     # Подключение Tenant Portal Web UI

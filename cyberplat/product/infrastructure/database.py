@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Global engine and sessionmaker (initialized on first use)
 _engine = None
+_engine_url = None
 _SessionLocal = None
 
 
@@ -32,14 +33,24 @@ def get_database_url() -> str:
 
 def get_engine():
     """Получить или создать SQLAlchemy engine."""
-    global _engine
-    if _engine is None:
-        database_url = get_database_url()
+    global _engine, _engine_url, _SessionLocal
+    database_url = get_database_url()
+    # Recreate engine if DATABASE_URL changes (tests / runtime config changes).
+    if _engine is None or _engine_url != database_url:
+        if _engine is not None:
+            try:
+                _engine.dispose()
+                logger.info("Disposed previous SQLAlchemy engine due to URL change")
+            except Exception:
+                logger.warning("Failed to dispose previous SQLAlchemy engine", exc_info=True)
+        # Reset sessionmaker to bind to the new engine
+        _SessionLocal = None
         _engine = create_engine(
             database_url,
             pool_pre_ping=True,
             connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {}
         )
+        _engine_url = database_url
         # Логируем только схему и хост, без credentials
         from urllib.parse import urlparse
         parsed = urlparse(database_url)

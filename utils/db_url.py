@@ -90,5 +90,17 @@ def get_sqlalchemy_database_url() -> Optional[str]:
     return normalize_sqlalchemy_database_url(get_original_database_url())
 
 
-# Backward compatibility alias
-normalize_database_url = normalize_sqlalchemy_database_url
+def normalize_database_url(url: Optional[str]) -> Optional[str]:
+    """
+    Backward compatible wrapper used across the codebase.
+
+    Behavior:
+    - None -> None
+    - "" or whitespace -> "" (preserve emptiness)
+    - otherwise -> delegate to normalize_sqlalchemy_database_url
+    """
+    if url is None:
+        return None
+    if not url.strip():
+        return ""
+    return normalize_sqlalchemy_database_url(url)

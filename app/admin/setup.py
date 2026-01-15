@@ -11,12 +11,14 @@ def setup_admin(app: FastAPI) -> None:
     """
     Configure and mount SQLAdmin to the FastAPI app.
     
-    Only activates if ADMIN_ENABLED=true.
+    Enabled by default.
+    Disable only when ADMIN_ENABLED is explicitly set to false/0/no.
     """
-    admin_enabled = os.getenv("ADMIN_ENABLED", "false").lower() == "true"
+    admin_enabled_raw = os.getenv("ADMIN_ENABLED", "true").strip().lower()
+    admin_enabled = admin_enabled_raw not in {"false", "0", "no"}
     
     if not admin_enabled:
-        logger.info("Admin panel disabled (ADMIN_ENABLED != true)")
+        logger.info("Admin panel disabled (ADMIN_ENABLED=false/0/no)")
         return
     
     # Check password is set
