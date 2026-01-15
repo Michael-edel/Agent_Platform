@@ -224,6 +224,45 @@ curl -X POST "http://localhost:8000/api/v1/agents/demo.text_stats/execute" \
   }'
 ```
 
+## Execution errors
+
+Единый контракт ошибок для `failed` (и `rejected` в части pricing/limits на API уровне).
+
+### error_code taxonomy
+
+| error_code | Когда | Пример |
+|-----------|------|--------|
+| `validation_error` | Невалидный payload / входные данные | отсутствует обязательное поле |
+| `runner_not_found` | Нет зарегистрированного runner для `agent_code` | SKU существует, но runner не реализован |
+| `execution_error` | Любая другая ошибка во время выполнения | исключение внутри runner |
+| `timeout` | Зарезервировано на будущее | (пока не используется) |
+
+### Формат error dict (stable)
+
+```json
+{
+  "error_code": "validation_error",
+  "message": "payload.text is required",
+  "details": { "exception_type": "ValueError" },
+  "meta": { "duration_ms": 12 }
+}
+```
+
+## Observability
+
+### Metrics (Prometheus)
+
+Экспортируются через `/metrics`:
+
+- `agent_execution_completed_total{agent_code}`
+- `agent_execution_failed_total{agent_code, error_code}`
+
+### duration_ms
+
+Для `completed`: поле `result.meta.duration_ms` (мс) — длительность выполнения runner.
+
+Для `failed`: поле `error.meta.duration_ms` (мс) — длительность до ошибки.
+
 #### GET /api/v1/agents/executions/{execution_id}
 
 Получить детали выполнения.

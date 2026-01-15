@@ -12,8 +12,13 @@ METRICS_ENABLED=false отключает метрики (для тестов б�
 import os
 from typing import Optional
 
+def _metrics_enabled_env() -> bool:
+    raw = os.getenv("METRICS_ENABLED", "true").strip().lower()
+    return raw in {"1", "true", "yes"}
+
+
 # Check if metrics are enabled (default: true)
-METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() == "true"
+METRICS_ENABLED = _metrics_enabled_env()
 
 # Conditional import of prometheus_client
 if METRICS_ENABLED:
@@ -40,38 +45,62 @@ _metrics_registry = REGISTRY if _prometheus_available else None
 
 # HTTP метрики (only if prometheus available)
 if _prometheus_available:
-    http_requests_total = Counter(
+    def _get_or_create_collector(name: str, factory):
+        try:
+            existing = getattr(REGISTRY, "_names_to_collectors", {}).get(name)
+            if existing is not None:
+                return existing
+        except Exception:
+            pass
+        return factory()
+
+    http_requests_total = _get_or_create_collector(
         "http_requests_total",
-        "Total number of HTTP requests",
-        ["method", "path", "status"],
+        lambda: Counter(
+            "http_requests_total",
+            "Total number of HTTP requests",
+            ["method", "path", "status"],
+        ),
     )
 
-    http_request_duration_seconds = Histogram(
+    http_request_duration_seconds = _get_or_create_collector(
         "http_request_duration_seconds",
-        "HTTP request duration in seconds",
-        ["method", "path", "status"],
-        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+        lambda: Histogram(
+            "http_request_duration_seconds",
+            "HTTP request duration in seconds",
+            ["method", "path", "status"],
+            buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+        ),
     )
 
     # Billing метрики
-    billing_webhook_events_total = Counter(
+    billing_webhook_events_total = _get_or_create_collector(
         "billing_webhook_events_total",
-        "Total number of billing webhook events",
-        ["provider", "event_type", "status"],  # status: ok, invalid, duplicate, error
+        lambda: Counter(
+            "billing_webhook_events_total",
+            "Total number of billing webhook events",
+            ["provider", "event_type", "status"],  # status: ok, invalid, duplicate, error
+        ),
     )
 
     # Recurring billing метрики
-    recurring_runs_total = Counter(
+    recurring_runs_total = _get_or_create_collector(
         "recurring_runs_total",
-        "Total number of recurring billing runs",
-        ["provider", "status"],  # status: success, failed, skipped
+        lambda: Counter(
+            "recurring_runs_total",
+            "Total number of recurring billing runs",
+            ["provider", "status"],  # status: success, failed, skipped
+        ),
     )
 
-    recurring_duration_seconds = Histogram(
+    recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
-        "Recurring billing run duration in seconds",
-        ["provider"],
-        buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
+        lambda: Histogram(
+            "recurring_duration_seconds",
+            "Recurring billing run duration in seconds",
+            ["provider"],
+            buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
+        ),
     )
 else:
     # Stub objects when metrics disabled

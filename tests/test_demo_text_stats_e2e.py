@@ -114,4 +114,6 @@ def test_demo_text_stats_end_to_end(tmp_path, monkeypatch):
     assert result["chars"] >= 1
     assert result["top_words"], "top_words must not be empty"
     assert result["language_guess"] == "mixed"
+    assert "meta" in result
+    assert result["meta"]["duration_ms"] >= 0
 

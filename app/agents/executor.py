@@ -18,6 +18,13 @@ from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.models import AgentExecution, AgentSKU
 from cyberplat.agents.registry import get_runner
+from cyberplat.agents.errors import (
+    AgentExecutionError,
+    validation_error,
+    runner_not_found,
+    execution_error,
+)
+from app.agents.metrics import inc_completed, inc_failed
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +84,14 @@ def claim_next_execution(session: Session) -> Optional[AgentExecution]:
     # If status is not running, another worker claimed it
     if execution and execution.status != "running":
         return None
-    
+
+    # Capture monotonic start time as close as possible to the running transition.
+    if execution:
+        try:
+            execution._started_monotonic = time.monotonic()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
     return execution
 
 
@@ -92,6 +106,10 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
     execution_id = execution.id
     if getattr(execution, "status", None) in {"completed", "failed", "rejected"}:
         return
+
+    started_monotonic = getattr(execution, "_started_monotonic", None)
+    if not isinstance(started_monotonic, (int, float)):
+        started_monotonic = time.monotonic()
     
     try:
         # Load agent_code from SKU
@@ -104,20 +122,27 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
 
         runner = get_runner(agent_code)
         if not runner:
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000)
+            err = runner_not_found(agent_code)
+            err_dict = err.to_dict()
+            err_dict["meta"] = {"duration_ms": duration_ms}
             now = now_iso()
-            session.execute(
+            res = session.execute(
                 update(AgentExecution)
                 .where(AgentExecution.id == execution_id)
                 .where(AgentExecution.status == "running")
                 .values(
                     status="failed",
-                    error_code="runner_not_found",
-                    error_message=f"runner_not_found: {agent_code}",
+                    result_json=json.dumps(err_dict),
+                    error_code=err.code.value,
+                    error_message=err.message[:500],
                     finished_at=now,
                     updated_at=now,
                 )
             )
             session.commit()
+            if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+                inc_failed(agent_code, err.code.value)
             return
 
         # Parse payload
@@ -135,11 +160,18 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
         if not isinstance(result, dict):
             raise TypeError("runner_result_invalid: runner must return dict")
 
-        # Ensure JSON-serializable
+        duration_ms = int((time.monotonic() - started_monotonic) * 1000)
+        meta = result.get("meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["duration_ms"] = duration_ms
+        result["meta"] = meta
+
+        # Ensure JSON-serializable (after adding meta)
         result_json = json.dumps(result)
 
         now = now_iso()
-        session.execute(
+        res = session.execute(
             update(AgentExecution)
             .where(AgentExecution.id == execution_id)
             .where(AgentExecution.status == "running")
@@ -153,29 +185,54 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
             )
         )
         session.commit()
+        if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+            inc_completed(agent_code)
 
         logger.debug(f"Execution {execution_id} completed (agent_code={agent_code})")
         
     except Exception as e:
-        # Mark failed
-        error_code = "validation_error" if isinstance(e, ValueError) else "execution_failed"
-        error_msg = f"{type(e).__name__}: {e}"[:500]  # Truncate long messages
+        duration_ms = int((time.monotonic() - started_monotonic) * 1000)
+        # Normalize error taxonomy (no raw traceback stored).
+        if isinstance(e, (ValueError, KeyError)):
+            err: AgentExecutionError = validation_error(
+                message=str(e) or "validation_error",
+                details={"exception_type": type(e).__name__},
+            )
+        else:
+            err = execution_error(
+                message=f"{type(e).__name__}: {str(e)}"[:200],
+                details={"exception_type": type(e).__name__},
+            )
+        err_dict = err.to_dict()
+        err_dict["meta"] = {"duration_ms": duration_ms}
         
         try:
             now = now_iso()
-            session.execute(
+            agent_code = "unknown"
+            try:
+                sku = session.execute(
+                    select(AgentSKU).where(AgentSKU.id == execution.agent_sku_id)
+                ).scalar_one_or_none()
+                agent_code = sku.code if sku else "unknown"
+            except Exception:
+                agent_code = "unknown"
+
+            res = session.execute(
                 update(AgentExecution)
                 .where(AgentExecution.id == execution_id)
                 .where(AgentExecution.status == "running")
                 .values(
                     status="failed",
-                    error_code=error_code,
-                    error_message=error_msg,
+                    result_json=json.dumps(err_dict),
+                    error_code=err.code.value,
+                    error_message=err.message[:500],
                     finished_at=now,
                     updated_at=now,
                 )
             )
             session.commit()
+            if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+                inc_failed(agent_code, err.code.value)
         except Exception as e2:
             logger.exception(f"Failed to mark execution {execution_id} as failed: {e2}")
         
