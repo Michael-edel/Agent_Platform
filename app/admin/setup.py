@@ -11,14 +11,14 @@ def setup_admin(app: FastAPI) -> None:
     """
     Configure and mount SQLAdmin to the FastAPI app.
     
-    Enabled by default.
-    Disable only when ADMIN_ENABLED is explicitly set to false/0/no.
+    Disabled by default (production-safe).
+    Enable only when ADMIN_ENABLED is explicitly set to true/1/yes.
     """
-    admin_enabled_raw = os.getenv("ADMIN_ENABLED", "true").strip().lower()
-    admin_enabled = admin_enabled_raw not in {"false", "0", "no"}
+    admin_enabled_raw = os.getenv("ADMIN_ENABLED", "false").strip().lower()
+    admin_enabled = admin_enabled_raw in {"true", "1", "yes"}
     
     if not admin_enabled:
-        logger.info("Admin panel disabled (ADMIN_ENABLED=false/0/no)")
+        logger.info("Admin panel disabled (ADMIN_ENABLED default false)")
         return
     
     # Check password is set
@@ -54,6 +54,9 @@ def setup_admin(app: FastAPI) -> None:
             AgentSKUAdmin,
             TenantAgentAdmin,
             TenantAgentSubscriptionAdmin,
+            UsageInvoiceAdmin,
+            UsageInvoiceLineAdmin,
+            BillingJobAdmin,
         )
         
         # Get secret key for sessions
@@ -95,6 +98,9 @@ def setup_admin(app: FastAPI) -> None:
         admin.add_view(BillingWebhookEventAdmin)
         admin.add_view(BillingOrderAdmin)
         admin.add_view(BillingUsageAdmin)
+        admin.add_view(BillingJobAdmin)
+        admin.add_view(UsageInvoiceAdmin)
+        admin.add_view(UsageInvoiceLineAdmin)
         admin.add_view(TenantPortalTokenAdmin)
         admin.add_view(AgentSKUAdmin)
         admin.add_view(TenantAgentAdmin)

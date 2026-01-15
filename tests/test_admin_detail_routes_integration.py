@@ -27,10 +27,14 @@ class TestAdminDetailRoutesIntegration:
     @pytest.fixture
     def client(self, admin_env):
         """Create test client with admin enabled."""
+        import importlib
         from starlette.testclient import TestClient
-        from app.main import app
+        import app.main as main
         
-        return TestClient(app)
+        # Ensure admin setup reads current env (app.main may be imported earlier by other tests).
+        importlib.reload(main)
+        
+        return TestClient(main.app)
 
     @pytest.fixture
     def logged_in_client(self, client):

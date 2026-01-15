@@ -15,6 +15,9 @@ from cyberplat.product.infrastructure.models import (
     KaspiOrder,
     ArtifactState,
     Export,
+    UsageInvoice,
+    UsageInvoiceLine,
+    BillingJob,
 )
 
 # Billing models
@@ -343,6 +346,102 @@ class BillingUsageAdmin(TenantScopedMixin, ModelView, model=BillingUsage):
     
     column_formatters = {
         "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id),
+    }
+
+
+# ============================================
+# Usage Billing v1 (from cyberplat/product)
+# ============================================
+
+
+class UsageInvoiceAdmin(TenantScopedMixin, ModelView, model=UsageInvoice):
+    """Admin view for Usage Invoices (read-only)."""
+
+    name = "Usage Invoice"
+    name_plural = "Usage Invoices"
+    icon = "fa-solid fa-file-invoice-dollar"
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+
+    column_list = [
+        "id",
+        "tenant_id",
+        "period_year",
+        "period_month",
+        "currency",
+        "amount_cents",
+        "status",
+        "payment_status",
+        "created_at",
+        "finalized_at",
+    ]
+    column_searchable_list = ["tenant_id", "id"]
+    column_filters = ["tenant_id", "payment_status", "period_year", "period_month", "created_at"]
+    column_sortable_list = ["created_at", "finalized_at"]
+    column_default_sort = ("created_at", True)  # newest first
+    page_size = 50
+
+
+class UsageInvoiceLineAdmin(ModelView, model=UsageInvoiceLine):
+    """Admin view for Usage Invoice Lines (read-only)."""
+
+    name = "Usage Invoice Line"
+    name_plural = "Usage Invoice Lines"
+    icon = "fa-solid fa-list"
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+
+    column_list = ["invoice_id", "agent_code", "used", "included", "billable", "price_cents", "amount_cents"]
+    column_searchable_list = ["invoice_id", "agent_code"]
+    column_filters = ["agent_code"]
+    page_size = 50
+
+
+class BillingJobAdmin(TenantScopedMixin, ModelView, model=BillingJob):
+    """Admin view for Billing Jobs (read-only)."""
+
+    name = "Billing Job"
+    name_plural = "Billing Jobs"
+    icon = "fa-solid fa-tasks"
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+
+    column_list = [
+        "id",
+        "tenant_id",
+        "invoice_id",
+        "provider",
+        "provider_ref",
+        "status",
+        "attempt_count",
+        "last_error_code",
+        "last_error_message",
+        "created_at",
+        "updated_at",
+        "finished_at",
+    ]
+    column_searchable_list = ["tenant_id", "invoice_id", "provider_ref", "id", "idempotency_key"]
+    column_filters = ["tenant_id", "provider", "status", "created_at"]
+    column_default_sort = ("created_at", True)  # newest first
+    page_size = 50
+
+    column_formatters = {
+        "tenant_id": lambda m, a: tenant_drill_links(m.tenant_id) if getattr(m, "tenant_id", None) else "",
+        "last_error_message": lambda m, a: Markup(
+            f'<span title="{truncate_error(getattr(m, "last_error_message", "") or "", 500)}">'
+            f'{truncate_error(getattr(m, "last_error_message", "") or "", 100)}</span>'
+        )
+        if getattr(m, "last_error_message", None)
+        else "",
     }
 
 

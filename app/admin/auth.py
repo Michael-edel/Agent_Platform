@@ -4,7 +4,7 @@ import os
 import logging
 from typing import Optional
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, RedirectResponse
 from sqladmin.authentication import AuthenticationBackend
 
 logger = logging.getLogger(__name__)
@@ -62,11 +62,11 @@ class AdminAuthBackend(AuthenticationBackend):
         
         Returns None if authenticated, redirect response if not.
         """
-        if request.session.get("admin_logged_in"):
+        if request.session.get("admin_logged_in") is True:
             return None
         
-        # Not authenticated - SQLAdmin will redirect to login
-        return None
+        # Not authenticated - force redirect to login.
+        return RedirectResponse(url="/admin/login", status_code=302)
 
 
 def get_admin_role(request: Request) -> Optional[str]:

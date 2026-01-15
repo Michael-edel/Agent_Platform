@@ -195,7 +195,7 @@ alembic upgrade head
 
 ```bash
 # В .env или docker-compose.yml
-ADMIN_ENABLED=true
+ADMIN_ENABLED=true  # default: false (production-safe)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your-secure-password
 ADMIN_SECRET_KEY=random-secret-for-sessions

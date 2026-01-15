@@ -1,3 +1,60 @@
+import pytest
+from starlette.requests import Request
+
+
+@pytest.mark.anyio
+async def test_admin_auth_authenticate_redirects_when_not_logged_in():
+    from app.admin.auth import AdminAuthBackend
+
+    backend = AdminAuthBackend(secret_key="test")
+    scope = {"type": "http", "method": "GET", "path": "/admin", "headers": []}
+    scope["session"] = {}
+    req = Request(scope)
+
+    resp = await backend.authenticate(req)
+    assert resp is not None
+    assert resp.status_code == 302
+    assert resp.headers.get("location") == "/admin/login"
+
+
+@pytest.mark.anyio
+async def test_admin_auth_authenticate_allows_when_logged_in():
+    from app.admin.auth import AdminAuthBackend
+
+    backend = AdminAuthBackend(secret_key="test")
+    scope = {"type": "http", "method": "GET", "path": "/admin", "headers": []}
+    scope["session"] = {"admin_logged_in": True}
+    req = Request(scope)
+
+    resp = await backend.authenticate(req)
+    assert resp is None
+
+
+@pytest.mark.anyio
+async def test_admin_login_does_not_log_password(caplog, monkeypatch):
+    from app.admin.auth import AdminAuthBackend
+
+    backend = AdminAuthBackend(secret_key="test")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "expected")
+    monkeypatch.setenv("ADMIN_ROLE", "platform_admin")
+
+    class DummyRequest:
+        def __init__(self):
+            self.session = {}
+
+        async def form(self):
+            return {"username": "admin", "password": "super-secret-password"}
+
+    with caplog.at_level("INFO"):
+        ok = await backend.login(DummyRequest())  # type: ignore[arg-type]
+    assert ok is False  # password mismatch
+
+    # Ensure we never log the password value or a "password=" style string.
+    text = caplog.text.lower()
+    assert "super-secret-password" not in text
+    assert "password=" not in text
+
 """Tests for admin authentication backend."""
 
 import pytest
