@@ -491,31 +491,34 @@ update_agent_subscription_via_event(
 Входящие webhook payload от платежных систем нормализуются в `NormalizedBillingSignal`,
 который затем преобразуется в `AgentAddonSubscriptionUpdated` событие.
 
-### NormalizedBillingSignal
+### Поддерживаемые Event Types
 
-```python
-@dataclass
-class NormalizedBillingSignal:
-    source: str  # stripe, kaspi, admin, test
-    event_type: str
-    tenant_id: str
-    agent_code: str
-    status: str  # active, inactive, canceled, past_due
-    external_ref: Optional[str] = None
-    effective_at: Optional[str] = None
-```
+**Stripe (строгий allowlist):**
+- `checkout.session.completed`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
 
-### Mappers
+**Kaspi (строгий allowlist):**
+- `SUBSCRIPTION_STATUS_CHANGED`
+- `SUBSCRIPTION_CREATED`
+- `SUBSCRIPTION_CANCELED`
+- `PAYMENT_COMPLETED`
+- `PAYMENT_FAILED`
+
+### Требования к Payload
 
 **Stripe:**
-- Event types: `customer.subscription.updated`, `customer.subscription.deleted`
-- Требуется `metadata.addon_type = "agent"`
-- Требуется `metadata.tenant_id`, `metadata.agent_code`
+- `metadata.addon_type = "agent"` (обязательно)
+- `metadata.tenant_id` (обязательно)
+- `metadata.agent_code` (обязательно)
 
 **Kaspi:**
-- Event type: `SUBSCRIPTION_STATUS_CHANGED`
-- Требуется `addon_type = "agent"`
-- Требуется `tenant_id`, `agent_code`
+- `addon_type = "agent"` (обязательно)
+- `tenant_id` (обязательно)
+- `agent_code` (обязательно)
 
 ### Status Mapping
 
@@ -526,11 +529,23 @@ class NormalizedBillingSignal:
 | canceled | CANCELED | canceled |
 | incomplete | PENDING | inactive |
 
+Неизвестный статус → `None` (safe no-op, событие игнорируется).
+
+### Safe No-Op
+
+Mapper никогда не бросает исключения:
+- Неизвестный `event_type` → `None`
+- Неизвестный `status` → `None`
+- Отсутствует `addon_type=agent` → `None`
+- Кривой payload → `None` + debug log
+
+Это гарантирует, что mapper не сломает основной webhook pipeline.
+
 ### Dry-Run Mode
 
 Переменная окружения `BILLING_WEBHOOK_DRY_RUN=true`:
 - Маппинг выполняется
-- События логируются
+- События логируются: `[DRY-RUN] Would emit AgentAddonSubscriptionUpdated...`
 - БД **не изменяется**
 
 Полезно для тестирования webhook интеграции без риска.
@@ -538,15 +553,20 @@ class NormalizedBillingSignal:
 ### Использование
 
 ```python
+# Вариант 1: с явной сессией
 from cyberplat.billing.application.agent_addons_mapper import process_webhook_for_agent_addons
 
-# В webhook handler:
 process_webhook_for_agent_addons(
-    source="stripe",  # или "kaspi"
+    source="stripe",
     payload=webhook_payload,
     session=db_session,
-    dry_run=False,  # или None для использования ENV
+    dry_run=None,  # использует ENV
 )
+
+# Вариант 2: fire-and-forget wrapper (создаёт свою сессию)
+from cyberplat.billing.application.agent_addons_mapper import try_process_agent_addon_webhook
+
+try_process_agent_addon_webhook("stripe", webhook_payload)  # никогда не бросает
 ```
 
 ---

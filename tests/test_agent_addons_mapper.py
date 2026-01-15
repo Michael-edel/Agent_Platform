@@ -49,6 +49,15 @@ class TestStripeMapper:
         
         assert result is None
 
+    def test_unknown_event_type_returns_none(self):
+        """Unknown event type returns None (strict allowlist)."""
+        from cyberplat.billing.application.agent_addons_mapper import map_stripe_to_agent_addon_signal
+        
+        payload = {"type": "unknown.event.type", "data": {}}
+        result = map_stripe_to_agent_addon_signal(payload)
+        
+        assert result is None
+
     def test_non_agent_addon_returns_none(self):
         """Subscription without addon_type=agent returns None."""
         from cyberplat.billing.application.agent_addons_mapper import map_stripe_to_agent_addon_signal
@@ -66,6 +75,41 @@ class TestStripeMapper:
         result = map_stripe_to_agent_addon_signal(payload)
         
         assert result is None
+
+    def test_unknown_status_returns_none(self):
+        """Unknown subscription status returns None."""
+        from cyberplat.billing.application.agent_addons_mapper import map_stripe_to_agent_addon_signal
+        
+        payload = {
+            "type": "customer.subscription.updated",
+            "data": {
+                "object": {
+                    "id": "sub_123",
+                    "status": "totally_unknown_status",
+                    "metadata": {
+                        "tenant_id": "tenant-1",
+                        "agent_code": "sales_assistant",
+                        "addon_type": "agent"
+                    }
+                }
+            }
+        }
+        result = map_stripe_to_agent_addon_signal(payload)
+        
+        assert result is None
+
+    def test_malformed_payload_returns_none(self):
+        """Malformed payload returns None (safe no-op)."""
+        from cyberplat.billing.application.agent_addons_mapper import map_stripe_to_agent_addon_signal
+        
+        # Not a dict
+        assert map_stripe_to_agent_addon_signal("not a dict") is None
+        assert map_stripe_to_agent_addon_signal(None) is None
+        assert map_stripe_to_agent_addon_signal([]) is None
+        
+        # Missing nested objects
+        assert map_stripe_to_agent_addon_signal({"type": "customer.subscription.updated"}) is None
+        assert map_stripe_to_agent_addon_signal({"type": "customer.subscription.updated", "data": "not dict"}) is None
 
     def test_valid_agent_addon_event(self):
         """Valid agent addon event returns signal."""
@@ -151,6 +195,15 @@ class TestKaspiMapper:
         
         assert result is None
 
+    def test_unknown_event_type_returns_none(self):
+        """Unknown event type returns None (strict allowlist)."""
+        from cyberplat.billing.application.agent_addons_mapper import map_kaspi_to_agent_addon_signal
+        
+        payload = {"event_type": "UNKNOWN_EVENT_TYPE"}
+        result = map_kaspi_to_agent_addon_signal(payload)
+        
+        assert result is None
+
     def test_non_agent_addon_returns_none(self):
         """Subscription without addon_type=agent returns None."""
         from cyberplat.billing.application.agent_addons_mapper import map_kaspi_to_agent_addon_signal
@@ -163,6 +216,29 @@ class TestKaspiMapper:
         result = map_kaspi_to_agent_addon_signal(payload)
         
         assert result is None
+
+    def test_unknown_status_returns_none(self):
+        """Unknown subscription status returns None."""
+        from cyberplat.billing.application.agent_addons_mapper import map_kaspi_to_agent_addon_signal
+        
+        payload = {
+            "event_type": "SUBSCRIPTION_STATUS_CHANGED",
+            "status": "UNKNOWN_STATUS",
+            "tenant_id": "tenant-1",
+            "agent_code": "sales_assistant",
+            "addon_type": "agent"
+        }
+        result = map_kaspi_to_agent_addon_signal(payload)
+        
+        assert result is None
+
+    def test_malformed_payload_returns_none(self):
+        """Malformed payload returns None (safe no-op)."""
+        from cyberplat.billing.application.agent_addons_mapper import map_kaspi_to_agent_addon_signal
+        
+        assert map_kaspi_to_agent_addon_signal("not a dict") is None
+        assert map_kaspi_to_agent_addon_signal(None) is None
+        assert map_kaspi_to_agent_addon_signal([]) is None
 
     def test_valid_agent_addon_event(self):
         """Valid agent addon event returns signal."""
@@ -324,3 +400,57 @@ class TestProcessWebhook:
             
             assert result is True
             mock_dispatch.assert_called_once()
+
+    def test_never_raises_exceptions(self):
+        """process_webhook_for_agent_addons never raises exceptions."""
+        from cyberplat.billing.application.agent_addons_mapper import process_webhook_for_agent_addons
+        
+        session = MagicMock()
+        
+        # Even with completely broken input, should not raise
+        assert process_webhook_for_agent_addons(None, None, session) is True
+        assert process_webhook_for_agent_addons("stripe", "not a dict", session) is True
+
+
+class TestNormalizeFunctions:
+    """Tests for status normalization functions."""
+
+    def test_normalize_stripe_status(self):
+        """normalize_stripe_status works correctly."""
+        from cyberplat.billing.application.agent_addons_mapper import normalize_stripe_status
+        
+        assert normalize_stripe_status("active") == "active"
+        assert normalize_stripe_status("ACTIVE") == "active"
+        assert normalize_stripe_status("past_due") == "past_due"
+        assert normalize_stripe_status("unknown") is None
+        assert normalize_stripe_status("") is None
+        assert normalize_stripe_status(None) is None
+
+    def test_normalize_kaspi_status(self):
+        """normalize_kaspi_status works correctly."""
+        from cyberplat.billing.application.agent_addons_mapper import normalize_kaspi_status
+        
+        assert normalize_kaspi_status("ACTIVE") == "active"
+        assert normalize_kaspi_status("active") == "active"
+        assert normalize_kaspi_status("PAST_DUE") == "past_due"
+        assert normalize_kaspi_status("UNKNOWN") is None
+        assert normalize_kaspi_status("") is None
+        assert normalize_kaspi_status(None) is None
+
+
+class TestTryProcessWrapper:
+    """Tests for try_process_agent_addon_webhook wrapper."""
+
+    def test_wrapper_exists(self):
+        """Wrapper function exists."""
+        from cyberplat.billing.application.agent_addons_mapper import try_process_agent_addon_webhook
+        
+        assert callable(try_process_agent_addon_webhook)
+
+    def test_wrapper_never_raises(self):
+        """Wrapper never raises exceptions."""
+        from cyberplat.billing.application.agent_addons_mapper import try_process_agent_addon_webhook
+        
+        # Should not raise even with broken input
+        try_process_agent_addon_webhook(None, None)
+        try_process_agent_addon_webhook("stripe", "not a dict")

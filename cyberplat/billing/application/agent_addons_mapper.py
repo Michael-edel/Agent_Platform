@@ -14,19 +14,32 @@ from app.agents.subscription_handler import handle_agent_addon_subscription_upda
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class NormalizedBillingSignal:
-    """Normalized billing signal for agent addon subscription."""
-    source: str  # stripe, kaspi, admin, test
-    event_type: str
-    tenant_id: str
-    agent_code: str
-    status: str  # active, inactive, canceled, past_due
-    external_ref: Optional[str] = None
-    effective_at: Optional[str] = None
+# ============================================
+# Supported Event Types (Strict Allowlists)
+# ============================================
+
+STRIPE_SUPPORTED_EVENTS = frozenset({
+    "checkout.session.completed",
+    "invoice.paid",
+    "invoice.payment_failed",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "customer.subscription.created",
+})
+
+KASPI_SUPPORTED_EVENTS = frozenset({
+    "SUBSCRIPTION_STATUS_CHANGED",
+    "SUBSCRIPTION_CREATED",
+    "SUBSCRIPTION_CANCELED",
+    "PAYMENT_COMPLETED",
+    "PAYMENT_FAILED",
+})
 
 
-# Status mapping from payment providers
+# ============================================
+# Status Normalization
+# ============================================
+
 STRIPE_STATUS_MAP = {
     "active": "active",
     "trialing": "active",
@@ -46,13 +59,47 @@ KASPI_STATUS_MAP = {
 }
 
 
+def normalize_stripe_status(status: str) -> Optional[str]:
+    """
+    Normalize Stripe subscription status to internal status.
+    
+    Returns None for unknown statuses (safe no-op).
+    """
+    if not status or not isinstance(status, str):
+        return None
+    return STRIPE_STATUS_MAP.get(status.lower())
+
+
+def normalize_kaspi_status(status: str) -> Optional[str]:
+    """
+    Normalize Kaspi subscription status to internal status.
+    
+    Returns None for unknown statuses (safe no-op).
+    """
+    if not status or not isinstance(status, str):
+        return None
+    return KASPI_STATUS_MAP.get(status.upper())
+
+
+@dataclass
+class NormalizedBillingSignal:
+    """Normalized billing signal for agent addon subscription."""
+    source: str  # stripe, kaspi, admin, test
+    event_type: str
+    tenant_id: str
+    agent_code: str
+    status: str  # active, inactive, canceled, past_due
+    external_ref: Optional[str] = None
+    effective_at: Optional[str] = None
+
+
 def map_stripe_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[NormalizedBillingSignal]:
     """
     Map Stripe webhook payload to NormalizedBillingSignal.
     
     Expected payload structure for agent addon events:
     {
-        "type": "customer.subscription.updated" | "customer.subscription.deleted",
+        "type": "customer.subscription.updated" | "customer.subscription.deleted" | ...,
         "data": {
             "object": {
                 "id": "sub_xxx",
@@ -66,18 +113,38 @@ def map_stripe_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normal
         }
     }
     
-    Returns None if not an agent addon event.
+    Returns None if not an agent addon event (safe no-op).
+    Never raises exceptions.
     """
     try:
-        event_type = payload.get("type", "")
-        
-        # Only handle subscription events
-        if event_type not in ("customer.subscription.updated", "customer.subscription.deleted"):
+        if not isinstance(payload, dict):
+            logger.debug("Stripe payload is not a dict")
             return None
         
-        data = payload.get("data", {})
-        obj = data.get("object", {})
-        metadata = obj.get("metadata", {})
+        event_type = payload.get("type", "")
+        
+        # Strict allowlist check
+        if event_type not in STRIPE_SUPPORTED_EVENTS:
+            logger.debug(f"Stripe event type not in allowlist: {event_type}")
+            return None
+        
+        # Only subscription events can be agent addons
+        if not event_type.startswith("customer.subscription."):
+            return None
+        
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            logger.debug("Stripe payload missing data object")
+            return None
+        
+        obj = data.get("object")
+        if not isinstance(obj, dict):
+            logger.debug("Stripe payload missing data.object")
+            return None
+        
+        metadata = obj.get("metadata")
+        if not isinstance(metadata, dict):
+            return None
         
         # Check if this is an agent addon subscription
         if metadata.get("addon_type") != "agent":
@@ -87,14 +154,14 @@ def map_stripe_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normal
         agent_code = metadata.get("agent_code")
         
         if not tenant_id or not agent_code:
-            logger.warning("Stripe agent addon event missing tenant_id or agent_code")
+            logger.debug("Stripe agent addon event missing tenant_id or agent_code")
             return None
         
         stripe_status = obj.get("status", "")
-        status = STRIPE_STATUS_MAP.get(stripe_status)
+        status = normalize_stripe_status(stripe_status)
         
         if not status:
-            logger.warning(f"Unknown Stripe subscription status: {stripe_status}")
+            logger.debug(f"Unknown Stripe subscription status: {stripe_status}")
             return None
         
         # For deleted events, force canceled status
@@ -104,15 +171,15 @@ def map_stripe_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normal
         return NormalizedBillingSignal(
             source="stripe",
             event_type=event_type,
-            tenant_id=tenant_id,
-            agent_code=agent_code,
+            tenant_id=str(tenant_id),
+            agent_code=str(agent_code),
             status=status,
             external_ref=obj.get("id"),
             effective_at=datetime.now(timezone.utc).isoformat(),
         )
         
     except Exception as e:
-        logger.exception(f"Error mapping Stripe payload: {e}")
+        logger.debug(f"Error mapping Stripe payload (safe no-op): {e}")
         return None
 
 
@@ -122,7 +189,7 @@ def map_kaspi_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normali
     
     Expected payload structure for agent addon events:
     {
-        "event_type": "SUBSCRIPTION_STATUS_CHANGED",
+        "event_type": "SUBSCRIPTION_STATUS_CHANGED" | "SUBSCRIPTION_CANCELED" | ...,
         "subscription_id": "...",
         "status": "ACTIVE|PAST_DUE|CANCELED|...",
         "tenant_id": "...",
@@ -130,13 +197,23 @@ def map_kaspi_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normali
         "addon_type": "agent"  # Required marker
     }
     
-    Returns None if not an agent addon event.
+    Returns None if not an agent addon event (safe no-op).
+    Never raises exceptions.
     """
     try:
+        if not isinstance(payload, dict):
+            logger.debug("Kaspi payload is not a dict")
+            return None
+        
         event_type = payload.get("event_type", "")
         
-        # Only handle subscription status events
-        if event_type != "SUBSCRIPTION_STATUS_CHANGED":
+        # Strict allowlist check
+        if event_type not in KASPI_SUPPORTED_EVENTS:
+            logger.debug(f"Kaspi event type not in allowlist: {event_type}")
+            return None
+        
+        # Only subscription events can be agent addons
+        if not event_type.startswith("SUBSCRIPTION_"):
             return None
         
         # Check if this is an agent addon subscription
@@ -147,28 +224,31 @@ def map_kaspi_to_agent_addon_signal(payload: Dict[str, Any]) -> Optional[Normali
         agent_code = payload.get("agent_code")
         
         if not tenant_id or not agent_code:
-            logger.warning("Kaspi agent addon event missing tenant_id or agent_code")
+            logger.debug("Kaspi agent addon event missing tenant_id or agent_code")
             return None
         
         kaspi_status = payload.get("status", "")
-        status = KASPI_STATUS_MAP.get(kaspi_status)
+        status = normalize_kaspi_status(kaspi_status)
         
-        if not status:
-            logger.warning(f"Unknown Kaspi subscription status: {kaspi_status}")
+        # For SUBSCRIPTION_CANCELED event, force canceled status
+        if event_type == "SUBSCRIPTION_CANCELED":
+            status = "canceled"
+        elif not status:
+            logger.debug(f"Unknown Kaspi subscription status: {kaspi_status}")
             return None
         
         return NormalizedBillingSignal(
             source="kaspi",
             event_type=event_type,
-            tenant_id=tenant_id,
-            agent_code=agent_code,
+            tenant_id=str(tenant_id),
+            agent_code=str(agent_code),
             status=status,
             external_ref=payload.get("subscription_id"),
             effective_at=datetime.now(timezone.utc).isoformat(),
         )
         
     except Exception as e:
-        logger.exception(f"Error mapping Kaspi payload: {e}")
+        logger.debug(f"Error mapping Kaspi payload (safe no-op): {e}")
         return None
 
 
@@ -246,6 +326,11 @@ def process_webhook_for_agent_addons(
     """
     Process webhook payload for agent addon subscriptions.
     
+    This function is SAFE to call from any webhook pipeline:
+    - Never raises exceptions
+    - Returns True for non-applicable events (safe no-op)
+    - Only processes events with addon_type="agent"
+    
     Args:
         source: "stripe" or "kaspi"
         payload: Webhook payload
@@ -255,18 +340,50 @@ def process_webhook_for_agent_addons(
     Returns:
         True if processed (or not applicable), False on error
     """
-    signal = None
+    try:
+        signal = None
+        
+        if source == "stripe":
+            signal = map_stripe_to_agent_addon_signal(payload)
+        elif source == "kaspi":
+            signal = map_kaspi_to_agent_addon_signal(payload)
+        else:
+            logger.debug(f"Unknown webhook source for agent addons: {source}")
+            return True  # Not an error, just not applicable
+        
+        if signal is None:
+            # Not an agent addon event, continue with normal processing
+            return True
+        
+        return dispatch_agent_addon_subscription_update(signal, session, dry_run=dry_run)
+        
+    except Exception as e:
+        logger.debug(f"Error in process_webhook_for_agent_addons (safe no-op): {e}")
+        return True  # Fail-safe: don't break main pipeline
+
+
+def try_process_agent_addon_webhook(source: str, payload: Dict[str, Any]) -> None:
+    """
+    Try to process webhook for agent addons without breaking main flow.
     
-    if source == "stripe":
-        signal = map_stripe_to_agent_addon_signal(payload)
-    elif source == "kaspi":
-        signal = map_kaspi_to_agent_addon_signal(payload)
-    else:
-        logger.warning(f"Unknown webhook source: {source}")
-        return True  # Not an error, just not applicable
+    This is a convenience wrapper that:
+    - Creates its own session
+    - Handles all errors silently
+    - Reads dry_run from ENV
     
-    if signal is None:
-        # Not an agent addon event, continue with normal processing
-        return True
-    
-    return dispatch_agent_addon_subscription_update(signal, session, dry_run=dry_run)
+    Call this from existing webhook handlers after successful validation.
+    """
+    try:
+        from cyberplat.product.infrastructure.database import get_engine
+        from sqlalchemy.orm import Session as SQLAlchemySession
+        
+        engine = get_engine()
+        with SQLAlchemySession(engine) as session:
+            process_webhook_for_agent_addons(
+                source=source,
+                payload=payload,
+                session=session,
+                dry_run=None,  # Use ENV
+            )
+    except Exception as e:
+        logger.debug(f"try_process_agent_addon_webhook failed silently: {e}")
