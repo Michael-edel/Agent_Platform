@@ -71,3 +71,33 @@ class TestSearchView:
         
         assert SearchView.name == "Search"
         assert "magnifying-glass" in SearchView.icon
+
+
+class TestBuildAdminDetailUrl:
+    """Tests for build_admin_detail_url helper."""
+
+    def test_basic_url(self):
+        """Basic URL structure is correct."""
+        from app.admin.links import build_admin_detail_url
+        
+        url = build_admin_detail_url("billing-order", "abc123")
+        
+        assert url == "/admin/billing-order/details/abc123"
+
+    def test_special_characters_encoded(self):
+        """Special characters in pk are URL encoded."""
+        from app.admin.links import build_admin_detail_url
+        
+        url = build_admin_detail_url("billing-order", "id/with/slashes")
+        
+        assert "id%2Fwith%2Fslashes" in url
+        assert "id/with/slashes" not in url
+
+    def test_xss_safe(self):
+        """XSS attempts are encoded."""
+        from app.admin.links import build_admin_detail_url
+        
+        url = build_admin_detail_url("test", "<script>alert(1)</script>")
+        
+        assert "<script>" not in url
+        assert "%3Cscript%3E" in url

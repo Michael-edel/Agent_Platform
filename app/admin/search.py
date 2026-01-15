@@ -14,7 +14,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
     BillingWebhookEvent,
 )
 from app.admin.auth import get_admin_role, get_admin_tenant_id
-from app.admin.links import ADMIN_ROUTES, build_admin_list_url
+from app.admin.links import ADMIN_ROUTES, build_admin_list_url, build_admin_detail_url
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,10 @@ def build_search_results(
             stmt = stmt.limit(MAX_RESULTS)
             
             result = conn.execute(stmt)
-            results["webhook_events"] = [row._mapping for row in result.fetchall()]
+            results["webhook_events"] = [
+                {**dict(row._mapping), "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_webhook_event"], row._mapping["id"])}
+                for row in result.fetchall()
+            ]
             
             # Search Orders
             stmt = select(BillingOrder).where(
@@ -88,7 +91,10 @@ def build_search_results(
             stmt = stmt.limit(MAX_RESULTS)
             
             result = conn.execute(stmt)
-            results["orders"] = [row._mapping for row in result.fetchall()]
+            results["orders"] = [
+                {**dict(row._mapping), "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_order"], row._mapping["id"])}
+                for row in result.fetchall()
+            ]
             
             # Search Subscriptions
             stmt = select(TenantSubscription).where(
@@ -102,7 +108,10 @@ def build_search_results(
             stmt = stmt.limit(MAX_RESULTS)
             
             result = conn.execute(stmt)
-            results["subscriptions"] = [row._mapping for row in result.fetchall()]
+            results["subscriptions"] = [
+                {**dict(row._mapping), "detail_url": build_admin_detail_url(ADMIN_ROUTES["tenant_subscription"], row._mapping["id"])}
+                for row in result.fetchall()
+            ]
             
     except Exception as e:
         error_msg = str(e)[:100]

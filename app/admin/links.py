@@ -31,6 +31,20 @@ def safe_path(value: str) -> str:
     return quote(str(value), safe='')
 
 
+def build_admin_detail_url(resource: str, pk: str) -> str:
+    """
+    Build admin detail URL for a specific record.
+    
+    Args:
+        resource: Admin resource identity (e.g., "billing-webhook-event")
+        pk: Primary key value (will be URL-encoded)
+    
+    Returns:
+        URL string like "/admin/billing-webhook-event/details/abc123"
+    """
+    return f"/admin/{resource}/details/{safe_path(str(pk))}"
+
+
 def build_admin_list_url(resource: str, query: Optional[Dict[str, str]] = None) -> str:
     """
     Build admin list URL with optional query parameters.
