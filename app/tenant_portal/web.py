@@ -12,7 +12,7 @@ from starlette.templating import Jinja2Templates
 
 from app.api.tenant_portal import hash_token
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPortalToken, TenantPlan, Plan
+from cyberplat.product.infrastructure.models import TenantPortalToken, TenantPlan, Plan, AgentSKU, TenantAgent, TenantAgentSubscription, AgentExecution
 
 logger = logging.getLogger(__name__)
 
@@ -723,3 +723,194 @@ async def download_support_bundle(request: Request):
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
+
+
+# ============================================
+# Agents
+# ============================================
+
+@router.get("/tenant/agents", response_class=HTMLResponse)
+async def agents_page(request: Request):
+    """Agents catalog page."""
+    disabled = check_portal_enabled()
+    if disabled:
+        return disabled
+    
+    auth = require_auth(request)
+    if isinstance(auth, RedirectResponse):
+        return auth
+    
+    tenant_id = auth["tenant_id"]
+    agents = []
+    error = False
+    has_past_due = False
+    has_unpaid = False
+    agent_executions_usage = None
+    agent_executions_limit = None
+    agent_executions_remaining = None
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    
+    try:
+        from cyberplat.billing.infrastructure.models_sqlalchemy import BillingUsage
+        from sqlalchemy import select, func
+        
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get all active SKUs
+            sku_q = select(AgentSKU).where(AgentSKU.status == "active").order_by(AgentSKU.name)
+            sku_rows = conn.execute(sku_q).fetchall()
+            
+            # Get tenant agents
+            ta_map = {}
+            ta_q = select(TenantAgent).where(TenantAgent.tenant_id == tenant_id)
+            for row in conn.execute(ta_q).fetchall():
+                ta_map[row._mapping["agent_sku_id"]] = row._mapping["status"]
+            
+            # Get subscriptions
+            sub_map = {}
+            sub_q = select(TenantAgentSubscription).where(TenantAgentSubscription.tenant_id == tenant_id)
+            for row in conn.execute(sub_q).fetchall():
+                sub_map[row._mapping["agent_sku_id"]] = row._mapping["status"]
+            
+            # Build agents list
+            for sku_row in sku_rows:
+                m = sku_row._mapping
+                sku_id = m["id"]
+                ta_status = ta_map.get(sku_id)
+                addon_status = sub_map.get(sku_id)
+                paid = (addon_status == "active")
+                enabled = (ta_status == "enabled")
+                
+                agents.append({
+                    "code": m["code"],
+                    "name": m["name"],
+                    "description": m.get("description"),
+                    "pricing_model": m["pricing_model"],
+                    "enabled": enabled,
+                    "tenant_status": ta_status,
+                    "addon_status": addon_status,
+                    "paid": paid,
+                })
+                
+                if addon_status == "past_due":
+                    has_past_due = True
+                if not paid:
+                    has_unpaid = True
+            
+            # Get agent_executions usage
+            usage_q = (
+                select(func.sum(BillingUsage.units))
+                .where(BillingUsage.tenant_id == tenant_id)
+                .where(BillingUsage.period == period)
+                .where(BillingUsage.metric == "agent_executions")
+            )
+            agent_executions_usage = conn.execute(usage_q).scalar() or 0
+            
+            # Get limit from plan
+            plan_q = select(TenantPlan.plan_id).where(TenantPlan.tenant_id == tenant_id).limit(1)
+            plan_row = conn.execute(plan_q).fetchone()
+            if plan_row:
+                quota_q = select(Plan.quotas).where(Plan.id == plan_row[0]).limit(1)
+                quota_row = conn.execute(quota_q).fetchone()
+                if quota_row and quota_row[0]:
+                    try:
+                        quotas = json.loads(quota_row[0])
+                        if isinstance(quotas, dict) and "agent_executions" in quotas:
+                            limit_val = quotas["agent_executions"]
+                            if isinstance(limit_val, (int, float)) and limit_val > 0:
+                                agent_executions_limit = int(limit_val)
+                                agent_executions_remaining = max(agent_executions_limit - agent_executions_usage, 0)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            
+    except Exception as e:
+        logger.exception("Agents data fetch error")
+        error = True
+    
+    support = get_support_contacts()
+    
+    return templates.TemplateResponse("agents.html", {
+        "request": request,
+        "tenant_id": tenant_id,
+        "prefix": auth["prefix"],
+        "agents": agents,
+        "error": error,
+        "has_past_due": has_past_due,
+        "has_unpaid": has_unpaid,
+        "period": period,
+        "agent_executions_usage": agent_executions_usage,
+        "agent_executions_limit": agent_executions_limit,
+        "agent_executions_remaining": agent_executions_remaining,
+        "support_email": support.get("email"),
+        "support_url": support.get("url"),
+    })
+
+
+@router.get("/tenant/agents/{agent_code}/executions", response_class=HTMLResponse)
+async def agent_executions_page(request: Request, agent_code: str):
+    """Agent executions list page."""
+    disabled = check_portal_enabled()
+    if disabled:
+        return disabled
+    
+    auth = require_auth(request)
+    if isinstance(auth, RedirectResponse):
+        return auth
+    
+    tenant_id = auth["tenant_id"]
+    executions = []
+    error = False
+    not_available = False
+    
+    try:
+        from sqlalchemy import select, desc
+        
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get agent SKU by code
+            sku_q = select(AgentSKU.id).where(AgentSKU.code == agent_code).limit(1)
+            sku_row = conn.execute(sku_q).fetchone()
+            
+            if not sku_row:
+                error = True
+            else:
+                sku_id = sku_row[0]
+                
+                # Get executions for this tenant+agent
+                exec_q = (
+                    select(AgentExecution)
+                    .where(AgentExecution.tenant_id == tenant_id)
+                    .where(AgentExecution.agent_sku_id == sku_id)
+                    .order_by(desc(AgentExecution.created_at))
+                    .limit(50)
+                )
+                exec_rows = conn.execute(exec_q).fetchall()
+                
+                for row in exec_rows:
+                    m = row._mapping
+                    executions.append({
+                        "id": m["id"],
+                        "status": m["status"],
+                        "created_at": m["created_at"],
+                        "error_code": m.get("error_code"),
+                    })
+                    
+    except Exception as e:
+        logger.exception("Executions fetch error")
+        error = True
+    
+    # Get API base URL for curl example
+    api_base_url = os.getenv("API_BASE_URL", "https://api.example.com")
+    
+    return templates.TemplateResponse("agent_executions.html", {
+        "request": request,
+        "tenant_id": tenant_id,
+        "prefix": auth["prefix"],
+        "agent_code": agent_code,
+        "executions": executions,
+        "error": error,
+        "not_available": not_available,
+        "api_base_url": api_base_url,
+    })

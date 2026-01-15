@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Agents - Tenant Portal{% endblock %}
+
+{% block content %}
+<h2>Agents</h2>
+
+{% if error %}
+<div class="alert alert-warning">
+    <strong>Temporarily unavailable.</strong> Please try again later.
+</div>
+{% endif %}
+
+<!-- Usage Summary -->
+{% if agent_executions_usage is not none %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Agent Executions ({{ period }})</h5>
+        <p class="mb-0">
+            <strong>{{ agent_executions_usage }}</strong> executions this month
+            {% if agent_executions_limit %}
+                / {{ agent_executions_limit }} limit
+                {% if agent_executions_remaining == 0 %}
+                    <span class="badge bg-danger ms-2">Limit reached</span>
+                {% elif agent_executions_remaining is not none and agent_executions_remaining < 10 %}
+                    <span class="badge bg-warning text-dark ms-2">{{ agent_executions_remaining }} remaining</span>
+                {% endif %}
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Agents Catalog -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Available Agents</h5>
+    </div>
+    <div class="card-body">
+        {% if agents %}
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Code</th>
+                    <th>Status</th>
+                    <th>Pricing</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for agent in agents %}
+                <tr>
+                    <td>
+                        <strong>{{ agent.name }}</strong>
+                        {% if agent.description %}
+                        <br><small class="text-muted">{{ agent.description[:100] }}{% if agent.description|length > 100 %}...{% endif %}</small>
+                        {% endif %}
+                    </td>
+                    <td><code>{{ agent.code }}</code></td>
+                    <td>
+                        <!-- Enabled badge -->
+                        {% if agent.enabled %}
+                        <span class="badge bg-success">Enabled</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Not enabled</span>
+                        {% endif %}
+                        
+                        <!-- Paid badge -->
+                        {% if agent.paid %}
+                        <span class="badge bg-primary">Paid</span>
+                        {% elif agent.addon_status == 'past_due' %}
+                        <span class="badge bg-warning text-dark">Past due</span>
+                        {% elif agent.addon_status == 'canceled' %}
+                        <span class="badge bg-danger">Canceled</span>
+                        {% else %}
+                        <span class="badge bg-outline-secondary border">Not paid</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ agent.pricing_model }}</td>
+                    <td>
+                        {% if agent.enabled and agent.paid %}
+                        <a href="/tenant/agents/{{ agent.code }}/executions" class="btn btn-sm btn-outline-primary">View Executions</a>
+                        {% elif not agent.paid %}
+                        <small class="text-muted">Contact support to activate</small>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">No agents available.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Past Due Warning -->
+{% if has_past_due %}
+<div class="alert alert-warning">
+    <strong>Payment Issue:</strong> One or more agent subscriptions are past due. 
+    Please update your payment method to avoid service interruption.
+    {% if support_email %}
+    <br><a href="mailto:{{ support_email }}">Contact support</a>
+    {% elif support_url %}
+    <br><a href="{{ support_url }}" target="_blank">Contact support</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Not Paid Info -->
+{% if has_unpaid %}
+<div class="alert alert-info">
+    <strong>Activate agents:</strong> Some agents are not yet activated for your account.
+    {% if support_email %}
+    Contact <a href="mailto:{{ support_email }}">{{ support_email }}</a> to enable them.
+    {% elif support_url %}
+    <a href="{{ support_url }}" target="_blank">Contact support</a> to enable them.
+    {% else %}
+    Contact your sales representative to enable them.
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

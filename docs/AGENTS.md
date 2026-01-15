@@ -571,6 +571,52 @@ try_process_agent_addon_webhook("stripe", webhook_payload)  # никогда н�
 
 ---
 
+## Tenant Portal UI: /tenant/agents
+
+### Обзор
+
+Страница `/tenant/agents` в Tenant Portal показывает:
+- Каталог доступных агентов (активные SKUs)
+- Статусы: Enabled/Not enabled, Paid/Not paid/Past due
+- Usage summary: количество `agent_executions` за период
+- Список последних executions (для конкретного агента)
+
+### Навигация
+
+Ссылка "Agents" в главном меню портала.
+
+### UI элементы
+
+| Элемент | Описание |
+|---------|----------|
+| Agent Executions summary | Количество выполнений за месяц + лимит |
+| Agents table | Список SKUs с бейджами статуса |
+| "Enabled" badge | Зелёный если `tenant_status == "enabled"` |
+| "Paid" badge | Синий если `addon_status == "active"` |
+| "Past due" badge | Жёлтый warning если `addon_status == "past_due"` |
+| Executions link | Ссылка на `/tenant/agents/{code}/executions` |
+
+### Страница executions
+
+`/tenant/agents/{agent_code}/executions` — список последних 50 выполнений:
+- ID (с кнопкой копирования)
+- Status (completed, rejected, failed, running)
+- Created at
+- Error code (если есть)
+
+### Ручное тестирование
+
+1. Создать AgentSKU через Admin Panel (status=active)
+2. Создать TenantAgent (status=enabled)
+3. Создать TenantAgentSubscription (status=active)
+4. Открыть /tenant/agents
+5. Проверить: агент показан, Enabled + Paid badges
+6. Выполнить `POST /api/v1/agents/{code}/execute`
+7. Открыть /tenant/agents/{code}/executions
+8. Проверить: execution появился в списке
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin
