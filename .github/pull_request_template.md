@@ -1,44 +1,34 @@
-## Описание
+## What
 
-<!-- Краткое описание изменений -->
+Brief description of changes.
 
-### Что сделано
+## Why
 
-<!-- Что именно изменено/добавлено/исправлено -->
+Motivation and context.
 
-### Почему
+## How to Test
 
-<!-- Причина изменений (bug fix, feature, refactoring) -->
+```bash
+# Run tests
+pytest -v
 
-### Как проверить
+# Check readiness
+curl http://localhost:8000/ready
 
-<!-- Шаги для проверки изменений -->
+# Run doctor
+make doctor
+```
 
----
+## Checklist
 
-## Чеклист
+- [ ] Tests pass (`pytest -v`)
+- [ ] No new linter warnings
+- [ ] Documentation updated (README, RUNBOOK, CHANGELOG)
+- [ ] No secrets or credentials in code
+- [ ] Database migrations work (`alembic upgrade head`)
 
-Перед созданием PR убедитесь, что:
+## Rollout / Backout
 
-- [ ] Тесты пройдены локально (`python -m pytest -q`)
-- [ ] CI зелёный (все проверки проходят)
-- [ ] Нет секретов/ключей/дампов БД в коммитах
-- [ ] Обновлена документация (если применимо)
-- [ ] Изменения tenant-safe / idempotency-safe (если затрагивает billing/webhooks/cron)
-- [ ] Ruff проверки пройдены (`ruff check .`)
+**Rollout:** Standard deploy via CI/CD.
 
----
-
-## Риски и миграции
-
-<!-- Если есть breaking changes, миграции БД, изменения API - опишите здесь -->
-
-- [ ] Нет breaking changes
-- [ ] Миграции БД не требуются (или описаны)
-- [ ] Обратная совместимость сохранена
-
----
-
-## Дополнительная информация
-
-<!-- Ссылки на issues, связанные PR, скриншоты и т.д. -->
+**Backout:** `git revert` or redeploy previous version. If DB migration involved: `alembic downgrade -1`.

@@ -71,3 +71,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # По умолчанию запускаем FastAPI сервер
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+COPY requirements-dev.txt /app/requirements-dev.txt
+RUN pip install --no-cache-dir --user -r /app/requirements-dev.txt
