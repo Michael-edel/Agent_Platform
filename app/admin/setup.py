@@ -30,6 +30,7 @@ def setup_admin(app: FastAPI) -> None:
         
         from cyberplat.product.infrastructure.database import get_engine
         from app.admin.auth import AdminAuthBackend
+        from app.admin.dashboard import DashboardView
         from app.admin.views import (
             # Product views
             PlanAdmin,
@@ -56,14 +57,19 @@ def setup_admin(app: FastAPI) -> None:
         # Get engine
         engine = get_engine()
         
-        # Create admin with auth backend
+        # Create admin with auth backend and templates
+        templates_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "templates")
         authentication_backend = AdminAuthBackend(secret_key=secret_key)
         admin = Admin(
             app,
             engine,
             authentication_backend=authentication_backend,
             title="Agent Platform Admin",
+            templates_dir=templates_dir,
         )
+        
+        # Add Dashboard first (appears first in menu)
+        admin.add_view(DashboardView)
         
         # Add Product views
         admin.add_view(PlanAdmin)

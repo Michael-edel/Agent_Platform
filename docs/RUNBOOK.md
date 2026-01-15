@@ -214,6 +214,18 @@ ADMIN_ROLE=tenant_admin
 ADMIN_TENANT_ID=your-tenant-id
 ```
 
+### Dashboard
+
+Страница `/admin/` (первый пункт меню) показывает key metrics:
+- **Tenants** — количество tenant'ов в системе
+- **Subscriptions** — количество подписок
+- **Orders** — количество billing orders
+- **Webhook Events** — количество webhook событий
+
+Scoping по ролям:
+- `platform_admin` — видит глобальную статистику
+- `tenant_admin` — видит только данные своего tenant
+
 ### Возможности
 
 - **Plans / Billing Plans** — CRUD тарифных планов

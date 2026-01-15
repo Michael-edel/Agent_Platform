@@ -1,0 +1,51 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4">Dashboard</h2>
+    
+    {% if stats.scoped %}
+    <div class="alert alert-info mb-4">
+        <i class="fa-solid fa-filter"></i> Showing data for your tenant only
+    </div>
+    {% endif %}
+    
+    <div class="row">
+        <div class="col-md-3 mb-4">
+            <div class="card text-bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Tenants</h5>
+                    <p class="card-text display-4">{{ stats.tenants_count }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card text-bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Subscriptions</h5>
+                    <p class="card-text display-4">{{ stats.subscriptions_count }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card text-bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title">Orders</h5>
+                    <p class="card-text display-4">{{ stats.orders_count }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-4">
+            <div class="card text-bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Webhook Events</h5>
+                    <p class="card-text display-4">{{ stats.webhooks_count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
