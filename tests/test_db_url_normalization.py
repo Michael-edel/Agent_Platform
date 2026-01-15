@@ -42,6 +42,33 @@ class TestNormalizeSqlalchemyDatabaseUrl:
         url = "postgresql+psycopg://user:pass@host:5432/db"
         assert normalize_sqlalchemy_database_url(url) == url
 
+    def test_explicit_asyncpg_driver_unchanged(self):
+        """postgresql+asyncpg:// URLs are returned unchanged (explicit driver)."""
+        url = "postgresql+asyncpg://user:pass@host:5432/db"
+        assert normalize_sqlalchemy_database_url(url) == url
+
+    def test_explicit_pg8000_driver_unchanged(self):
+        """postgresql+pg8000:// URLs are returned unchanged (explicit driver)."""
+        url = "postgresql+pg8000://user:pass@host:5432/db"
+        assert normalize_sqlalchemy_database_url(url) == url
+
+    def test_explicit_psycopg2_driver_unchanged(self):
+        """postgresql+psycopg2:// URLs are returned unchanged (explicit driver)."""
+        url = "postgresql+psycopg2://user:pass@host:5432/db"
+        assert normalize_sqlalchemy_database_url(url) == url
+
+    def test_explicit_drivers_not_modified(self):
+        """Any postgresql+<driver>:// URL is returned unchanged."""
+        urls = [
+            "postgresql+asyncpg://user:pass@host/db",
+            "postgresql+psycopg://user:pass@host/db",
+            "postgresql+psycopg2://user:pass@host/db",
+            "postgresql+pg8000://user:pass@host/db",
+            "postgresql+aiopg://user:pass@host/db",
+        ]
+        for url in urls:
+            assert normalize_sqlalchemy_database_url(url) == url, f"URL was modified: {url}"
+
     def test_sqlite_unchanged(self):
         """SQLite URLs are returned unchanged."""
         url = "sqlite:///./test.db"
@@ -148,3 +175,13 @@ class TestGetSqlalchemyDatabaseUrl:
         """SQLite URLs are unchanged."""
         monkeypatch.setenv("DATABASE_URL", "sqlite:///./test.db")
         assert get_sqlalchemy_database_url() == "sqlite:///./test.db"
+
+    def test_explicit_asyncpg_driver_unchanged(self, monkeypatch):
+        """Explicit asyncpg driver is not modified."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@host/db")
+        assert get_sqlalchemy_database_url() == "postgresql+asyncpg://user:pass@host/db"
+
+    def test_explicit_pg8000_driver_unchanged(self, monkeypatch):
+        """Explicit pg8000 driver is not modified."""
+        monkeypatch.setenv("DATABASE_URL", "postgresql+pg8000://user:pass@host/db")
+        assert get_sqlalchemy_database_url() == "postgresql+pg8000://user:pass@host/db"

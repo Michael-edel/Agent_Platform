@@ -14,10 +14,10 @@ def normalize_sqlalchemy_database_url(url: Optional[str]) -> Optional[str]:
     Правила нормализации:
     - None -> None
     - "" или whitespace -> None
+    - postgresql+*://... -> без изменений (явный драйвер уже указан: asyncpg, psycopg, pg8000, etc.)
     - postgresql://... -> postgresql+psycopg://... (замена только первого вхождения)
     - postgres://...   -> postgresql+psycopg://... (замена только первого вхождения)
-    - postgresql+psycopg://... -> без изменений (уже нормализован)
-    - sqlite://... -> без изменений (SQLite не требует нормализации)
+    - sqlite://... и другие схемы -> без изменений
     
     Args:
         url: DATABASE_URL строка или None
@@ -32,6 +32,8 @@ def normalize_sqlalchemy_database_url(url: Optional[str]) -> Optional[str]:
         'postgresql+psycopg://user:pass@host:5432/db'
         >>> normalize_sqlalchemy_database_url("postgresql+psycopg://user:pass@host:5432/db")
         'postgresql+psycopg://user:pass@host:5432/db'
+        >>> normalize_sqlalchemy_database_url("postgresql+asyncpg://user:pass@host:5432/db")
+        'postgresql+asyncpg://user:pass@host:5432/db'
         >>> normalize_sqlalchemy_database_url("sqlite:///./test.db")
         'sqlite:///./test.db'
         >>> normalize_sqlalchemy_database_url(None)
@@ -44,8 +46,9 @@ def normalize_sqlalchemy_database_url(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
     
-    # Если уже нормализован, вернуть как есть
-    if url.startswith("postgresql+psycopg://"):
+    # Если уже указан явный драйвер (postgresql+asyncpg://, postgresql+psycopg://, etc.)
+    # НЕ модифицировать — пользователь явно выбрал драйвер
+    if url.startswith("postgresql+"):
         return url
     
     # Нормализация postgresql:// -> postgresql+psycopg://
@@ -56,7 +59,7 @@ def normalize_sqlalchemy_database_url(url: Optional[str]) -> Optional[str]:
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg://", 1)
     
-    # Для всех остальных схем (sqlite://, и т.д.) вернуть как есть
+    # Для всех остальных схем (sqlite://, mysql://, и т.д.) вернуть как есть
     return url
 
 
