@@ -263,6 +263,16 @@ Billing Orders Admin поддерживает:
 
 Модель BillingOrder не содержит секретных полей (raw payload, tokens), поэтому все колонки безопасны для отображения.
 
+### Subscriptions: поиск и фильтры
+
+Tenant Subscriptions Admin поддерживает:
+- **Поиск**: по status, provider, tenant_id, provider_subscription_id
+- **Фильтры**: provider, status, tenant_id, plan_id, created_at
+- **Сортировка**: по current_period_start/end, created_at, updated_at (по умолчанию newest first)
+- **Детальный просмотр**: доступен через can_view_details
+
+Модель TenantSubscription не содержит секретных полей, все колонки безопасны для отображения.
+
 ### Dashboard: System Diagnostics
 
 Dashboard показывает системную диагностику (без HTTP-запросов к /ready):

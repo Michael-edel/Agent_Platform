@@ -240,11 +240,13 @@ class TenantSubscriptionAdmin(TenantScopedMixin, ModelView, model=TenantSubscrip
     can_create = False
     can_edit = False
     can_delete = False
+    can_view_details = True
     
     column_list = ["id", "tenant_id", "provider", "plan_id", "status", "current_period_start", "current_period_end", "created_at"]
-    column_searchable_list = ["tenant_id", "provider", "provider_subscription_id"]
-    column_filters = ["tenant_id", "provider", "status", "created_at"]
-    column_sortable_list = ["tenant_id", "provider", "status", "created_at"]
+    column_searchable_list = ["tenant_id", "provider", "status", "provider_subscription_id"]
+    column_filters = ["provider", "status", "tenant_id", "plan_id", "created_at"]
+    column_sortable_list = ["tenant_id", "provider", "status", "current_period_start", "current_period_end", "created_at", "updated_at"]
+    column_default_sort = ("created_at", True)  # Newest first
     page_size = 50
     
     column_formatters = {
