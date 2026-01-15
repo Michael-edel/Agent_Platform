@@ -319,6 +319,27 @@ rate(billing_jobs_processed_total{result="failed"}[5m]) > 0
 time() - billing_worker_last_success_timestamp > 300
 ```
 
+## Observability (Prometheus + Grafana)
+
+### Запуск (docker-compose profile)
+
+```bash
+docker-compose --profile observability up -d --build
+```
+
+### URLs (local demo)
+
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (default: `admin/admin`)
+
+Grafana автоматически провиженит:
+- datasource Prometheus (`http://prometheus:9090`)
+- dashboard “Billing Worker / Jobs”
+
+### Production note
+
+- Смените `GF_SECURITY_ADMIN_PASSWORD` и не публикуйте порты наружу (уберите `ports:` или ограничьте firewall/ingress).
+
 ### Навигация и drill-down
 
 Dashboard содержит кликабельные карточки для быстрого перехода:

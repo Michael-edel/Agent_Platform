@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: "CyberPlat"
+    orgId: 1
+    folder: "CyberPlat"
+    type: file
+    disableDeletion: false
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards
+

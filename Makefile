@@ -1,7 +1,7 @@
 # Makefile для Agent Platform / CyberPlat
 # Работает на Linux/Mac и Windows (через Git Bash)
 
-.PHONY: help install test lint check run worker docker-worker-logs recurring-kaspi recurring-stripe clean
+.PHONY: help install test lint check run worker docker-worker-logs observability-up observability-down grafana-open prometheus-open recurring-kaspi recurring-stripe clean
 
 help: ## Показать справку по командам
 	@echo "Доступные команды:"
@@ -30,6 +30,18 @@ worker: ## Запустить Billing Worker локально
 
 docker-worker-logs: ## Tail logs billing worker (docker-compose)
 	docker-compose logs -f worker
+
+observability-up: ## Запустить Prometheus+Grafana (docker-compose profile observability)
+	docker-compose --profile observability up -d --build
+
+observability-down: ## Остановить Prometheus+Grafana
+	docker-compose --profile observability down
+
+grafana-open: ## Показать URL Grafana
+	@echo "Grafana: http://localhost:3000 (admin/admin)"
+
+prometheus-open: ## Показать URL Prometheus
+	@echo "Prometheus: http://localhost:9090"
 
 recurring-kaspi: ## Запустить Kaspi recurring billing вручную
 	python scripts/run_kaspi_recurring.py

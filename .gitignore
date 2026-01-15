@@ -65,6 +65,9 @@ platform.db
 *.pdf
 *.json
 
+# Allow checked-in Grafana dashboards
+!observability/grafana/dashboards/*.json
+
 # =========================
 # Environment secrets
 # =========================
