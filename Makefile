@@ -62,3 +62,6 @@ db-downgrade: ## Откатить последнюю миграцию
 
 db-check: ## Проверить, что revision == head (для CI/staging)
 	@PYTHONPATH=. python -c "from alembic.config import Config; from alembic.script import ScriptDirectory; from alembic.runtime.migration import MigrationContext; from sqlalchemy import create_engine; from utils.db_url import get_sqlalchemy_database_url; db_url = get_sqlalchemy_database_url(); assert db_url, 'DATABASE_URL not set'; engine = create_engine(db_url); cfg = Config('alembic.ini'); script = ScriptDirectory.from_config(cfg); head_rev = script.get_current_head(); conn = engine.connect(); context = MigrationContext.configure(conn); current_rev = context.get_current_revision(); conn.close(); engine.dispose(); assert current_rev == head_rev, f'Schema version mismatch: current={current_rev}, expected={head_rev}'; print(f'✓ Schema is up-to-date (revision: {current_rev})')"
+
+doctor: ## Запустить диагностику БД и конфигурации
+	@PYTHONPATH=. python scripts/doctor.py
