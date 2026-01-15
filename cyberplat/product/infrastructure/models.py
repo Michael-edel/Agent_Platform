@@ -226,3 +226,24 @@ class TenantPortalToken(Base):
         Index("idx_tenant_portal_tokens_revoked_at", "revoked_at"),
         Index("idx_tenant_portal_tokens_tenant_active", "tenant_id", "revoked_at"),
     )
+
+
+class AgentSKU(Base):
+    """SQLAlchemy model for agent SKUs (product catalog)."""
+    
+    __tablename__ = "agent_skus"
+    
+    id = Column(String, primary_key=True)  # UUID
+    code = Column(String, nullable=False, unique=True, index=True)  # e.g., "sales_assistant"
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="active", index=True)  # active, deprecated, disabled
+    pricing_model = Column(String, nullable=False)  # subscription, usage_based
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_agent_skus_code"),
+        Index("idx_agent_skus_code", "code"),
+        Index("idx_agent_skus_status", "status"),
+    )

@@ -25,7 +25,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
     BillingOrder,
     BillingUsage,
 )
-from cyberplat.product.infrastructure.models import TenantPortalToken
+from cyberplat.product.infrastructure.models import TenantPortalToken, AgentSKU
 
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
@@ -362,5 +362,25 @@ class TenantPortalTokenAdmin(ModelView, model=TenantPortalToken):
     column_searchable_list = ["tenant_id", "token_prefix"]
     column_filters = ["tenant_id", "revoked_at"]
     column_sortable_list = ["tenant_id", "created_at", "revoked_at"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
+
+
+class AgentSKUAdmin(ModelView, model=AgentSKU):
+    """Admin view for Agent SKUs (platform_admin only, no delete)."""
+    
+    name = "Agent SKU"
+    name_plural = "Agent SKUs"
+    icon = "fa-solid fa-robot"
+    
+    can_create = True
+    can_edit = True
+    can_delete = False  # Soft policy: use status=disabled instead
+    can_view_details = True
+    
+    column_list = ["code", "name", "status", "pricing_model", "created_at"]
+    column_searchable_list = ["code", "name"]
+    column_filters = ["status", "pricing_model"]
+    column_sortable_list = ["code", "name", "status", "pricing_model", "created_at", "updated_at"]
     column_default_sort = ("created_at", True)
     page_size = 50
