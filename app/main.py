@@ -418,7 +418,7 @@ async def ready(request: Request):
     is_postgres = original_database_url and (
         original_database_url.startswith("postgresql://") or 
         original_database_url.startswith("postgres://") or 
-        original_database_url.startswith("postgresql+psycopg://")
+        original_database_url.startswith("postgresql+")  # postgresql+psycopg://, postgresql+asyncpg://, etc.
     )
     
     if is_postgres:

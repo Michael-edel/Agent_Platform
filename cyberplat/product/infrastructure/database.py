@@ -5,7 +5,7 @@ import logging
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from utils.db_url import normalize_database_url
+from utils.db_url import normalize_sqlalchemy_database_url
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def get_database_url() -> str:
         database_url = f"sqlite:///{db_path}"
     
     # Нормализация для PostgreSQL (psycopg v3)
-    normalized = normalize_database_url(database_url)
+    normalized = normalize_sqlalchemy_database_url(database_url)
     return normalized or database_url
 
 
@@ -40,7 +40,11 @@ def get_engine():
             pool_pre_ping=True,
             connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {}
         )
-        logger.info(f"SQLAlchemy engine created: {database_url[:50]}...")
+        # Логируем только схему и хост, без credentials
+        from urllib.parse import urlparse
+        parsed = urlparse(database_url)
+        safe_url = f"{parsed.scheme}://{parsed.hostname or 'localhost'}/..."
+        logger.info(f"SQLAlchemy engine created: {safe_url}")
     return _engine
 
 
