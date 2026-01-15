@@ -273,6 +273,23 @@ Tenant Subscriptions Admin поддерживает:
 
 Модель TenantSubscription не содержит секретных полей, все колонки безопасны для отображения.
 
+### Admin Search
+
+Unified Search (`/admin/search`) позволяет искать по ключевым идентификаторам:
+
+| Сущность | Поля поиска |
+|----------|-------------|
+| Webhook Events | event_id, provider |
+| Orders | external_order_id, provider |
+| Subscriptions | provider_subscription_id, provider |
+
+**Tenant scoping:**
+- `platform_admin` — глобальный поиск
+- `tenant_admin` — только в рамках своего tenant_id
+- Без tenant_id при tenant_admin → пустые результаты (fail-closed)
+
+Результаты ограничены 20 записями на секцию.
+
 ### Dashboard: System Diagnostics
 
 Dashboard показывает системную диагностику (без HTTP-запросов к /ready):

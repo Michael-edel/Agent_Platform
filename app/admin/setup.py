@@ -31,6 +31,7 @@ def setup_admin(app: FastAPI) -> None:
         from cyberplat.product.infrastructure.database import get_engine
         from app.admin.auth import AdminAuthBackend
         from app.admin.dashboard import DashboardView
+        from app.admin.search import SearchView
         from app.admin.views import (
             # Product views
             PlanAdmin,
@@ -70,6 +71,7 @@ def setup_admin(app: FastAPI) -> None:
         
         # Add Dashboard first (appears first in menu)
         admin.add_view(DashboardView)
+        admin.add_view(SearchView)
         
         # Add Product views
         admin.add_view(PlanAdmin)

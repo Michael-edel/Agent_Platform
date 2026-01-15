@@ -1,0 +1,119 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">Unified Search</h3>
+    
+    <form method="post" class="mb-4">
+        <div class="input-group" style="max-width: 500px;">
+            <input type="text" name="q" class="form-control" placeholder="Search by event_id, order_id, subscription_id, provider..." value="{{ query }}" autofocus>
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-magnifying-glass"></i> Search
+            </button>
+        </div>
+    </form>
+    
+    {% if results %}
+        {% if results.error %}
+        <div class="alert alert-danger">
+            <strong>Error:</strong> {{ results.error }}
+        </div>
+        {% endif %}
+        
+        <h5 class="mt-4">Webhook Events ({{ results.webhook_events|length }})</h5>
+        {% if results.webhook_events %}
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Event ID</th>
+                        <th>Tenant ID</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Received At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in results.webhook_events %}
+                    <tr>
+                        <td>{{ e.event_id }}</td>
+                        <td>{{ e.tenant_id or "-" }}</td>
+                        <td>{{ e.provider }}</td>
+                        <td>{{ e.status }}</td>
+                        <td>{{ e.received_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ list_urls.webhook_events }}" class="btn btn-outline-secondary btn-sm mb-3">Open in list</a>
+        {% else %}
+        <p class="text-muted">No webhook events found.</p>
+        {% endif %}
+        
+        <h5 class="mt-4">Orders ({{ results.orders|length }})</h5>
+        {% if results.orders %}
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>External Order ID</th>
+                        <th>Tenant ID</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in results.orders %}
+                    <tr>
+                        <td>{{ o.external_order_id or o.id }}</td>
+                        <td>{{ o.tenant_id }}</td>
+                        <td>{{ o.provider }}</td>
+                        <td>{{ o.status }}</td>
+                        <td>{{ o.amount_minor }} {{ o.currency }}</td>
+                        <td>{{ o.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ list_urls.orders }}" class="btn btn-outline-secondary btn-sm mb-3">Open in list</a>
+        {% else %}
+        <p class="text-muted">No orders found.</p>
+        {% endif %}
+        
+        <h5 class="mt-4">Subscriptions ({{ results.subscriptions|length }})</h5>
+        {% if results.subscriptions %}
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Subscription ID</th>
+                        <th>Tenant ID</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in results.subscriptions %}
+                    <tr>
+                        <td>{{ s.provider_subscription_id or s.id }}</td>
+                        <td>{{ s.tenant_id }}</td>
+                        <td>{{ s.provider }}</td>
+                        <td>{{ s.status }}</td>
+                        <td>{{ s.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ list_urls.subscriptions }}" class="btn btn-outline-secondary btn-sm mb-3">Open in list</a>
+        {% else %}
+        <p class="text-muted">No subscriptions found.</p>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
