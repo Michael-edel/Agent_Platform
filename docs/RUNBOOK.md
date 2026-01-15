@@ -253,6 +253,16 @@ Drill-down доступен из: Tenant Plans, Subscriptions, Orders, Webhook E
 
 **Безопасность:** Поле `raw_json` (сырой payload webhook) скрыто как в списке, так и в детальном просмотре. Поле `error` обрезается до 200 символов с HTML escaping.
 
+### Orders: поиск и фильтры
+
+Billing Orders Admin поддерживает:
+- **Поиск**: по provider, status, external_order_id, tenant_id
+- **Фильтры**: provider, status, tenant_id, created_at
+- **Сортировка**: по created_at, paid_at, amount, status (по умолчанию newest first)
+- **Детальный просмотр**: доступен через can_view_details
+
+Модель BillingOrder не содержит секретных полей (raw payload, tokens), поэтому все колонки безопасны для отображения.
+
 ### Dashboard: System Diagnostics
 
 Dashboard показывает системную диагностику (без HTTP-запросов к /ready):

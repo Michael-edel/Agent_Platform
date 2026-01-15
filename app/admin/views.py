@@ -307,11 +307,13 @@ class BillingOrderAdmin(TenantScopedMixin, ModelView, model=BillingOrder):
     can_create = False
     can_edit = False
     can_delete = False
+    can_view_details = True
     
     column_list = ["id", "tenant_id", "provider", "plan_id", "amount_minor", "currency", "status", "created_at", "paid_at"]
-    column_searchable_list = ["tenant_id", "provider", "external_order_id"]
-    column_filters = ["tenant_id", "provider", "status", "created_at"]
-    column_sortable_list = ["tenant_id", "provider", "status", "amount_minor", "created_at"]
+    column_searchable_list = ["tenant_id", "provider", "status", "external_order_id"]
+    column_filters = ["provider", "status", "tenant_id", "created_at"]
+    column_sortable_list = ["tenant_id", "provider", "status", "amount_minor", "created_at", "paid_at"]
+    column_default_sort = ("created_at", True)  # Newest first
     page_size = 50
     
     column_formatters = {
