@@ -49,3 +49,14 @@ class PlanApplied:
     period_end: str  # ISO format
     status: str
     metadata: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AgentAddonSubscriptionUpdated:
+    """Event for agent add-on subscription status change."""
+    tenant_id: str
+    agent_code: str
+    status: str  # active, inactive, canceled, past_due
+    source: str  # admin, kaspi, stripe
+    external_ref: Optional[str] = None
+    effective_at: Optional[str] = None  # ISO format

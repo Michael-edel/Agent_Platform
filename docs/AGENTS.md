@@ -422,6 +422,68 @@ HTTP 402 Payment Required
 
 ---
 
+## Billing Sync (Events)
+
+### Обзор
+
+Синхронизация статуса подписок происходит через доменные события.
+Это позволяет подключить любой источник (Admin, Kaspi, Stripe) к единой логике.
+
+### Событие: AgentAddonSubscriptionUpdated
+
+```python
+@dataclass(frozen=True)
+class AgentAddonSubscriptionUpdated:
+    tenant_id: str
+    agent_code: str
+    status: str  # active, inactive, canceled, past_due
+    source: str  # admin, kaspi, stripe
+    external_ref: Optional[str] = None
+    effective_at: Optional[str] = None
+```
+
+### Обработчик
+
+`handle_agent_addon_subscription_updated(session, event)`:
+
+1. Находит `AgentSKU` по `agent_code`
+2. Upsert `TenantAgentSubscription` по `(tenant_id, agent_sku_id)`
+3. Обновляет `status`, `source`, `external_ref`
+4. Логика по статусам:
+   - `active`: устанавливает `starts_at`, очищает `ends_at`
+   - `canceled`: устанавливает `ends_at`
+   - `inactive`/`past_due`: сохраняет текущие даты
+
+### Идемпотентность
+
+Повторная обработка того же события безопасна — состояние корректно обновляется без дублей.
+
+### Service Function
+
+```python
+update_agent_subscription_via_event(
+    session,
+    tenant_id="...",
+    agent_code="...",
+    status="active",
+    source="admin",
+)
+```
+
+Создаёт событие и обрабатывает его. Используется из Admin, тестов, или API.
+
+### Источники событий
+
+| Source | Описание |
+|--------|----------|
+| `admin` | Создано вручную через Admin Panel |
+| `kaspi` | Webhook от Kaspi Pay (будущее) |
+| `stripe` | Webhook от Stripe (будущее) |
+
+⚠️ **Текущая версия**: только `admin`. Webhooks будут публиковать то же событие.
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin
