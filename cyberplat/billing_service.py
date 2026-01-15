@@ -11,6 +11,16 @@ from calendar import monthrange
 logger = logging.getLogger(__name__)
 
 
+class PlanLimitExceededError(Exception):
+    """Raised when a plan limit would be exceeded."""
+    
+    def __init__(self, metric: str, limit: int, used: int):
+        self.metric = metric
+        self.limit = limit
+        self.used = used
+        super().__init__(f"Plan limit exceeded for {metric}: {used}/{limit}")
+
+
 class BillingService:
     """Сервис для управления биллингом и тарифами."""
     
@@ -231,7 +241,37 @@ class BillingService:
             
         Returns:
             True если запись создана, False если уже существует (идемпотентность)
+            
+        Raises:
+            PlanLimitExceededError: If plan limit would be exceeded
         """
+        # Check plan limits before recording (soft enforcement)
+        from app.billing.limits import check_plan_limit, LimitCheckResult
+        try:
+            from cyberplat.product.infrastructure.database import get_engine
+            limit_result = check_plan_limit(
+                tenant_id=tenant_id,
+                metric=metric,
+                increment=units,
+                period=period,
+                engine=get_engine(),
+            )
+            if not limit_result.allowed and limit_result.reason == "limit_exceeded":
+                logger.warning(
+                    f"Plan limit exceeded for tenant={tenant_id}, metric={metric}: "
+                    f"used={limit_result.used}, limit={limit_result.limit}"
+                )
+                raise PlanLimitExceededError(
+                    metric=metric,
+                    limit=limit_result.limit,
+                    used=limit_result.used,
+                )
+        except PlanLimitExceededError:
+            raise
+        except Exception as e:
+            # Log but don't block on limit check failures
+            logger.warning(f"Limit check failed for tenant={tenant_id}, metric={metric}: {e}")
+        
         conn = self._get_connection()
         cur = conn.cursor()
         
