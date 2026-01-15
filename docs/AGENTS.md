@@ -337,6 +337,26 @@ Usage pricing хранится в `agent_skus` (v1):
 
 Флаг `BILLING_DRY_RUN=true` (default) — обработчик события только логирует, без списаний и внешних вызовов.
 
+## Billing jobs pipeline (idempotent, retry/backoff)
+
+### Flow
+
+`finalize` → `UsageInvoiceReady` → `billing_jobs` (pending) → `process_due_billing_jobs()` → update `payment_status`.
+
+### Job states
+
+`pending` → `processing` → `succeeded` / `failed`
+
+### Idempotency
+
+Один invoice → максимум один job по `idempotency_key = usage_invoice:<invoice_id>`.
+
+### Retry / backoff
+
+- `failed` jobs получают `next_attempt_at` (exponential backoff)
+- `process_due_billing_jobs()` берёт только due jobs (без sleep, test-friendly)
+- `POST /api/v1/tenant/billing/usage-invoices/{period}/retry` сбрасывает failed job обратно в pending
+
 ## Timeouts
 
 Таймауты задаются на уровне registry (без изменений схемы БД):

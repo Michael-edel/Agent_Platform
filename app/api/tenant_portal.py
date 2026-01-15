@@ -17,7 +17,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 
 from cyberplat.product.infrastructure.database import get_engine
 from cyberplat.product.infrastructure.models import (
@@ -161,6 +161,8 @@ class UsageInvoiceResponse(BaseModel):
     period: str
     status: str
     currency: str
+    payment_status: str
+    billing_job_id: Optional[str] = None
     lines: List[UsageInvoiceLineItem]
     totals: UsageInvoiceTotals
 
@@ -509,11 +511,27 @@ async def finalize_usage_invoice_endpoint(
         )
         for l in finalized.lines
     ]
+    # Find billing job id (if created by handler)
+    billing_job_id = None
+    try:
+        from cyberplat.product.infrastructure.models import BillingJob
+
+        engine = get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(BillingJob.id).where(BillingJob.invoice_id == inv.id).limit(1)
+            ).fetchone()
+            billing_job_id = row[0] if row else None
+    except Exception:
+        billing_job_id = None
+
     return UsageInvoiceResponse(
         invoice_id=inv.id,
         period=period,
         status=inv.status,
         currency=inv.currency,
+        payment_status=getattr(inv, "payment_status", "unpaid"),
+        billing_job_id=billing_job_id,
         lines=lines,
         totals=UsageInvoiceTotals(amount_cents=int(inv.amount_cents)),
     )
@@ -550,14 +568,107 @@ async def get_usage_invoice_endpoint(
         )
         for l in inv.lines
     ]
+    billing_job_id = None
+    try:
+        from cyberplat.product.infrastructure.models import BillingJob
+
+        engine = get_engine()
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(BillingJob.id).where(BillingJob.invoice_id == invoice.id).limit(1)
+            ).fetchone()
+            billing_job_id = row[0] if row else None
+    except Exception:
+        billing_job_id = None
+
     return UsageInvoiceResponse(
         invoice_id=invoice.id,
         period=period,
         status=invoice.status,
         currency=invoice.currency,
+        payment_status=getattr(invoice, "payment_status", "unpaid"),
+        billing_job_id=billing_job_id,
         lines=lines,
         totals=UsageInvoiceTotals(amount_cents=int(invoice.amount_cents)),
     )
+
+
+class BillingJobSummary(BaseModel):
+    job_id: str
+    invoice_id: str
+    status: str
+    attempt_count: int
+    next_attempt_at: Optional[str] = None
+    last_error_code: Optional[str] = None
+
+
+@router.post("/tenant/billing/usage-invoices/{period}/retry", response_model=BillingJobSummary)
+async def retry_usage_invoice_job(
+    period: str,
+    tenant_id: str = Depends(tenant_portal_auth),
+) -> BillingJobSummary:
+    try:
+        year_s, month_s = period.split("-", 1)
+        year = int(year_s)
+        month = int(month_s)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid period format, expected YYYY-MM")
+
+    from cyberplat.billing.usage_invoices import get_usage_invoice
+    inv = get_usage_invoice(tenant_id=tenant_id, year=year, month=month)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Usage invoice not found")
+
+    invoice = inv.invoice
+    from cyberplat.product.infrastructure.models import BillingJob
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(
+                BillingJob.id,
+                BillingJob.status,
+                BillingJob.attempt_count,
+                BillingJob.next_attempt_at,
+                BillingJob.last_error_code,
+            )
+            .where(BillingJob.invoice_id == invoice.id)
+            .limit(1)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Billing job not found")
+
+        job_id, status, attempt_count, next_attempt_at, last_error_code = row
+
+        if status == "failed":
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                text(
+                    """
+                    UPDATE billing_jobs
+                    SET status = 'pending',
+                        next_attempt_at = NULL,
+                        last_error_code = NULL,
+                        last_error_message = NULL,
+                        updated_at = :now
+                    WHERE id = :id
+                    """
+                ),
+                {"id": job_id, "now": now},
+            )
+            conn.commit()
+            status = "pending"
+            next_attempt_at = None
+            last_error_code = None
+
+        return BillingJobSummary(
+            job_id=job_id,
+            invoice_id=invoice.id,
+            status=status,
+            attempt_count=int(attempt_count or 0),
+            next_attempt_at=next_attempt_at,
+            last_error_code=last_error_code,
+        )
 
 
 @router.get("/tenant/status", response_model=StatusResponse)

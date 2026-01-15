@@ -362,6 +362,7 @@ class UsageInvoice(Base):
     currency = Column(String, nullable=False)
     amount_cents = Column(Integer, nullable=False, default=0)
     status = Column(String, nullable=False, default="finalized")
+    payment_status = Column(String, nullable=False, default="unpaid")  # unpaid|processing|paid|failed
     created_at = Column(String, nullable=False)
     finalized_at = Column(String, nullable=True)
     event_emitted_at = Column(String, nullable=True)
@@ -390,4 +391,32 @@ class UsageInvoiceLine(Base):
     __table_args__ = (
         Index("idx_usage_invoice_lines_invoice", "invoice_id"),
         Index("idx_usage_invoice_lines_agent", "agent_code"),
+    )
+
+
+class BillingJob(Base):
+    """Billing jobs queue for invoice processing (no external calls yet)."""
+
+    __tablename__ = "billing_jobs"
+
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(String, ForeignKey("usage_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String, nullable=False, default="dry_run")
+    status = Column(String, nullable=False, default="pending")  # pending|processing|succeeded|failed
+    attempt_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=10)
+    last_error_code = Column(String, nullable=True)
+    last_error_message = Column(String, nullable=True)
+    next_attempt_at = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    processing_started_at = Column(String, nullable=True)
+    finished_at = Column(String, nullable=True)
+    idempotency_key = Column(String, nullable=False, unique=True, index=True)
+    provider_ref = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("idx_billing_jobs_status_next", "status", "next_attempt_at"),
+        Index("idx_billing_jobs_invoice", "invoice_id"),
     )

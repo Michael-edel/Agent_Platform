@@ -117,6 +117,7 @@ def finalize_usage_invoice(tenant_id: str, year: int, month: int, currency: str 
             currency=currency,
             amount_cents=total_amount,
             status="finalized",
+            payment_status="unpaid",
             created_at=now,
             finalized_at=now,
             event_emitted_at=None,
