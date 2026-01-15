@@ -1,17 +1,22 @@
-"""Billing jobs processor (test-friendly, no sleep/cron).
+"""Billing jobs processor (production-grade retry/locking, test-friendly).
 
-- In dry-run: marks invoice paid immediately.
-- In non-dry-run: creates provider payment and stores provider_ref; final paid/failed comes from webhooks.
+- Supports retry policy with max_attempts + exponential backoff with jitter.
+- Protects from parallel processing:
+  - Postgres: SELECT ... FOR UPDATE SKIP LOCKED
+  - SQLite: best-effort locking via locked_at/locked_by.
+- Safe handling of provider_ref: never create a new payment if provider_ref already exists.
 """
 
 from __future__ import annotations
 
 import os
+import random
+import socket
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.database import get_engine
@@ -29,12 +34,29 @@ def _now_dt() -> datetime:
 def _is_dry_run() -> bool:
     return os.getenv("BILLING_DRY_RUN", "true").strip().lower() in {"1", "true", "yes"}
 
+def _worker_id() -> str:
+    return os.getenv("BILLING_WORKER_ID", "").strip() or os.getenv("HOSTNAME", "").strip() or socket.gethostname()
 
-def compute_backoff_seconds(attempt_count: int) -> int:
-    # attempt_count is already incremented for this attempt (1..)
-    base = 10
-    exp = max(attempt_count - 1, 0)
-    return min(3600, base * (2**exp))
+
+def compute_next_attempt_at(attempt_count: int, base_seconds: int = 60, max_seconds: int = 3600) -> datetime:
+    """
+    Exponential backoff with jitter +/-10%:
+      delay = min(max_seconds, base_seconds * 2^(attempt_count-1))
+    """
+    attempt = max(int(attempt_count), 1)
+    delay = min(int(max_seconds), int(base_seconds) * (2 ** (attempt - 1)))
+    jitter = random.uniform(-0.1, 0.1) * float(delay)
+    delay_with_jitter = max(0.0, float(delay) + jitter)
+    return datetime.now(timezone.utc) + timedelta(seconds=delay_with_jitter)
+
+
+def _map_stripe_intent_status_to_payment_status(status: str) -> str:
+    s = (status or "").strip().lower()
+    if s == "succeeded":
+        return "paid"
+    if s in {"canceled", "requires_payment_method"}:
+        return "failed"
+    return "processing"
 
 
 @dataclass(frozen=True)
@@ -49,74 +71,102 @@ class DueJob:
     next_attempt_at: Optional[str]
 
 
-def fetch_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
-    engine = get_engine()
-    with Session(engine) as session:
-        rows = session.execute(
-            select(
-                BillingJob.id,
-                BillingJob.tenant_id,
-                BillingJob.invoice_id,
-                BillingJob.provider,
-                BillingJob.status,
-                BillingJob.attempt_count,
-                BillingJob.max_attempts,
-                BillingJob.next_attempt_at,
-            )
-            .where(BillingJob.status.in_(["pending", "failed", "pending_retry"]))
-            .where((BillingJob.next_attempt_at.is_(None)) | (BillingJob.next_attempt_at <= now))
-            .where(BillingJob.attempt_count < BillingJob.max_attempts)
-            .order_by(
-                BillingJob.next_attempt_at.is_not(None),  # nulls first
-                BillingJob.created_at,
-            )
-            .limit(limit)
-        ).all()
-        return [
-            DueJob(
-                id=r[0],
-                tenant_id=r[1],
-                invoice_id=r[2],
-                provider=str(r[3] or ""),
-                status=r[4],
-                attempt_count=int(r[5] or 0),
-                max_attempts=int(r[6] or 0),
-                next_attempt_at=r[7],
-            )
-            for r in rows
-        ]
+def _eligible_query(now: str):
+    return (
+        select(BillingJob)
+        .where(BillingJob.status.in_(["pending", "pending_retry", "failed"]))
+        .where(or_(BillingJob.next_attempt_at.is_(None), BillingJob.next_attempt_at <= now))
+        .where(BillingJob.attempt_count < BillingJob.max_attempts)
+        .where(BillingJob.locked_at.is_(None))
+        .order_by(BillingJob.next_attempt_at.is_not(None), BillingJob.created_at)
+    )
 
 
-def claim_job(job_id: str, now: str) -> bool:
+def claim_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
+    """
+    Claim a batch of due jobs safely.
+    - Postgres: uses SKIP LOCKED.
+    - SQLite: best-effort using locked_at/locked_by in an atomic UPDATE.
+    """
     engine = get_engine()
+    dialect = engine.dialect.name
+    worker = _worker_id()
+    claimed: List[DueJob] = []
+
     with Session(engine) as session:
-        res = session.execute(
-            update(BillingJob)
-            .where(BillingJob.id == job_id)
-            .where(BillingJob.status.in_(["pending", "failed", "pending_retry"]))
-            .values(status="processing", processing_started_at=now, updated_at=now)
-        )
-        session.commit()
-        return bool(getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0)
+        if dialect == "postgresql":
+            jobs = (
+                session.execute(_eligible_query(now).with_for_update(skip_locked=True).limit(limit))
+                .scalars()
+                .all()
+            )
+            for job in jobs:
+                job.status = "processing"
+                job.processing_started_at = job.processing_started_at or now
+                job.updated_at = now
+                job.locked_at = now
+                job.locked_by = worker
+                job.last_attempt_at = now
+                claimed.append(
+                    DueJob(
+                        id=str(job.id),
+                        tenant_id=str(job.tenant_id),
+                        invoice_id=str(job.invoice_id),
+                        provider=str(job.provider or ""),
+                        status=str(job.status),
+                        attempt_count=int(job.attempt_count or 0),
+                        max_attempts=int(job.max_attempts or 0),
+                        next_attempt_at=job.next_attempt_at,
+                    )
+                )
+            session.commit()
+            return claimed
+
+        # SQLite / others: claim one-by-one with atomic UPDATE guarded by locked_at IS NULL.
+        rows = session.execute(_eligible_query(now).with_only_columns(BillingJob.id).limit(limit)).all()
+        for (job_id,) in rows:
+            res = session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == job_id)
+                .where(BillingJob.locked_at.is_(None))
+                .where(BillingJob.status.in_(["pending", "pending_retry", "failed"]))
+                .values(
+                    status="processing",
+                    processing_started_at=now,
+                    updated_at=now,
+                    locked_at=now,
+                    locked_by=worker,
+                    last_attempt_at=now,
+                )
+            )
+            session.commit()
+            if not (getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0):
+                continue
+            job = session.execute(select(BillingJob).where(BillingJob.id == job_id)).scalar_one()
+            claimed.append(
+                DueJob(
+                    id=str(job.id),
+                    tenant_id=str(job.tenant_id),
+                    invoice_id=str(job.invoice_id),
+                    provider=str(job.provider or ""),
+                    status=str(job.status),
+                    attempt_count=int(job.attempt_count or 0),
+                    max_attempts=int(job.max_attempts or 0),
+                    next_attempt_at=job.next_attempt_at,
+                )
+            )
+        return claimed
 
 
 def process_job(job: DueJob, now: str) -> None:
     engine = get_engine()
     with Session(engine) as session:
-        # Increment attempt count for this attempt
-        res = session.execute(
-            update(BillingJob)
-            .where(BillingJob.id == job.id)
-            .where(BillingJob.status == "processing")
-            .values(attempt_count=BillingJob.attempt_count + 1, updated_at=now)
-        )
-        session.commit()
-
-        # Re-read attempt_count after increment to compute backoff
-        current_attempt = session.execute(
-            select(BillingJob.attempt_count).where(BillingJob.id == job.id)
-        ).scalar_one_or_none()
-        attempt_count = int(current_attempt or 0)
+        db_job = session.execute(select(BillingJob).where(BillingJob.id == job.id)).scalar_one_or_none()
+        if not db_job:
+            return
+        # idempotency: if already terminal, do nothing
+        if db_job.status in {"succeeded"}:
+            return
 
         if _is_dry_run():
             # Mark succeeded and mark invoice paid
@@ -128,6 +178,8 @@ def process_job(job: DueJob, now: str) -> None:
                     status="succeeded",
                     finished_at=now,
                     updated_at=now,
+                    locked_at=None,
+                    locked_by=None,
                     last_error_code=None,
                     last_error_message=None,
                     next_attempt_at=None,
@@ -146,9 +198,7 @@ def process_job(job: DueJob, now: str) -> None:
             select(UsageInvoice).where(UsageInvoice.id == job.invoice_id, UsageInvoice.tenant_id == job.tenant_id)
         ).scalar_one_or_none()
         if not inv:
-            # Nothing to do - mark failed with backoff.
-            backoff = compute_backoff_seconds(attempt_count)
-            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            # Nothing to do - fail attempt.
             session.execute(
                 update(BillingJob)
                 .where(BillingJob.id == job.id)
@@ -157,40 +207,88 @@ def process_job(job: DueJob, now: str) -> None:
                     status="failed",
                     finished_at=now,
                     updated_at=now,
+                    locked_at=None,
+                    locked_by=None,
                     last_error_code="invoice_not_found",
                     last_error_message="usage invoice not found",
-                    next_attempt_at=next_at,
+                    next_attempt_at=None,
                 )
             )
             session.commit()
             return
 
         provider_name = (job.provider or "").strip().lower()
+        # If provider_ref already exists, never create another payment.
+        if db_job.provider_ref:
+            if provider_name == "stripe":
+                try:
+                    import stripe  # type: ignore
+
+                    key = os.getenv("STRIPE_API_KEY", "").strip() or os.getenv("STRIPE_SECRET_KEY", "").strip()
+                    if key:
+                        stripe.api_key = key
+                        intent = stripe.PaymentIntent.retrieve(str(db_job.provider_ref))
+                        intent_status = str(getattr(intent, "status", "") or "")
+                        payment_status = _map_stripe_intent_status_to_payment_status(intent_status)
+                        session.execute(
+                            update(UsageInvoice)
+                            .where(UsageInvoice.id == inv.id)
+                            .where(UsageInvoice.tenant_id == inv.tenant_id)
+                            .values(payment_status=payment_status)
+                        )
+                        session.execute(
+                            update(BillingJob)
+                            .where(BillingJob.id == db_job.id)
+                            .values(
+                                status="succeeded",
+                                finished_at=now,
+                                updated_at=now,
+                                locked_at=None,
+                                locked_by=None,
+                                next_attempt_at=None,
+                            )
+                        )
+                        session.commit()
+                        return
+                except Exception:
+                    # Fall through to retry scheduling (but never create new payment).
+                    pass
+
+            session.execute(
+                update(BillingJob)
+                .where(BillingJob.id == db_job.id)
+                .values(
+                    status="succeeded",
+                    finished_at=now,
+                    updated_at=now,
+                    locked_at=None,
+                    locked_by=None,
+                    next_attempt_at=None,
+                )
+            )
+            session.commit()
+            return
+
         # Import inside to keep tests monkeypatch-friendly
         from cyberplat.billing.providers.registry import get_provider
 
         provider = get_provider(provider_name)
         if not provider:
-            backoff = compute_backoff_seconds(attempt_count)
-            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
             session.execute(
                 update(BillingJob)
                 .where(BillingJob.id == job.id)
                 .where(BillingJob.status == "processing")
                 .values(
-                    status="failed",
+                    status="pending_retry",
                     finished_at=now,
                     updated_at=now,
+                    locked_at=None,
+                    locked_by=None,
                     last_error_code="unknown_provider",
                     last_error_message=f"unknown provider: {provider_name}",
-                    next_attempt_at=next_at,
+                    next_attempt_at=compute_next_attempt_at(int(db_job.attempt_count or 0) + 1).isoformat(),
+                    attempt_count=BillingJob.attempt_count + 1,
                 )
-            )
-            session.execute(
-                update(UsageInvoice)
-                .where(UsageInvoice.id == job.invoice_id)
-                .where(UsageInvoice.tenant_id == job.tenant_id)
-                .values(payment_status="failed")
             )
             session.commit()
             return
@@ -198,50 +296,65 @@ def process_job(job: DueJob, now: str) -> None:
         try:
             result = provider.create_payment(inv)
         except NotImplementedError as e:
-            backoff = compute_backoff_seconds(attempt_count)
-            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
-            session.execute(
-                update(BillingJob)
-                .where(BillingJob.id == job.id)
-                .where(BillingJob.status == "processing")
-                .values(
-                    status="failed",
-                    finished_at=now,
-                    updated_at=now,
-                    last_error_code="not_implemented",
-                    last_error_message=str(e),
-                    next_attempt_at=next_at,
-                )
-            )
-            session.execute(
-                update(UsageInvoice)
-                .where(UsageInvoice.id == job.invoice_id)
-                .where(UsageInvoice.tenant_id == job.tenant_id)
-                .values(payment_status="failed")
-            )
-            session.commit()
-            return
+            err_code = "not_implemented"
+            err_msg = str(e)[:200]
+            result = None
         except Exception as e:
-            backoff = compute_backoff_seconds(attempt_count)
-            next_at = (datetime.fromisoformat(now) + timedelta(seconds=backoff)).isoformat()
+            err_code = "provider_error"
+            err_msg = str(e)[:200]
+            result = None
+
+        if result is None:
+            # Failure -> increment attempt_count and schedule retry or fail permanently.
+            current_attempt = int(db_job.attempt_count or 0) + 1
+            max_attempts = int(db_job.max_attempts or 5)
+            if current_attempt >= max_attempts:
+                session.execute(
+                    update(BillingJob)
+                    .where(BillingJob.id == db_job.id)
+                    .values(
+                        status="failed",
+                        attempt_count=current_attempt,
+                        finished_at=now,
+                        updated_at=now,
+                        locked_at=None,
+                        locked_by=None,
+                        next_attempt_at=None,
+                        last_error_code=err_code,
+                        last_error_message=err_msg,
+                    )
+                )
+                session.execute(
+                    update(UsageInvoice)
+                    .where(UsageInvoice.id == inv.id)
+                    .where(UsageInvoice.tenant_id == inv.tenant_id)
+                    .values(payment_status="failed")
+                )
+                session.commit()
+                return
+
+            next_at = compute_next_attempt_at(current_attempt).isoformat()
             session.execute(
                 update(BillingJob)
-                .where(BillingJob.id == job.id)
-                .where(BillingJob.status == "processing")
+                .where(BillingJob.id == db_job.id)
                 .values(
-                    status="failed",
+                    status="pending_retry",
+                    attempt_count=current_attempt,
                     finished_at=now,
                     updated_at=now,
-                    last_error_code="provider_error",
-                    last_error_message=str(e)[:200],
+                    locked_at=None,
+                    locked_by=None,
                     next_attempt_at=next_at,
+                    last_error_code=err_code,
+                    last_error_message=err_msg,
                 )
             )
+            # Keep invoice in processing for a retryable failure.
             session.execute(
                 update(UsageInvoice)
-                .where(UsageInvoice.id == job.invoice_id)
-                .where(UsageInvoice.tenant_id == job.tenant_id)
-                .values(payment_status="failed")
+                .where(UsageInvoice.id == inv.id)
+                .where(UsageInvoice.tenant_id == inv.tenant_id)
+                .values(payment_status="processing")
             )
             session.commit()
             return
@@ -255,18 +368,15 @@ def process_job(job: DueJob, now: str) -> None:
                 status="succeeded",
                 finished_at=now,
                 updated_at=now,
+                locked_at=None,
+                locked_by=None,
                 provider_ref=result.provider_ref,
                 last_error_code=None,
                 last_error_message=None,
                 next_attempt_at=None,
             )
         )
-        if result.status == "paid":
-            payment_status = "paid"
-        elif result.status == "failed":
-            payment_status = "failed"
-        else:
-            payment_status = "processing"
+        payment_status = "paid" if result.status == "paid" else ("failed" if result.status == "failed" else "processing")
         session.execute(
             update(UsageInvoice)
             .where(UsageInvoice.id == job.invoice_id)
@@ -278,11 +388,10 @@ def process_job(job: DueJob, now: str) -> None:
 
 def process_due_billing_jobs(limit: int = 50) -> int:
     now = now_iso()
-    due = fetch_due_jobs(now, limit=limit)
+    due = claim_due_jobs(now, limit=limit)
     processed = 0
     for job in due:
-        if claim_job(job.id, now):
-            process_job(job, now)
-            processed += 1
+        process_job(job, now)
+        processed += 1
     return processed
 

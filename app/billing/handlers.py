@@ -48,7 +48,7 @@ def ensure_billing_job_for_invoice(tenant_id: str, invoice_id: str, *, provider:
                 )
                 VALUES (
                     :id, :tenant_id, :invoice_id, :provider, 'pending',
-                    0, 10,
+                    0, 5,
                     :now, :now, :idempotency_key
                 )
                 ON CONFLICT (idempotency_key) DO NOTHING

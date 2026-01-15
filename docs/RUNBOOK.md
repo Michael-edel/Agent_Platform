@@ -237,6 +237,23 @@ ADMIN_TENANT_ID=your-tenant-id
 
 Все действия записываются в **audit log** (`admin_audit_log`) и доступны в SQLAdmin как read-only view.
 
+## Billing Jobs retry policy (production)
+
+`billing_jobs` обрабатываются синхронным процессором `process_due_billing_jobs()` и поддерживают retry:
+
+- **Статусы**: `pending`, `pending_retry`, `processing`, `succeeded`, `failed`
+- **max_attempts**: ограничивает число попыток (по умолчанию 5)
+- **Backoff**: exponential \(base * 2^(attempt-1)\) с cap до 1 часа + jitter \(\pm 10\%\)
+- **next_attempt_at**: задаёт “когда можно пробовать снова”
+- **Locking**:
+  - Postgres: `FOR UPDATE SKIP LOCKED`
+  - SQLite: best-effort через `locked_at/locked_by` (для тестов)
+
+### Важно про безопасность
+
+- Retry action в админке **не делает списаний** — только переводит job в `pending_retry`.
+- Если у job уже есть `provider_ref`, процессор **не создаёт новый payment**, а делает best-effort reconcile/refresh (для Stripe — `PaymentIntent.retrieve`).
+
 ### Навигация и drill-down
 
 Dashboard содержит кликабельные карточки для быстрого перехода:

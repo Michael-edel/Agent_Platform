@@ -210,7 +210,8 @@ def test_billing_jobs_pipeline_dry_run_and_backoff(tmp_path, monkeypatch):
 
     with Session(engine) as session:
         job2 = session.execute(select(BillingJob).where(BillingJob.invoice_id == new_invoice_id)).scalar_one()
-        assert job2.status == "failed"
+        # Non-dry-run without provider implementation should schedule retry (pending_retry)
+        assert job2.status == "pending_retry"
         assert job2.next_attempt_at is not None
 
     # Immediate re-run should not pick it up due to next_attempt_at in future

@@ -85,6 +85,15 @@
               {% endif %}
             </div>
           {% endif %}
+          <div class="col-md-4">
+            <div class="text-muted">
+              <small>
+                Retry state: attempts={{ model.attempt_count }}/{{ model.max_attempts }},
+                next={{ model.next_attempt_at or "-" }},
+                locked={{ model.locked_at or "-" }} by {{ model.locked_by or "-" }}
+              </small>
+            </div>
+          </div>
 
           {% for custom_action,label in model_view._custom_actions_in_detail.items() %}
           <div class="col-md-2">

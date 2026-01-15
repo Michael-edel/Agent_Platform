@@ -403,18 +403,21 @@ class BillingJob(Base):
     tenant_id = Column(String, nullable=False, index=True)
     invoice_id = Column(String, ForeignKey("usage_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
     provider = Column(String, nullable=False, default="dry_run")
-    status = Column(String, nullable=False, default="pending")  # pending|processing|succeeded|failed
+    status = Column(String, nullable=False, default="pending")  # pending|pending_retry|processing|succeeded|failed
     attempt_count = Column(Integer, nullable=False, default=0)
-    max_attempts = Column(Integer, nullable=False, default=10)
+    max_attempts = Column(Integer, nullable=False, default=5)
     last_error_code = Column(String, nullable=True)
     last_error_message = Column(String, nullable=True)
+    last_attempt_at = Column(String, nullable=True)
     next_attempt_at = Column(String, nullable=True)
+    locked_at = Column(String, nullable=True)
+    locked_by = Column(String, nullable=True)
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
     processing_started_at = Column(String, nullable=True)
     finished_at = Column(String, nullable=True)
     idempotency_key = Column(String, nullable=False, unique=True, index=True)
-    provider_ref = Column(String, nullable=True)
+    provider_ref = Column(String, nullable=True, index=True)
 
     __table_args__ = (
         Index("idx_billing_jobs_status_next", "status", "next_attempt_at"),

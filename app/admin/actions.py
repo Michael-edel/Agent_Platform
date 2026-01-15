@@ -163,6 +163,28 @@ class SafeActionsView(BaseView):
             if job.status not in {"failed", "retryable_failed"}:
                 return _redir(job_id_str, error=f"Job status not retryable: {job.status}")
 
+            # Respect max attempts
+            attempt_count = int(getattr(job, "attempt_count", 0) or 0)
+            max_attempts = int(getattr(job, "max_attempts", 0) or 0) or 5
+            if attempt_count >= max_attempts:
+                write_audit_log(
+                    session,
+                    actor_username=actor,
+                    actor_role=role,
+                    tenant_id=str(job.tenant_id),
+                    action="mark_retry_denied",
+                    entity_type="BillingJob",
+                    entity_id=str(job.id),
+                    metadata={
+                        "reason": "max_attempts_reached",
+                        "attempt_count": attempt_count,
+                        "max_attempts": max_attempts,
+                        "invoice_id": str(job.invoice_id),
+                    },
+                )
+                session.commit()
+                return _redir(job_id_str, error="Max attempts reached")
+
             session.execute(
                 update(BillingJob)
                 .where(BillingJob.id == job_id_str)
@@ -181,6 +203,8 @@ class SafeActionsView(BaseView):
                     "provider": str(job.provider),
                     "provider_ref": str(job.provider_ref) if job.provider_ref else None,
                     "invoice_id": str(job.invoice_id),
+                    "attempt_count": attempt_count,
+                    "max_attempts": max_attempts,
                 },
             )
             session.commit()
