@@ -56,6 +56,37 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
+                <strong>Limits & Usage ({{ period }})</strong>
+            </div>
+            <div class="card-body">
+                {% if limits %}
+                {% for item in limits %}
+                {% if item.level == 'critical' %}
+                <div class="alert alert-danger mb-2">
+                    <strong>{{ item.metric }}:</strong> Limit exceeded! {{ item.used }} / {{ item.limit }} ({{ item.remaining }} remaining)
+                </div>
+                {% elif item.level == 'warning' %}
+                <div class="alert alert-warning mb-2">
+                    <strong>{{ item.metric }}:</strong> Approaching limit! {{ item.used }} / {{ item.limit }} ({{ item.remaining }} remaining)
+                </div>
+                {% else %}
+                <div class="mb-2">
+                    <strong>{{ item.metric }}:</strong> {{ item.used }} / {{ item.limit }} ({{ item.remaining }} remaining)
+                </div>
+                {% endif %}
+                {% endfor %}
+                {% else %}
+                <p class="text-muted">No limits configured for your plan</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
                 <strong>Quick Links</strong>
             </div>
             <div class="card-body">

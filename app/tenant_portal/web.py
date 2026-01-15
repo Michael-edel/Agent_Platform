@@ -1,9 +1,10 @@
 """Tenant Portal Web UI - server-rendered HTML pages."""
 
+import json
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, List
 
 from fastapi import APIRouter, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -11,7 +12,7 @@ from starlette.templating import Jinja2Templates
 
 from app.api.tenant_portal import hash_token
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPortalToken
+from cyberplat.product.infrastructure.models import TenantPortalToken, TenantPlan, Plan
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ async def dashboard(request: Request):
         from app.api.tenant_portal import StatusResponse, SubscriptionResponse
         from cyberplat.product.infrastructure.models import TenantPlan
         from cyberplat.billing.infrastructure.models_sqlalchemy import (
-            TenantSubscription, BillingWebhookEvent, BillingOrder
+            TenantSubscription, BillingWebhookEvent, BillingOrder, BillingUsage
         )
         from sqlalchemy import select, func, desc
         from datetime import timedelta
@@ -236,12 +237,76 @@ async def dashboard(request: Request):
     except Exception as e:
         logger.exception("Dashboard data fetch error")
     
+    # Get limits for current month
+    limits_data = []
+    current_period = datetime.now(timezone.utc).strftime("%Y-%m")
+    try:
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get plan_id
+            plan_q = select(TenantPlan.plan_id).where(TenantPlan.tenant_id == tenant_id).limit(1)
+            plan_row = conn.execute(plan_q).fetchone()
+            
+            if plan_row:
+                plan_id = plan_row[0]
+                
+                # Get quotas
+                quota_q = select(Plan.quotas).where(Plan.id == plan_id).limit(1)
+                quota_row = conn.execute(quota_q).fetchone()
+                
+                if quota_row and quota_row[0]:
+                    try:
+                        quotas = json.loads(quota_row[0])
+                        if isinstance(quotas, dict):
+                            # Get usage
+                            usage_q = (
+                                select(
+                                    BillingUsage.metric,
+                                    func.sum(BillingUsage.units).label("total"),
+                                )
+                                .where(BillingUsage.tenant_id == tenant_id)
+                                .where(BillingUsage.period == current_period)
+                                .group_by(BillingUsage.metric)
+                            )
+                            usage_rows = conn.execute(usage_q).fetchall()
+                            usage_map = {r[0]: r[1] or 0 for r in usage_rows}
+                            
+                            for metric in sorted(quotas.keys())[:5]:
+                                limit_val = quotas[metric]
+                                if isinstance(limit_val, (int, float)) and limit_val > 0:
+                                    limit_int = int(limit_val)
+                                    used = usage_map.get(metric, 0)
+                                    remaining = max(limit_int - used, 0)
+                                    util = used / limit_int if limit_int > 0 else 0
+                                    
+                                    level = "ok"
+                                    if util >= 1.0:
+                                        level = "critical"
+                                    elif util >= 0.8:
+                                        level = "warning"
+                                    
+                                    limits_data.append({
+                                        "metric": metric,
+                                        "limit": limit_int,
+                                        "used": used,
+                                        "remaining": remaining,
+                                        "utilization": util,
+                                        "level": level,
+                                    })
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+    except Exception as e:
+        logger.exception("Limits data fetch error")
+    
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "tenant_id": tenant_id,
         "prefix": auth["prefix"],
         "status": status_data,
         "subscription": subscription_data,
+        "limits": limits_data,
+        "period": current_period,
     })
 
 
@@ -280,8 +345,10 @@ async def usage_page(
     except:
         prev_period = next_period = period
     
-    # Fetch usage data
+    # Fetch usage data with limits
     totals = []
+    limits_map = {}
+    
     try:
         from cyberplat.billing.infrastructure.models_sqlalchemy import BillingUsage
         from sqlalchemy import select, func
@@ -289,6 +356,23 @@ async def usage_page(
         engine = get_engine()
         
         with engine.connect() as conn:
+            # Get plan quotas for limits
+            plan_q = select(TenantPlan.plan_id).where(TenantPlan.tenant_id == tenant_id).limit(1)
+            plan_row = conn.execute(plan_q).fetchone()
+            
+            if plan_row:
+                quota_q = select(Plan.quotas).where(Plan.id == plan_row[0]).limit(1)
+                quota_row = conn.execute(quota_q).fetchone()
+                
+                if quota_row and quota_row[0]:
+                    try:
+                        quotas = json.loads(quota_row[0])
+                        if isinstance(quotas, dict):
+                            limits_map = {k: int(v) for k, v in quotas.items() if isinstance(v, (int, float)) and v > 0}
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            
+            # Get usage
             query = (
                 select(
                     BillingUsage.metric,
@@ -298,14 +382,22 @@ async def usage_page(
                 .where(BillingUsage.tenant_id == tenant_id)
                 .where(BillingUsage.period.like(f"{period}%"))
                 .group_by(BillingUsage.metric)
+                .order_by(BillingUsage.metric)
             )
             rows = conn.execute(query).fetchall()
             
             for row in rows:
+                metric = row._mapping["metric"]
+                units = row._mapping["total_units"] or 0
+                limit_val = limits_map.get(metric)
+                remaining = max(limit_val - units, 0) if limit_val else None
+                
                 totals.append({
-                    "metric": row._mapping["metric"],
-                    "units": row._mapping["total_units"] or 0,
+                    "metric": metric,
+                    "units": units,
                     "amount_minor": row._mapping["total_amount"] or 0,
+                    "limit": limit_val,
+                    "remaining": remaining,
                 })
     except Exception as e:
         logger.exception("Usage data fetch error")

@@ -186,3 +186,76 @@ class TestTenantPortalWithMockedDb:
         
         # Fail-closed: 503 on DB error during auth
         assert response.status_code == 503
+
+
+class TestLimitsEndpoint:
+    """Tests for /tenant/limits endpoint."""
+
+    def test_limits_response_has_required_fields(self):
+        """LimitsResponse schema has required fields."""
+        from app.api.tenant_portal import LimitsResponse, LimitsNotes
+        
+        resp = LimitsResponse(
+            tenant_id="t1",
+            period="2026-01",
+            plan_id="pro",
+            limits=[],
+            notes=LimitsNotes(limits_source="plan"),
+        )
+        
+        assert resp.tenant_id == "t1"
+        assert resp.period == "2026-01"
+        assert resp.plan_id == "pro"
+        assert resp.notes.limits_source == "plan"
+
+    def test_limit_metric_has_required_fields(self):
+        """LimitMetric schema has required fields."""
+        from app.api.tenant_portal import LimitMetric
+        
+        metric = LimitMetric(
+            metric="documents",
+            limit=1000,
+            used=100,
+            remaining=900,
+            utilization=0.1,
+        )
+        
+        assert metric.metric == "documents"
+        assert metric.limit == 1000
+        assert metric.remaining == 900
+        assert metric.utilization == 0.1
+
+    def test_limits_no_plan_returns_empty(self):
+        """Limits returns empty when no plan found."""
+        from app.api.tenant_portal import hash_token
+        
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        
+        # Auth succeeds
+        auth_row = MagicMock()
+        auth_row._mapping = {"token_hash": hash_token("key"), "token_prefix": "key"}
+        
+        # Plan not found
+        mock_conn.execute.return_value.fetchone.side_effect = [auth_row, None]
+        
+        from starlette.testclient import TestClient
+        from app.api.tenant_portal import router
+        from fastapi import FastAPI
+        
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        
+        with patch("app.api.tenant_portal.get_engine", return_value=mock_engine):
+            client = TestClient(app)
+            response = client.get(
+                "/api/v1/tenant/limits",
+                headers={"X-Tenant-ID": "t1", "X-Tenant-Portal-Key": "key"},
+            )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limits"] == []
+        assert data["notes"]["limits_source"] == "none"

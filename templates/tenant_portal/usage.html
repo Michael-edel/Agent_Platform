@@ -20,6 +20,8 @@
                 <tr>
                     <th>Metric</th>
                     <th>Units</th>
+                    <th>Limit</th>
+                    <th>Remaining</th>
                     <th>Amount (minor units)</th>
                 </tr>
             </thead>
@@ -28,6 +30,8 @@
                 <tr>
                     <td>{{ item.metric }}</td>
                     <td>{{ item.units }}</td>
+                    <td>{{ item.limit if item.limit else '—' }}</td>
+                    <td>{{ item.remaining if item.remaining is not none else '—' }}</td>
                     <td>{{ item.amount_minor }}</td>
                 </tr>
                 {% endfor %}

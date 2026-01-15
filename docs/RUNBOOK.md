@@ -370,6 +370,11 @@ Read-only self-service API для tenant'ов с per-tenant токенами.
 **GET /api/v1/tenant/status**
 - Возвращает: webhooks_failed_24h, orders_failed_24h, last_error_at, status (ok/degraded/unknown)
 
+**GET /api/v1/tenant/limits?period=YYYY-MM**
+- Возвращает: plan_id, limits (metric/limit/used/remaining/utilization), notes
+- Лимиты берутся из поля `quotas` в таблице `plans` (JSON)
+- Формат quotas: `{"documents": 1000, "ocr_pages": 5000, ...}`
+
 ### Безопасность
 
 - Каждый tenant имеет свой уникальный токен
@@ -390,9 +395,16 @@ Read-only self-service API для tenant'ов с per-tenant токенами.
 ### URL
 
 - `/tenant/login` — страница входа
-- `/tenant/` — dashboard (статус, подписка)
-- `/tenant/usage` — usage по периодам
+- `/tenant/` — dashboard (статус, подписка, лимиты)
+- `/tenant/usage` — usage по периодам (с колонками limit/remaining)
 - `/tenant/subscription` — детали подписки
+
+### Лимиты и предупреждения
+
+На dashboard отображаются лимиты текущего плана:
+- **OK**: использование < 80%
+- **Warning**: использование >= 80% (желтый баннер)
+- **Critical**: использование >= 100% (красный баннер)
 
 ### Логин
 

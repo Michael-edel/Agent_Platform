@@ -8,6 +8,7 @@ Provides:
 """
 
 import hashlib
+import json
 import logging
 import secrets
 import uuid
@@ -19,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken
+from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan
 from cyberplat.billing.infrastructure.models_sqlalchemy import (
     TenantSubscription,
     BillingUsage,
@@ -68,6 +69,30 @@ class StatusResponse(BaseModel):
     last_webhook_received_at: Optional[str] = None
     last_error_at: Optional[str] = None
     status: str  # "ok" | "degraded" | "unknown"
+
+
+class LimitMetric(BaseModel):
+    """Single limit metric with usage."""
+    metric: str
+    limit: int
+    used: int
+    remaining: int
+    utilization: float  # 0..∞
+
+
+class LimitsNotes(BaseModel):
+    """Additional notes about limits."""
+    limits_source: str  # "plan" | "none"
+    unlimited_metrics: List[str] = []
+
+
+class LimitsResponse(BaseModel):
+    """Plan limits with current usage."""
+    tenant_id: str
+    period: str
+    plan_id: Optional[str] = None
+    limits: List[LimitMetric]
+    notes: LimitsNotes
 
 
 # ============================================
@@ -374,5 +399,109 @@ async def get_status(
     except Exception as e:
         logger.exception(f"Error getting status for tenant {tenant_id}")
         result.status = "unknown"
+    
+    return result
+
+
+@router.get("/tenant/limits", response_model=LimitsResponse)
+async def get_limits(
+    tenant_id: str = Depends(tenant_portal_auth),
+    period: Optional[str] = Query(None, description="Period in YYYY-MM format"),
+) -> LimitsResponse:
+    """
+    Get plan limits with current usage for a period.
+    
+    Shows limit, used, remaining, and utilization for each metric.
+    """
+    # Default to current month
+    if not period:
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
+    
+    result = LimitsResponse(
+        tenant_id=tenant_id,
+        period=period,
+        plan_id=None,
+        limits=[],
+        notes=LimitsNotes(limits_source="none", unlimited_metrics=[]),
+    )
+    
+    try:
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Get plan_id for tenant
+            plan_query = (
+                select(TenantPlan.plan_id)
+                .where(TenantPlan.tenant_id == tenant_id)
+                .limit(1)
+            )
+            plan_row = conn.execute(plan_query).fetchone()
+            
+            if not plan_row:
+                return result
+            
+            plan_id = plan_row[0]
+            result.plan_id = plan_id
+            
+            # Get plan with quotas
+            quota_query = (
+                select(Plan.quotas)
+                .where(Plan.id == plan_id)
+                .limit(1)
+            )
+            quota_row = conn.execute(quota_query).fetchone()
+            
+            if not quota_row or not quota_row[0]:
+                return result
+            
+            # Parse quotas JSON
+            try:
+                quotas = json.loads(quota_row[0])
+                if not isinstance(quotas, dict):
+                    return result
+            except (json.JSONDecodeError, TypeError):
+                return result
+            
+            result.notes.limits_source = "plan"
+            
+            # Get usage for this period
+            usage_query = (
+                select(
+                    BillingUsage.metric,
+                    func.sum(BillingUsage.units).label("total_units"),
+                )
+                .where(BillingUsage.tenant_id == tenant_id)
+                .where(BillingUsage.period == period)
+                .group_by(BillingUsage.metric)
+            )
+            usage_rows = conn.execute(usage_query).fetchall()
+            usage_map = {row[0]: row[1] or 0 for row in usage_rows}
+            
+            # Build limits list
+            unlimited_metrics = []
+            for metric in sorted(quotas.keys()):
+                limit_value = quotas[metric]
+                if not isinstance(limit_value, (int, float)) or limit_value <= 0:
+                    unlimited_metrics.append(metric)
+                    continue
+                
+                limit_int = int(limit_value)
+                used = usage_map.get(metric, 0)
+                remaining = max(limit_int - used, 0)
+                utilization = used / limit_int if limit_int > 0 else 0.0
+                
+                result.limits.append(LimitMetric(
+                    metric=metric,
+                    limit=limit_int,
+                    used=used,
+                    remaining=remaining,
+                    utilization=round(utilization, 4),
+                ))
+            
+            result.notes.unlimited_metrics = unlimited_metrics
+            
+    except Exception as e:
+        logger.exception(f"Error getting limits for tenant {tenant_id}")
+        raise HTTPException(status_code=503, detail="Service unavailable")
     
     return result

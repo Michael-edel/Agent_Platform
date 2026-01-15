@@ -152,3 +152,32 @@ class TestPortalEnabled:
         response = client.post("/tenant/logout", follow_redirects=False)
         assert response.status_code == 302
         assert "/tenant/login" in response.headers["location"]
+
+    def test_dashboard_shows_limits_section(self, client):
+        """Dashboard shows limits section after login."""
+        from app.api.tenant_portal import hash_token
+        
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        
+        # Login token
+        mock_row = MagicMock()
+        mock_row._mapping = {"token_hash": hash_token("key"), "token_prefix": "key"}
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        mock_conn.execute.return_value.scalar.return_value = 0
+        mock_conn.execute.return_value.fetchall.return_value = []
+        
+        with patch("app.tenant_portal.web.get_engine", return_value=mock_engine):
+            # Login first
+            client.post(
+                "/tenant/login",
+                data={"tenant_id": "t1", "portal_key": "key"},
+            )
+            
+            # Access dashboard
+            response = client.get("/tenant/")
+        
+        assert response.status_code == 200
+        assert "Limits" in response.text
