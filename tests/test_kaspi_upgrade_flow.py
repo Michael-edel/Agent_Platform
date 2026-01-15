@@ -33,16 +33,16 @@ def temp_db():
 
 
 @pytest.fixture
-def app_with_services(temp_db):
+def app_with_services(temp_db, monkeypatch):
     """
     FastAPI app with billing/entitlement wired to a temp DB.
     Also creates SQLAlchemy tables for plans/tenant_plans/kaspi_orders.
     """
-    os.environ["PLATFORM_DB_PATH"] = temp_db
-    os.environ["DATABASE_URL"] = f"sqlite:///{temp_db}"
-    os.environ["KASPI_ENABLED"] = "1"
-    os.environ["KASPI_WEBHOOK_SECRET"] = "test-secret"
-    os.environ["BILLING_PERIOD_DAYS"] = "30"
+    monkeypatch.setenv("PLATFORM_DB_PATH", temp_db)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{temp_db}")
+    monkeypatch.setenv("KASPI_ENABLED", "1")
+    monkeypatch.setenv("KASPI_WEBHOOK_SECRET", "test-secret")
+    monkeypatch.setenv("BILLING_PERIOD_DAYS", "30")
 
     # legacy schemas
     bs = BillingService(db_path=temp_db)

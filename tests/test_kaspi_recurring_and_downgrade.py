@@ -31,17 +31,17 @@ def temp_db():
 
 
 @pytest.fixture
-def app_with_services(temp_db):
-    os.environ["PLATFORM_DB_PATH"] = temp_db
-    os.environ["DATABASE_URL"] = f"sqlite:///{temp_db}"
-    os.environ["BILLING_ENABLED"] = "1"
-    os.environ["KASPI_ENABLED"] = "1"
-    os.environ["KASPI_WEBHOOK_SECRET"] = "test-secret"
-    os.environ["BILLING_PERIOD_DAYS"] = "30"
-    os.environ["RENEW_WINDOW_DAYS"] = "2"
-    os.environ["SUBSCRIPTION_MAX_FAILED_CHARGES"] = "3"
-    os.environ["BILLING_ENFORCEMENT_ENABLED"] = "1"
-    os.environ["BILLING_ENFORCEMENT_MODE"] = "block"
+def app_with_services(temp_db, monkeypatch):
+    monkeypatch.setenv("PLATFORM_DB_PATH", temp_db)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{temp_db}")
+    monkeypatch.setenv("BILLING_ENABLED", "1")
+    monkeypatch.setenv("KASPI_ENABLED", "1")
+    monkeypatch.setenv("KASPI_WEBHOOK_SECRET", "test-secret")
+    monkeypatch.setenv("BILLING_PERIOD_DAYS", "30")
+    monkeypatch.setenv("RENEW_WINDOW_DAYS", "2")
+    monkeypatch.setenv("SUBSCRIPTION_MAX_FAILED_CHARGES", "3")
+    monkeypatch.setenv("BILLING_ENFORCEMENT_ENABLED", "1")
+    monkeypatch.setenv("BILLING_ENFORCEMENT_MODE", "block")
 
     bs = BillingService(db_path=temp_db)
     bs.close()
@@ -215,8 +215,8 @@ def test_recurring_failure_sets_past_due_and_increments_failed(app_with_services
         session.close()
 
 
-def test_downgrade_after_max_failures_sets_canceled_and_blocks(app_with_services):
-    os.environ["SUBSCRIPTION_MAX_FAILED_CHARGES"] = "2"
+def test_downgrade_after_max_failures_sets_canceled_and_blocks(app_with_services, monkeypatch):
+    monkeypatch.setenv("SUBSCRIPTION_MAX_FAILED_CHARGES", "2")
 
     client = TestClient(app_with_services)
     _upgrade_to_paid_via_webhook(client, tenant_id="tenant-4", plan_id="pro", order_id="order_4")
@@ -282,8 +282,8 @@ def test_enforcement_blocks_when_past_due(app_with_services):
     assert r.json()["detail"]["subscription_status"] == "past_due"
 
 
-def test_webhooks_emitted_for_renew_past_due_canceled(app_with_services):
-    os.environ["SUBSCRIPTION_MAX_FAILED_CHARGES"] = "1"
+def test_webhooks_emitted_for_renew_past_due_canceled(app_with_services, monkeypatch):
+    monkeypatch.setenv("SUBSCRIPTION_MAX_FAILED_CHARGES", "1")
 
     client = TestClient(app_with_services)
     _upgrade_to_paid_via_webhook(client, tenant_id="tenant-6", plan_id="pro", order_id="order_6")
