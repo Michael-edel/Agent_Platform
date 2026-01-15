@@ -1,8 +1,9 @@
 """Admin dashboard with statistics."""
 
 import logging
-from typing import Optional, Dict, Any
-from sqlalchemy import select, func, distinct
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, List
+from sqlalchemy import select, func, distinct, desc
 from starlette.requests import Request
 from starlette.responses import Response
 from sqladmin import BaseView, expose
@@ -15,7 +16,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
 )
 from cyberplat.product.infrastructure.models import TenantPlan
 from app.admin.auth import get_admin_role, get_admin_tenant_id
-from app.admin.links import DASHBOARD_URLS, QUICK_LINKS
+from app.admin.links import DASHBOARD_URLS, QUICK_LINKS, build_admin_detail_url, ADMIN_ROUTES
 from utils.db_migrations import check_database_migration
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,103 @@ def build_system_diagnostics() -> Dict[str, Any]:
     return diagnostics
 
 
+def _truncate_error(text: Optional[str], max_length: int = 100) -> str:
+    """Truncate error text safely."""
+    if not text:
+        return ""
+    from markupsafe import escape
+    safe_text = str(escape(text))
+    if len(safe_text) > max_length:
+        return safe_text[:max_length] + "..."
+    return safe_text
+
+
+def build_recent_errors(role: Optional[str], tenant_id: Optional[str]) -> Dict[str, List[Dict]]:
+    """
+    Build recent errors (last 24h) for dashboard.
+    
+    Args:
+        role: Admin role
+        tenant_id: Tenant ID for scoping
+    
+    Returns:
+        Dictionary with webhook_errors and order_errors lists
+    """
+    result = {
+        "webhook_errors": [],
+        "order_errors": [],
+    }
+    
+    # Deny if no role
+    if not role:
+        return result
+    
+    # Tenant scoping
+    is_tenant_scoped = role == "tenant_admin"
+    if is_tenant_scoped and not tenant_id:
+        return result
+    
+    # Calculate 24h ago (ISO format for SQLite compatibility)
+    time_24h_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    
+    try:
+        engine = get_engine()
+        
+        with engine.connect() as conn:
+            # Webhook errors (status = 'failed')
+            webhook_query = (
+                select(BillingWebhookEvent)
+                .where(BillingWebhookEvent.status == "failed")
+                .where(BillingWebhookEvent.received_at >= time_24h_ago)
+                .order_by(desc(BillingWebhookEvent.received_at))
+                .limit(10)
+            )
+            if is_tenant_scoped:
+                webhook_query = webhook_query.where(BillingWebhookEvent.tenant_id == tenant_id)
+            
+            webhook_rows = conn.execute(webhook_query).fetchall()
+            for row in webhook_rows:
+                m = row._mapping
+                result["webhook_errors"].append({
+                    "id": m["id"],
+                    "provider": m["provider"],
+                    "event_id": m.get("event_id", ""),
+                    "tenant_id": m.get("tenant_id", ""),
+                    "status": m["status"],
+                    "received_at": m["received_at"],
+                    "error": _truncate_error(m.get("error")),
+                    "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_webhook_event"], m["id"]),
+                })
+            
+            # Order errors (status = 'failed')
+            order_query = (
+                select(BillingOrder)
+                .where(BillingOrder.status == "failed")
+                .where(BillingOrder.created_at >= time_24h_ago)
+                .order_by(desc(BillingOrder.created_at))
+                .limit(10)
+            )
+            if is_tenant_scoped:
+                order_query = order_query.where(BillingOrder.tenant_id == tenant_id)
+            
+            order_rows = conn.execute(order_query).fetchall()
+            for row in order_rows:
+                m = row._mapping
+                result["order_errors"].append({
+                    "id": m["id"],
+                    "provider": m["provider"],
+                    "tenant_id": m["tenant_id"],
+                    "status": m["status"],
+                    "created_at": m["created_at"],
+                    "detail_url": build_admin_detail_url(ADMIN_ROUTES["billing_order"], m["id"]),
+                })
+                
+    except Exception as e:
+        logger.error(f"Error building recent errors: {e}")
+    
+    return result
+
+
 class DashboardView(BaseView):
     """Admin dashboard with key metrics."""
     
@@ -148,9 +246,16 @@ class DashboardView(BaseView):
         
         stats = build_dashboard_stats(role, tenant_id)
         diagnostics = build_system_diagnostics()
+        recent_errors = build_recent_errors(role, tenant_id)
         
         return await self.templates.TemplateResponse(
             request,
             "admin/dashboard.html",
-            context={"stats": stats, "urls": DASHBOARD_URLS, "diagnostics": diagnostics, "quick_links": QUICK_LINKS},
+            context={
+                "stats": stats,
+                "urls": DASHBOARD_URLS,
+                "diagnostics": diagnostics,
+                "quick_links": QUICK_LINKS,
+                "recent_errors": recent_errors,
+            },
         )

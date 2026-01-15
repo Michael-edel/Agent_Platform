@@ -126,5 +126,67 @@
             </div>
         </div>
     </div>
+    
+    <h4 class="mt-4 mb-3">Recent Errors (24h)</h4>
+    <div class="row">
+        <div class="col-md-6">
+            <h6>Webhook Events</h6>
+            {% if recent_errors.webhook_errors %}
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Provider</th>
+                            <th>Error</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in recent_errors.webhook_errors %}
+                        <tr>
+                            <td><small>{{ e.received_at[:16] }}</small></td>
+                            <td>{{ e.provider }}</td>
+                            <td><small title="{{ e.error }}">{{ e.error[:50] }}{% if e.error|length > 50 %}...{% endif %}</small></td>
+                            <td><a href="{{ e.detail_url }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No webhook errors in the last 24 hours.</p>
+            {% endif %}
+        </div>
+        <div class="col-md-6">
+            <h6>Orders</h6>
+            {% if recent_errors.order_errors %}
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in recent_errors.order_errors %}
+                        <tr>
+                            <td><small>{{ o.created_at[:16] }}</small></td>
+                            <td>{{ o.provider }}</td>
+                            <td>{{ o.status }}</td>
+                            <td><a href="{{ o.detail_url }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No order errors in the last 24 hours.</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 {% endblock %}

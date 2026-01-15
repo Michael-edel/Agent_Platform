@@ -329,6 +329,14 @@ alembic upgrade head
 
 Все ссылки соблюдают tenant scoping — tenant_admin увидит только данные своего tenant.
 
+### Dashboard: Recent Errors (24h)
+
+Секция показывает последние 10 ошибок за 24 часа:
+- **Webhook Events**: события со статусом `failed`
+- **Orders**: заказы со статусом `failed`
+
+Данные tenant-scoped: tenant_admin видит только ошибки своего tenant. Поле `error` обрезается до 100 символов, `raw_json` не отображается.
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
