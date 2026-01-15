@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Help & Support - Tenant Portal{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Help & Support</h4>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Getting Started</strong>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Get your portal key from your platform administrator</li>
+                    <li>Login at <code>/tenant/login</code> with your tenant ID and key</li>
+                    <li>Check Dashboard → Status should be <span class="text-success">OK</span></li>
+                    <li>Review your Subscription and Plan details</li>
+                    <li>Monitor Usage & Limits regularly</li>
+                </ol>
+            </div>
+        </div>
+        
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Understanding Status</strong>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <td><span class="badge bg-success">OK</span></td>
+                        <td>Everything is working normally. No errors in the last 24 hours.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-warning text-dark">Degraded</span></td>
+                        <td>There are some errors in the last 24 hours. Check Dashboard for details.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">Unknown</span></td>
+                        <td>Temporary issue accessing diagnostics. Try again later.</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Contact Support</strong>
+            </div>
+            <div class="card-body">
+                <p><strong>Your Tenant ID:</strong></p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ tenant_id }}" readonly id="tenantIdField">
+                    <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ tenant_id }}')">Copy</button>
+                </div>
+                
+                {% if prefix %}
+                <p><small class="text-muted">Key prefix: {{ prefix }}...</small></p>
+                {% endif %}
+                
+                {% if support.email %}
+                <p><strong>Email:</strong> <a href="mailto:{{ support.email }}">{{ support.email }}</a></p>
+                {% endif %}
+                
+                {% if support.url %}
+                <p><strong>Support Portal:</strong> <a href="{{ support.url }}" target="_blank" rel="noopener">{{ support.url }}</a></p>
+                {% endif %}
+                
+                {% if not support.email and not support.url %}
+                <p class="text-muted">Contact your platform administrator for support.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mb-3">
+            <div class="card-header">
+                <strong>Support Bundle</strong>
+            </div>
+            <div class="card-body">
+                <p>When contacting support, please attach your Support Bundle. It contains:</p>
+                <ul>
+                    <li>Subscription and plan details</li>
+                    <li>Status and error counts (last 24h)</li>
+                    <li>Usage limits and remaining</li>
+                    <li>Recent events (metadata only, no sensitive data)</li>
+                </ul>
+                <p class="text-muted"><small>The bundle does not contain any passwords, tokens, or raw payloads.</small></p>
+                
+                <a href="/tenant/support-bundle.json" class="btn btn-primary">
+                    Download Support Bundle
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="/tenant/" class="btn btn-outline-secondary">&larr; Back to Dashboard</a>
+</div>
+{% endblock %}

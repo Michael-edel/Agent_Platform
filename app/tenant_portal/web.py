@@ -3,11 +3,11 @@
 import json
 import os
 import logging
-from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, List, Any
 
 from fastapi import APIRouter, Request, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.templating import Jinja2Templates
 
 from app.api.tenant_portal import hash_token
@@ -467,3 +467,238 @@ async def subscription_page(request: Request):
         "subscription": subscription,
         "plan": plan,
     })
+
+
+# ============================================
+# Help & Support
+# ============================================
+
+def get_support_contacts() -> Dict[str, Optional[str]]:
+    """Get support contacts from environment."""
+    return {
+        "email": os.getenv("TENANT_SUPPORT_EMAIL", "").strip() or None,
+        "url": os.getenv("TENANT_SUPPORT_URL", "").strip() or None,
+    }
+
+
+def get_app_info() -> Dict[str, Any]:
+    """Get application info for bundle."""
+    return {
+        "name": "CyberPlat",
+        "env": os.getenv("ENV", "dev").strip(),
+        "version": os.getenv("APP_VERSION") or os.getenv("GIT_SHA") or None,
+    }
+
+
+def build_support_bundle(tenant_id: str, prefix: str) -> Dict[str, Any]:
+    """Build support bundle with tenant-scoped safe data."""
+    now = datetime.now(timezone.utc)
+    bundle: Dict[str, Any] = {
+        "generated_at": now.isoformat(),
+        "tenant_id": tenant_id,
+        "token_prefix": prefix,
+        "app": get_app_info(),
+        "subscription": {},
+        "status_24h": {"status": "unknown"},
+        "limits": {"limits": [], "notes": {"limits_source": "none"}},
+        "recent": {"webhook_events": [], "orders": []},
+        "errors": [],
+    }
+    
+    try:
+        from cyberplat.billing.infrastructure.models_sqlalchemy import (
+            TenantSubscription, BillingWebhookEvent, BillingOrder, BillingUsage
+        )
+        from sqlalchemy import select, func, desc
+        
+        engine = get_engine()
+        threshold = (now - timedelta(hours=24)).isoformat()
+        period = now.strftime("%Y-%m")
+        
+        with engine.connect() as conn:
+            # Subscription
+            sub_q = (
+                select(TenantSubscription)
+                .where(TenantSubscription.tenant_id == tenant_id)
+                .order_by(desc(TenantSubscription.created_at))
+                .limit(1)
+            )
+            sub_row = conn.execute(sub_q).fetchone()
+            if sub_row:
+                m = sub_row._mapping
+                bundle["subscription"] = {
+                    "plan_id": m.get("plan_id"),
+                    "status": m.get("status"),
+                    "provider": m.get("provider"),
+                    "current_period_end": m.get("current_period_end"),
+                }
+            else:
+                # Try tenant_plans
+                plan_q = select(TenantPlan).where(TenantPlan.tenant_id == tenant_id).limit(1)
+                plan_row = conn.execute(plan_q).fetchone()
+                if plan_row:
+                    m = plan_row._mapping
+                    bundle["subscription"] = {
+                        "plan_id": m.get("plan_id"),
+                        "status": m.get("subscription_status"),
+                        "expires_at": m.get("expires_at"),
+                    }
+            
+            # Status 24h
+            wh_failed = conn.execute(
+                select(func.count())
+                .select_from(BillingWebhookEvent)
+                .where(BillingWebhookEvent.tenant_id == tenant_id)
+                .where(BillingWebhookEvent.status == "failed")
+                .where(BillingWebhookEvent.received_at >= threshold)
+            ).scalar() or 0
+            
+            ord_failed = conn.execute(
+                select(func.count())
+                .select_from(BillingOrder)
+                .where(BillingOrder.tenant_id == tenant_id)
+                .where(BillingOrder.status == "failed")
+                .where(BillingOrder.created_at >= threshold)
+            ).scalar() or 0
+            
+            bundle["status_24h"] = {
+                "webhooks_failed_24h": wh_failed,
+                "orders_failed_24h": ord_failed,
+                "status": "ok" if (wh_failed == 0 and ord_failed == 0) else "degraded",
+            }
+            
+            # Limits
+            plan_id_q = select(TenantPlan.plan_id).where(TenantPlan.tenant_id == tenant_id).limit(1)
+            plan_id_row = conn.execute(plan_id_q).fetchone()
+            
+            if plan_id_row:
+                plan_id = plan_id_row[0]
+                quota_q = select(Plan.quotas).where(Plan.id == plan_id).limit(1)
+                quota_row = conn.execute(quota_q).fetchone()
+                
+                if quota_row and quota_row[0]:
+                    try:
+                        quotas = json.loads(quota_row[0])
+                        if isinstance(quotas, dict):
+                            usage_q = (
+                                select(BillingUsage.metric, func.sum(BillingUsage.units).label("total"))
+                                .where(BillingUsage.tenant_id == tenant_id)
+                                .where(BillingUsage.period == period)
+                                .group_by(BillingUsage.metric)
+                            )
+                            usage_rows = conn.execute(usage_q).fetchall()
+                            usage_map = {r[0]: r[1] or 0 for r in usage_rows}
+                            
+                            limits_list = []
+                            for metric in sorted(quotas.keys()):
+                                limit_val = quotas[metric]
+                                if isinstance(limit_val, (int, float)) and limit_val > 0:
+                                    used = usage_map.get(metric, 0)
+                                    limits_list.append({
+                                        "metric": metric,
+                                        "limit": int(limit_val),
+                                        "used": used,
+                                        "remaining": max(int(limit_val) - used, 0),
+                                    })
+                            
+                            bundle["limits"] = {
+                                "period": period,
+                                "plan_id": plan_id,
+                                "limits": limits_list,
+                                "notes": {"limits_source": "plan"},
+                            }
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            
+            # Recent webhook events (last 24h, max 10, safe fields only)
+            wh_q = (
+                select(
+                    BillingWebhookEvent.id,
+                    BillingWebhookEvent.provider,
+                    BillingWebhookEvent.event_id,
+                    BillingWebhookEvent.status,
+                    BillingWebhookEvent.received_at,
+                )
+                .where(BillingWebhookEvent.tenant_id == tenant_id)
+                .where(BillingWebhookEvent.received_at >= threshold)
+                .order_by(desc(BillingWebhookEvent.received_at))
+                .limit(10)
+            )
+            wh_rows = conn.execute(wh_q).fetchall()
+            bundle["recent"]["webhook_events"] = [
+                {"id": r[0], "provider": r[1], "event_id": r[2], "status": r[3], "received_at": r[4]}
+                for r in wh_rows
+            ]
+            
+            # Recent orders (last 24h, max 10, safe fields only)
+            ord_q = (
+                select(
+                    BillingOrder.id,
+                    BillingOrder.provider,
+                    BillingOrder.status,
+                    BillingOrder.created_at,
+                )
+                .where(BillingOrder.tenant_id == tenant_id)
+                .where(BillingOrder.created_at >= threshold)
+                .order_by(desc(BillingOrder.created_at))
+                .limit(10)
+            )
+            ord_rows = conn.execute(ord_q).fetchall()
+            bundle["recent"]["orders"] = [
+                {"id": r[0], "provider": r[1], "status": r[2], "created_at": r[3]}
+                for r in ord_rows
+            ]
+            
+    except Exception as e:
+        logger.exception("Support bundle fetch error")
+        bundle["errors"].append("db_error")
+        bundle["status_24h"]["status"] = "unknown"
+    
+    return bundle
+
+
+@router.get("/tenant/help", response_class=HTMLResponse)
+async def help_page(request: Request):
+    """Help and support page."""
+    disabled = check_portal_enabled()
+    if disabled:
+        return disabled
+    
+    auth = require_auth(request)
+    if isinstance(auth, RedirectResponse):
+        return auth
+    
+    return templates.TemplateResponse("help.html", {
+        "request": request,
+        "tenant_id": auth["tenant_id"],
+        "prefix": auth["prefix"],
+        "support": get_support_contacts(),
+    })
+
+
+@router.get("/tenant/support-bundle.json")
+async def download_support_bundle(request: Request):
+    """Download support bundle as JSON file."""
+    disabled = check_portal_enabled()
+    if disabled:
+        return disabled
+    
+    auth = require_auth(request)
+    if isinstance(auth, RedirectResponse):
+        return auth
+    
+    tenant_id = auth["tenant_id"]
+    prefix = auth["prefix"]
+    
+    bundle = build_support_bundle(tenant_id, prefix)
+    
+    # Filename with date
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"support-bundle-{tenant_id}-{date_str}.json"
+    
+    return JSONResponse(
+        content=bundle,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )

@@ -181,3 +181,58 @@ class TestPortalEnabled:
         
         assert response.status_code == 200
         assert "Limits" in response.text
+
+    def test_help_page_redirects_without_session(self, client):
+        """Help page redirects to login when not authenticated."""
+        response = client.get("/tenant/help", follow_redirects=False)
+        assert response.status_code == 302
+
+    def test_help_page_renders_after_login(self, client):
+        """Help page renders after login."""
+        from app.api.tenant_portal import hash_token
+        
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        
+        mock_row = MagicMock()
+        mock_row._mapping = {"token_hash": hash_token("key"), "token_prefix": "keyprefi"}
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        
+        with patch("app.tenant_portal.web.get_engine", return_value=mock_engine):
+            client.post("/tenant/login", data={"tenant_id": "t1", "portal_key": "key"})
+            response = client.get("/tenant/help")
+        
+        assert response.status_code == 200
+        assert "Support Bundle" in response.text
+        assert "t1" in response.text  # tenant_id shown
+        assert "key" not in response.text or "keyprefi" in response.text  # only prefix, not full key
+
+    def test_support_bundle_download(self, client):
+        """Support bundle downloads as JSON."""
+        from app.api.tenant_portal import hash_token
+        
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        
+        mock_row = MagicMock()
+        mock_row._mapping = {"token_hash": hash_token("key"), "token_prefix": "keyprefi"}
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        mock_conn.execute.return_value.scalar.return_value = 0
+        mock_conn.execute.return_value.fetchall.return_value = []
+        
+        with patch("app.tenant_portal.web.get_engine", return_value=mock_engine):
+            client.post("/tenant/login", data={"tenant_id": "t1", "portal_key": "key"})
+            response = client.get("/tenant/support-bundle.json")
+        
+        assert response.status_code == 200
+        assert "application/json" in response.headers.get("content-type", "")
+        
+        data = response.json()
+        assert data["tenant_id"] == "t1"
+        assert "generated_at" in data
+        assert "raw_json" not in response.text
+        assert "payload" not in response.text

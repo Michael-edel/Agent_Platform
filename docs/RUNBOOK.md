@@ -398,6 +398,8 @@ Read-only self-service API для tenant'ов с per-tenant токенами.
 - `/tenant/` — dashboard (статус, подписка, лимиты)
 - `/tenant/usage` — usage по периодам (с колонками limit/remaining)
 - `/tenant/subscription` — детали подписки
+- `/tenant/help` — онбординг, контакты поддержки, download Support Bundle
+- `/tenant/support-bundle.json` — скачать JSON bundle для поддержки
 
 ### Лимиты и предупреждения
 
@@ -411,6 +413,24 @@ Read-only self-service API для tenant'ов с per-tenant токенами.
 1. Tenant вводит `tenant_id` + `portal_key`
 2. Portal key получается через Admin → Rotate Token
 3. После успешного входа создаётся HttpOnly session cookie
+
+### Support Bundle
+
+Bundle содержит tenant-scoped метаданные для обращения в поддержку:
+- Subscription и plan
+- Status за 24h (ошибки)
+- Limits и remaining
+- Recent events (только метаданные: id, provider, status, timestamp)
+
+**Не содержит:** токены, пароли, DSN, raw_json, payload, headers.
+
+### ENV для поддержки
+
+| Переменная | Описание |
+|------------|----------|
+| `TENANT_SUPPORT_EMAIL` | Email поддержки (опционально) |
+| `TENANT_SUPPORT_URL` | URL портала поддержки (опционально) |
+| `APP_VERSION` / `GIT_SHA` | Версия приложения для bundle (опционально) |
 
 ### Безопасность
 
