@@ -73,6 +73,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Настройка admin panel (SQLAdmin)
+from app.admin.setup import setup_admin
+setup_admin(app)
+
 # Настройка метрик
 metrics_enabled = os.getenv("METRICS_ENABLED", "1").strip() == "1"
 setup_metrics(enabled=metrics_enabled)

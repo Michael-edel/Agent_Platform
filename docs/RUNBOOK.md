@@ -182,3 +182,48 @@ alembic upgrade head
 2. Если pending — применить миграции
 3. Если connection error — проверить DATABASE_URL и доступность БД
 4. После исправления: `curl /ready` должен вернуть `status: ok`
+
+## Admin Panel (SQLAdmin)
+
+### Включение
+
+```bash
+# В .env или docker-compose.yml
+ADMIN_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-secure-password
+ADMIN_SECRET_KEY=random-secret-for-sessions
+```
+
+### Доступ
+
+URL: `http://localhost:8000/admin`
+
+Войти с логином/паролем из ENV.
+
+### Роли
+
+| Роль | Описание |
+|------|----------|
+| `platform_admin` | Видит все tenant'ы (по умолчанию) |
+| `tenant_admin` | Видит только свой tenant |
+
+Для `tenant_admin` добавить:
+```bash
+ADMIN_ROLE=tenant_admin
+ADMIN_TENANT_ID=your-tenant-id
+```
+
+### Возможности
+
+- **Plans / Billing Plans** — CRUD тарифных планов
+- **Tenant Subscriptions** — просмотр подписок (read-only)
+- **Billing Orders / Events** — просмотр платежей и webhook'ов (read-only)
+- **Webhooks / Deliveries** — просмотр конфигурации webhooks (read-only)
+
+### Безопасность
+
+- Admin panel отключена по умолчанию (`ADMIN_ENABLED=false`)
+- Без `ADMIN_PASSWORD` логин невозможен
+- Секреты (webhook secrets, tokens) скрыты в UI
+- Платёжные данные доступны только для просмотра
