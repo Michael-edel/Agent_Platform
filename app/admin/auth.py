@@ -69,9 +69,9 @@ class AdminAuthBackend(AuthenticationBackend):
         return None
 
 
-def get_admin_role(request: Request) -> str:
-    """Get current admin role from session."""
-    return request.session.get("admin_role", "platform_admin")
+def get_admin_role(request: Request) -> Optional[str]:
+    """Get current admin role from session. Returns None if not set (deny by default)."""
+    return request.session.get("admin_role")
 
 
 def get_admin_tenant_id(request: Request) -> Optional[str]:

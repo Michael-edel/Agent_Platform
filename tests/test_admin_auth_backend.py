@@ -150,14 +150,23 @@ class TestGetAdminRole:
         
         assert get_admin_role(request) == "tenant_admin"
 
-    def test_defaults_to_platform_admin(self):
-        """Defaults to platform_admin if not set."""
+    def test_returns_none_when_role_not_set(self):
+        """Returns None if role not in session (deny by default)."""
         from app.admin.auth import get_admin_role
         
         request = MagicMock()
         request.session = {}
         
-        assert get_admin_role(request) == "platform_admin"
+        assert get_admin_role(request) is None
+
+    def test_returns_none_for_corrupted_session(self):
+        """Returns None for session without admin_role key."""
+        from app.admin.auth import get_admin_role
+        
+        request = MagicMock()
+        request.session = {"some_other_key": "value"}
+        
+        assert get_admin_role(request) is None
 
 
 class TestGetAdminTenantId:

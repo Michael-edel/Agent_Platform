@@ -225,5 +225,6 @@ ADMIN_TENANT_ID=your-tenant-id
 
 - Admin panel отключена по умолчанию (`ADMIN_ENABLED=false`)
 - Без `ADMIN_PASSWORD` логин невозможен
+- Доступ deny-by-default: если роль не задана в сессии, доступ запрещён
 - Секреты (webhook secrets, tokens) скрыты в UI
 - Платёжные данные доступны только для просмотра
