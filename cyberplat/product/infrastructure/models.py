@@ -269,3 +269,29 @@ class TenantAgent(Base):
         Index("idx_tenant_agents_agent_sku_id", "agent_sku_id"),
         Index("idx_tenant_agents_status", "status"),
     )
+
+
+class AgentExecution(Base):
+    """SQLAlchemy model for agent execution records."""
+    
+    __tablename__ = "agent_executions"
+    
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    agent_sku_id = Column(String, ForeignKey("agent_skus.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="accepted", index=True)  # accepted, running, completed, failed, rejected
+    idempotency_key = Column(String, nullable=False)
+    input_json = Column(Text, nullable=False)  # JSON as text for SQLite compatibility
+    result_json = Column(Text, nullable=True)  # JSON as text
+    error_code = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    started_at = Column(String, nullable=True)
+    finished_at = Column(String, nullable=True)
+    
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_sku_id", "idempotency_key", name="uq_execution_idempotency"),
+        Index("idx_agent_executions_tenant_created", "tenant_id", "created_at"),
+        Index("idx_agent_executions_status", "status"),
+    )

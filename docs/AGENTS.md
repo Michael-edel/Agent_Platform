@@ -150,6 +150,120 @@ except AgentNotEnabledError:
 
 ---
 
+## Execution API v1
+
+### Обзор
+
+Execution API позволяет запускать агентов и отслеживать статус выполнения.
+
+⚠️ **Текущая версия**: синхронная заглушка (echo). Оркестрация и LLM будут добавлены позже.
+
+### Эндпоинты
+
+#### POST /api/v1/agents/{agent_code}/execute
+
+Запуск агента.
+
+**Headers:**
+- `X-Tenant-ID`: UUID tenant'а (обязательно)
+
+**Request:**
+```json
+{
+  "input": { ... },
+  "idempotency_key": "unique-key-123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "execution_id": "uuid",
+  "status": "completed",
+  "result": {"ok": true, "echo": {...}}
+}
+```
+
+**Errors:**
+- `404`: `{"error": "agent_not_found", "agent_code": "..."}`
+- `403`: `{"error": "agent_not_enabled", "agent_code": "...", "tenant_id": "..."}`
+
+**Idempotency:**
+Повторный запрос с тем же `(tenant_id, agent_code, idempotency_key)` возвращает существующий execution без создания дубликата.
+
+#### GET /api/v1/agents/executions/{execution_id}
+
+Получить детали выполнения.
+
+**Headers:**
+- `X-Tenant-ID`: UUID tenant'а
+
+**Response (200):**
+```json
+{
+  "execution_id": "uuid",
+  "agent_code": "sales_assistant",
+  "status": "completed",
+  "created_at": "2026-01-15T...",
+  "started_at": "...",
+  "finished_at": "...",
+  "result": {...},
+  "error": null
+}
+```
+
+**Tenant isolation:** Fail-closed. Execution другого tenant'а возвращает 404.
+
+#### GET /api/v1/agents/executions
+
+Список выполнений tenant'а.
+
+**Headers:**
+- `X-Tenant-ID`: UUID tenant'а
+
+**Query params:**
+- `agent_code` (optional): фильтр по агенту
+- `limit` (optional): 1-200, default 50
+
+**Response (200):**
+```json
+[
+  {
+    "execution_id": "uuid",
+    "agent_code": "sales_assistant",
+    "status": "completed",
+    "created_at": "..."
+  }
+]
+```
+
+### Модель данных
+
+#### Таблица: `agent_executions`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | Tenant |
+| `agent_sku_id` | UUID | FK на agent_skus |
+| `status` | enum | accepted, running, completed, failed, rejected |
+| `idempotency_key` | string | Ключ идемпотентности |
+| `input_json` | JSON | Входные данные |
+| `result_json` | JSON | Результат (nullable) |
+| `error_code` | string | Код ошибки (nullable) |
+| `error_message` | string | Сообщение об ошибке (nullable) |
+| `created_at` | timestamp | Создано |
+| `updated_at` | timestamp | Обновлено |
+| `started_at` | timestamp | Начало выполнения (nullable) |
+| `finished_at` | timestamp | Завершение (nullable) |
+
+### Ограничения
+
+- UNIQUE(tenant_id, agent_sku_id, idempotency_key)
+- FK на agent_skus.id
+
+---
+
 ## Примеры
 
 ### Создание агента через Admin

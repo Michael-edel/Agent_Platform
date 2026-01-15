@@ -306,6 +306,11 @@ async def startup_event():
     app.include_router(tenant_portal_router, prefix="/api/v1", tags=["tenant-portal"])
     logger.info("Tenant portal router подключен")
     
+    # Подключение Agent Execution API
+    from app.api.agents import router as agents_router
+    app.include_router(agents_router, tags=["agents"])
+    logger.info("Agent execution router подключен")
+    
     # Подключение Tenant Portal Web UI
     portal_session_secret = os.getenv("TENANT_PORTAL_SESSION_SECRET", "").strip()
     if portal_session_secret:
