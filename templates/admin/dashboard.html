@@ -59,5 +59,59 @@
             </a>
         </div>
     </div>
+    
+    <h4 class="mt-4 mb-3">System Diagnostics</h4>
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr>
+                                <th style="width: 200px;">Readiness Status</th>
+                                <td>
+                                    {% if diagnostics.readiness_status == "ok" %}
+                                    <span class="badge bg-success">OK</span>
+                                    {% elif diagnostics.readiness_status == "degraded" %}
+                                    <span class="badge bg-warning text-dark">Degraded</span>
+                                    <small class="text-muted ms-2">Check migrations or logs</small>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Unknown</span>
+                                    <small class="text-muted ms-2">Error during check</small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Database Driver</th>
+                                <td><code>{{ diagnostics.database_driver }}</code></td>
+                            </tr>
+                            <tr>
+                                <th>Migrations Status</th>
+                                <td>
+                                    {% if diagnostics.migrations_status == "up_to_date" %}
+                                    <span class="badge bg-success">Up to date</span>
+                                    {% elif diagnostics.migrations_status == "pending" %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                    <small class="text-muted ms-2">Run: alembic upgrade head</small>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Unknown</span>
+                                    {% endif %}
+                                    {% if diagnostics.migrations_message %}
+                                    <br><small class="text-muted">{{ diagnostics.migrations_message }}</small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if diagnostics.error %}
+                            <tr>
+                                <th>Error</th>
+                                <td><span class="text-danger">{{ diagnostics.error }}</span></td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

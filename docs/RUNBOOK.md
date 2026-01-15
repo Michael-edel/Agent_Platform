@@ -253,6 +253,26 @@ Drill-down доступен из: Tenant Plans, Subscriptions, Orders, Webhook E
 
 **Безопасность:** Поле `raw_json` (сырой payload webhook) скрыто как в списке, так и в детальном просмотре. Поле `error` обрезается до 200 символов с HTML escaping.
 
+### Dashboard: System Diagnostics
+
+Dashboard показывает системную диагностику (без HTTP-запросов к /ready):
+
+| Поле | Описание |
+|------|----------|
+| Readiness Status | `OK` / `Degraded` / `Unknown` |
+| Database Driver | Драйвер SQLAlchemy (например `psycopg`) |
+| Migrations Status | `Up to date` / `Pending` |
+
+**Значения статусов:**
+- **OK** — база данных доступна, миграции актуальны
+- **Degraded** — есть pending migrations или проблемы с БД; приложение работает, но требует внимания
+- **Unknown** — ошибка при проверке (см. поле Error)
+
+При `Degraded` рекомендуется выполнить:
+```bash
+alembic upgrade head
+```
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
