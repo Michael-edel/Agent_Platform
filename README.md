@@ -128,9 +128,13 @@ Kaspi не поддерживает нативные подписки, поэт�
 - Generic patterns (паттерны: `api_key=...`, `secret=...`, `token=...`, `password=...` с 20+ символами)
 
 📚 **Подробная документация:**
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — как внести вклад в проект
+- [`SECURITY.md`](SECURITY.md) — политика безопасности
 - [`GIT_HOOKS_SECURITY.md`](GIT_HOOKS_SECURITY.md) — безопасность hooks
 - [`GIT_HOOKS_IMPROVEMENTS.md`](GIT_HOOKS_IMPROVEMENTS.md) — улучшения v2.1
 - [`FINAL_HOOKS_STATUS.md`](FINAL_HOOKS_STATUS.md) — финальный статус
+
+> Before opening a PR, please read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Конфигурация и запуск
 
