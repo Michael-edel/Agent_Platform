@@ -6,10 +6,13 @@ from markupsafe import Markup
 from sqladmin import ModelView
 from sqlalchemy import select, func, false as sql_false
 from starlette.requests import Request
+from sqlalchemy.orm import Session
 
 # Product models
 from cyberplat.product.infrastructure.models import (
     Plan,
+    Tenant,
+    TenantBillingSettings,
     TenantPlan,
     Webhook,
     WebhookDelivery,
@@ -31,8 +34,10 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
     BillingUsage,
 )
 from cyberplat.product.infrastructure.models import TenantPortalToken, AgentSKU, TenantAgent, TenantAgentSubscription
+from cyberplat.product.infrastructure.database import get_engine
 
-from app.admin.auth import get_admin_role, get_admin_tenant_id
+from app.admin.auth import get_admin_role, get_admin_tenant_id, get_admin_username
+from app.admin.audit import write_audit_log
 
 
 from app.admin.links import (
@@ -106,6 +111,150 @@ class PlanAdmin(ModelView, model=Plan):
     column_filters = ["active", "created_at"]
     column_sortable_list = ["id", "name", "price_minor", "active", "created_at"]
     page_size = 50
+
+
+class TenantAdmin(ModelView, model=Tenant):
+    """Admin view for Tenants (editable, no delete)."""
+
+    name = "Tenant"
+    name_plural = "Tenants"
+    icon = "fa-solid fa-building"
+    identity = "tenant"
+
+    can_create = True
+    can_edit = True
+    can_delete = False
+    can_view_details = True
+
+    column_list = ["id", "name", "is_active", "stripe_webhook_url", "kaspi_webhook_url", "created_at", "updated_at"]
+    column_searchable_list = ["id", "name"]
+    column_filters = ["is_active", "created_at"]
+    column_sortable_list = ["created_at", "updated_at"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
+
+    def list_query(self, request: Request):
+        # tenant_admin can only see own tenant (by id)
+        query = select(self.model)
+        if get_admin_role(request) == "tenant_admin":
+            tenant_id = get_admin_tenant_id(request)
+            if tenant_id:
+                return query.where(self.model.id == tenant_id)
+            return query.where(sql_false())
+        return query
+
+    def count_query(self, request: Request):
+        query = select(func.count()).select_from(self.model)
+        if get_admin_role(request) == "tenant_admin":
+            tenant_id = get_admin_tenant_id(request)
+            if tenant_id:
+                return query.where(self.model.id == tenant_id)
+            return query.where(sql_false())
+        return query
+
+    async def after_model_change(self, data: dict, model: Tenant, is_created: bool, request: Request) -> None:
+        actor = get_admin_username(request) or "admin"
+        role = get_admin_role(request) or "unknown"
+        tenant_id = str(getattr(model, "id", "") or "")
+        action = "tenant_create" if is_created else "tenant_update"
+        if (not is_created) and ("is_active" in (data or {})) and (getattr(model, "is_active", True) is False):
+            action = "tenant_deactivate"
+
+        with Session(get_engine()) as session:
+            write_audit_log(
+                session,
+                actor_username=actor,
+                actor_role=role,
+                tenant_id=tenant_id,
+                action=action,
+                entity_type="Tenant",
+                entity_id=tenant_id,
+                metadata={
+                    "name": getattr(model, "name", None),
+                    "is_active": bool(getattr(model, "is_active", True)),
+                },
+            )
+            session.commit()
+
+
+class TenantBillingSettingsAdmin(TenantScopedMixin, ModelView, model=TenantBillingSettings):
+    """Admin view for per-tenant billing settings (editable, no delete)."""
+
+    name = "Tenant Billing Settings"
+    name_plural = "Tenant Billing Settings"
+    icon = "fa-solid fa-sliders"
+    identity = "tenant-billing-settings"
+
+    can_create = True
+    can_edit = True
+    can_delete = False
+    can_view_details = True
+
+    column_list = [
+        "tenant_id",
+        "default_provider",
+        "stripe_enabled",
+        "kaspi_enabled",
+        "created_at",
+        "updated_at",
+    ]
+    column_searchable_list = ["tenant_id", "default_provider"]
+    column_filters = ["tenant_id", "default_provider", "created_at"]
+    column_sortable_list = ["tenant_id", "created_at", "updated_at"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
+
+    form_choices = {
+        "default_provider": [
+            ("", ""),  # allow null/blank
+            ("kaspi", "kaspi"),
+            ("stripe", "stripe"),
+        ]
+    }
+
+    async def on_model_change(self, data: dict, model: TenantBillingSettings, is_created: bool, request: Request) -> None:
+        # Validate: at least one provider enabled
+        stripe_enabled = bool(getattr(model, "stripe_enabled", True))
+        kaspi_enabled = bool(getattr(model, "kaspi_enabled", True))
+        if not stripe_enabled and not kaspi_enabled:
+            raise ValueError("At least one provider must be enabled (stripe_enabled or kaspi_enabled).")
+
+        dp = getattr(model, "default_provider", None)
+        if dp is not None:
+            dp_norm = str(dp).strip().lower()
+            if dp_norm == "":
+                model.default_provider = None
+            elif dp_norm not in {"kaspi", "stripe"}:
+                raise ValueError("default_provider must be kaspi, stripe, or empty.")
+
+        # If default_provider is set, ensure it is enabled.
+        dp2 = getattr(model, "default_provider", None)
+        if dp2 == "stripe" and not stripe_enabled:
+            raise ValueError("default_provider=stripe requires stripe_enabled=true.")
+        if dp2 == "kaspi" and not kaspi_enabled:
+            raise ValueError("default_provider=kaspi requires kaspi_enabled=true.")
+
+    async def after_model_change(self, data: dict, model: TenantBillingSettings, is_created: bool, request: Request) -> None:
+        actor = get_admin_username(request) or "admin"
+        role = get_admin_role(request) or "unknown"
+        tenant_id = str(getattr(model, "tenant_id", "") or "")
+
+        with Session(get_engine()) as session:
+            write_audit_log(
+                session,
+                actor_username=actor,
+                actor_role=role,
+                tenant_id=tenant_id,
+                action="tenant_billing_settings_update",
+                entity_type="TenantBillingSettings",
+                entity_id=tenant_id,
+                metadata={
+                    "default_provider": getattr(model, "default_provider", None),
+                    "stripe_enabled": bool(getattr(model, "stripe_enabled", True)),
+                    "kaspi_enabled": bool(getattr(model, "kaspi_enabled", True)),
+                },
+            )
+            session.commit()
 
 
 class TenantPlanAdmin(TenantScopedMixin, ModelView, model=TenantPlan):

@@ -38,6 +38,8 @@ def setup_admin(app: FastAPI) -> None:
         from app.admin.views import (
             # Product views
             PlanAdmin,
+            TenantAdmin,
+            TenantBillingSettingsAdmin,
             TenantPlanAdmin,
             WebhookAdmin,
             WebhookDeliveryAdmin,
@@ -87,6 +89,8 @@ def setup_admin(app: FastAPI) -> None:
         
         # Add Product views
         admin.add_view(PlanAdmin)
+        admin.add_view(TenantAdmin)
+        admin.add_view(TenantBillingSettingsAdmin)
         admin.add_view(TenantPlanAdmin)
         admin.add_view(WebhookAdmin)
         admin.add_view(WebhookDeliveryAdmin)

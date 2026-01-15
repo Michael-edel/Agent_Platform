@@ -7,6 +7,8 @@ from markupsafe import Markup, escape
 
 # Admin list route identities (must match SQLAdmin model identities)
 ADMIN_ROUTES = {
+    "tenant": "tenant",
+    "tenant_billing_settings": "tenant-billing-settings",
     "tenant_plan": "tenant-plan",
     "tenant_subscription": "tenant-subscription",
     "billing_order": "billing-order",

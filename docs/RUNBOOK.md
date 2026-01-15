@@ -353,6 +353,38 @@ Grafana автоматически провиженит:
 
 ### Навигация и drill-down
 
+## Tenant onboarding via Admin (v1)
+
+Операционный onboarding делается через SQLAdmin (без отдельного фронта).
+
+### 1) Создать tenant
+
+- `Admin → Tenants → Create`
+- Поля:
+  - `id`: tenant_id (используется во всех таблицах как `tenant_id`)
+  - `name`
+  - `is_active`
+
+### 2) Настроить billing provider для tenant (override)
+
+- `Admin → Tenant Billing Settings → Create/Update`
+- `default_provider`:
+  - `null/empty` → используется глобальный `BILLING_DEFAULT_PROVIDER`
+  - `kaspi|stripe` → override для tenant
+- Нельзя выключить оба провайдера одновременно (`stripe_enabled=false` и `kaspi_enabled=false`).
+
+### 3) Webhook URLs
+
+На карточке tenant отображаются inbound billing webhook URLs:
+- Stripe: `/api/v1/billing/webhook/stripe`
+- Kaspi: `/api/v1/billing/webhook/kaspi`
+
+Base URL берётся из `PUBLIC_BASE_URL`. Если не задан — используется `http://localhost:8000`.
+
+### Audit log
+
+Все изменения `Tenant` и `TenantBillingSettings` записываются в `admin_audit_log` (без секретов).
+
 Dashboard содержит кликабельные карточки для быстрого перехода:
 - Tenants → список tenant plans
 - Subscriptions → список подписок

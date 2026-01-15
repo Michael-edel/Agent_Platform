@@ -1,5 +1,7 @@
 """SQLAlchemy models for product/UI layer."""
 
+import os
+
 from sqlalchemy import Column, String, Text, Integer, Boolean, Index, UniqueConstraint, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -7,6 +9,55 @@ from datetime import datetime
 # Используем общий Base, если он есть в проекте, иначе создаём новый
 # В production лучше использовать единый Base из одного места
 Base = declarative_base()
+
+
+def _public_base_url() -> str:
+    raw = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    return raw or "http://localhost:8000"
+
+
+class Tenant(Base):
+    """Minimal tenants registry for operational onboarding."""
+
+    __tablename__ = "tenants"
+
+    id = Column(String, primary_key=True)  # tenant_id
+    name = Column(String, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tenants_is_active", "is_active"),
+        Index("idx_tenants_created_at", "created_at"),
+    )
+
+    @property
+    def stripe_webhook_url(self) -> str:
+        # Inbound billing webhook endpoint (tenant inferred by payload / metadata)
+        return f"{_public_base_url()}/api/v1/billing/webhook/stripe"
+
+    @property
+    def kaspi_webhook_url(self) -> str:
+        return f"{_public_base_url()}/api/v1/billing/webhook/kaspi"
+
+
+class TenantBillingSettings(Base):
+    """Per-tenant billing provider settings (override global defaults)."""
+
+    __tablename__ = "tenant_billing_settings"
+
+    tenant_id = Column(String, primary_key=True)  # matches tenants.id
+    default_provider = Column(String, nullable=True)  # kaspi|stripe|null -> env default
+    stripe_enabled = Column(Boolean, nullable=False, default=True)
+    kaspi_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tenant_billing_settings_tenant_id", "tenant_id"),
+        Index("idx_tenant_billing_settings_default_provider", "default_provider"),
+    )
 
 
 class ArtifactState(Base):
