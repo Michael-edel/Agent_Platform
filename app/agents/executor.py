@@ -9,6 +9,7 @@ import logging
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -17,9 +18,10 @@ from sqlalchemy import select, update, text
 from sqlalchemy.orm import Session
 
 from cyberplat.product.infrastructure.models import AgentExecution, AgentSKU
-from cyberplat.agents.registry import get_runner
+from cyberplat.agents.registry import get_runner, get_timeout_seconds
 from cyberplat.agents.errors import (
     AgentExecutionError,
+    AgentErrorCode,
     validation_error,
     runner_not_found,
     execution_error,
@@ -156,7 +158,47 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
         except Exception:
             exec_uuid = UUID(int=0)
 
-        result = runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid)
+        timeout_seconds = get_timeout_seconds(agent_code)
+
+        def _run():
+            return runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid)
+
+        try:
+            if timeout_seconds is None:
+                result = _run()
+            else:
+                # Best-effort cancellation: thread keeps running after timeout.
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(_run)
+                    result = fut.result(timeout=timeout_seconds)
+        except FutureTimeoutError:
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000)
+            err = AgentExecutionError(
+                code=AgentErrorCode.TIMEOUT,
+                message="execution timed out",
+                details={"timeout_seconds": timeout_seconds},
+            )
+            err_dict = err.to_dict()
+            err_dict["meta"] = {"duration_ms": duration_ms}
+            now = now_iso()
+            res = session.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == execution_id)
+                .where(AgentExecution.status == "running")
+                .values(
+                    status="failed",
+                    result_json=json.dumps(err_dict),
+                    error_code=err.code.value,
+                    error_message=err.message[:500],
+                    finished_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+            if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+                inc_failed(agent_code, err.code.value)
+            return
+
         if not isinstance(result, dict):
             raise TypeError("runner_result_invalid: runner must return dict")
 

@@ -252,7 +252,8 @@ curl -X POST "http://localhost:8000/api/v1/agents/demo.sentiment_basic/execute" 
 | `validation_error` | Невалидный payload / входные данные | отсутствует обязательное поле |
 | `runner_not_found` | Нет зарегистрированного runner для `agent_code` | SKU существует, но runner не реализован |
 | `execution_error` | Любая другая ошибка во время выполнения | исключение внутри runner |
-| `timeout` | Зарезервировано на будущее | (пока не используется) |
+| `timeout` | Превышен таймаут выполнения | execution timed out |
+| `cancelled` | Отменено клиентом (best-effort) | cancel accepted execution |
 
 ### Формат error dict (stable)
 
@@ -279,6 +280,25 @@ curl -X POST "http://localhost:8000/api/v1/agents/demo.sentiment_basic/execute" 
 Для `completed`: поле `result.meta.duration_ms` (мс) — длительность выполнения runner.
 
 Для `failed`: поле `error.meta.duration_ms` (мс) — длительность до ошибки.
+
+## Timeouts
+
+Таймауты задаются на уровне registry (без изменений схемы БД):
+
+- `cyberplat/agents/registry.py:AGENT_TIMEOUT_SECONDS` — per-agent значения (секунды)
+- `AGENT_DEFAULT_TIMEOUT_SECONDS` — fallback только если у агента нет явного значения
+
+При таймауте execution завершается как `failed` с `error_code="timeout"` и `details.timeout_seconds`.
+
+## Cancellation
+
+### POST /api/v1/executions/{execution_id}/cancel
+
+Best-effort отмена выполнения (tenant-scoped):
+
+- если execution в `accepted` → переводим в terminal `rejected` с `error_code="cancelled"`
+- если execution уже terminal → `200 OK` (идемпотентно)
+- если execution в `running` → `409 Conflict` (best-effort: running не отменяем)
 
 #### GET /api/v1/agents/executions/{execution_id}
 

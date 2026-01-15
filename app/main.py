@@ -316,6 +316,11 @@ async def startup_event():
     from app.api.agents import router as agents_router
     app.include_router(agents_router, tags=["agents"])
     logger.info("Agent execution router подключен")
+
+    # Execution management endpoints (cancel)
+    from app.api.executions import router as executions_router
+    app.include_router(executions_router, tags=["executions"])
+    logger.info("Executions router подключен")
     
     # Start Agent Executor (if enabled)
     from app.agents.executor import start_executor

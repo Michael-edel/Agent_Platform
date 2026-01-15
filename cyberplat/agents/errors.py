@@ -12,6 +12,7 @@ class AgentErrorCode(str, Enum):
     RUNNER_NOT_FOUND = "runner_not_found"
     EXECUTION_ERROR = "execution_error"
     TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)
@@ -44,4 +45,8 @@ def runner_not_found(agent_code: str) -> AgentExecutionError:
 
 def execution_error(message: str, details: Optional[dict[str, Any]] = None) -> AgentExecutionError:
     return AgentExecutionError(code=AgentErrorCode.EXECUTION_ERROR, message=message, details=details)
+
+
+def cancelled(message: str = "cancelled", details: Optional[dict[str, Any]] = None) -> AgentExecutionError:
+    return AgentExecutionError(code=AgentErrorCode.CANCELLED, message=message, details=details)
 
