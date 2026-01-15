@@ -13,6 +13,7 @@ import os
 import random
 import socket
 from dataclasses import dataclass
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Literal, Optional
 
@@ -163,6 +164,7 @@ def claim_due_jobs(now: str, limit: int = 50, *, worker_id: Optional[str] = None
 def process_job(job: DueJob, now: str) -> JobOutcome:
     engine = get_engine()
     with Session(engine) as session:
+        t0 = time.monotonic()
         db_job = session.execute(select(BillingJob).where(BillingJob.id == job.id)).scalar_one_or_none()
         if not db_job:
             return "skipped"
@@ -194,6 +196,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 .values(payment_status="paid")
             )
             session.commit()
+            try:
+                from cyberplat.billing.metrics import observe_job_duration
+
+                observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+            except Exception:
+                pass
             return "succeeded"
 
         inv = session.execute(
@@ -217,6 +225,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 )
             )
             session.commit()
+            try:
+                from cyberplat.billing.metrics import observe_job_duration
+
+                observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+            except Exception:
+                pass
             return "failed"
 
         provider_name = (job.provider or "").strip().lower()
@@ -232,6 +246,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                         intent = stripe.PaymentIntent.retrieve(str(db_job.provider_ref))
                         intent_status = str(getattr(intent, "status", "") or "")
                         payment_status = _map_stripe_intent_status_to_payment_status(intent_status)
+                        try:
+                            from cyberplat.billing.metrics import inc_provider_refresh
+
+                            inc_provider_refresh(str(getattr(db_job, "locked_by", "") or "unknown"), "stripe", "ok", 1)
+                        except Exception:
+                            pass
                         session.execute(
                             update(UsageInvoice)
                             .where(UsageInvoice.id == inv.id)
@@ -251,8 +271,27 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                             )
                         )
                         session.commit()
+                        try:
+                            from cyberplat.billing.metrics import observe_job_duration
+
+                            observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), "stripe", time.monotonic() - t0)
+                        except Exception:
+                            pass
                         return "skipped"
+                    else:
+                        try:
+                            from cyberplat.billing.metrics import inc_provider_refresh
+
+                            inc_provider_refresh(str(getattr(db_job, "locked_by", "") or "unknown"), "stripe", "skipped", 1)
+                        except Exception:
+                            pass
                 except Exception:
+                    try:
+                        from cyberplat.billing.metrics import inc_provider_refresh
+
+                        inc_provider_refresh(str(getattr(db_job, "locked_by", "") or "unknown"), "stripe", "error", 1)
+                    except Exception:
+                        pass
                     # Fall through to retry scheduling (but never create new payment).
                     pass
 
@@ -269,6 +308,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 )
             )
             session.commit()
+            try:
+                from cyberplat.billing.metrics import observe_job_duration
+
+                observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+            except Exception:
+                pass
             return "skipped"
 
         # Import inside to keep tests monkeypatch-friendly
@@ -293,6 +338,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 )
             )
             session.commit()
+            try:
+                from cyberplat.billing.metrics import observe_job_duration
+
+                observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+            except Exception:
+                pass
             return "retried"
 
         try:
@@ -333,6 +384,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                     .values(payment_status="failed")
                 )
                 session.commit()
+                try:
+                    from cyberplat.billing.metrics import observe_job_duration
+
+                    observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+                except Exception:
+                    pass
                 return "failed"
 
             next_at = compute_next_attempt_at(current_attempt).isoformat()
@@ -359,6 +416,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
                 .values(payment_status="processing")
             )
             session.commit()
+            try:
+                from cyberplat.billing.metrics import observe_job_duration
+
+                observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+            except Exception:
+                pass
             return "retried"
 
         # Payment created successfully -> job succeeded; final paid/failed is reconciled by webhooks.
@@ -386,6 +449,12 @@ def process_job(job: DueJob, now: str) -> JobOutcome:
             .values(payment_status=payment_status)
         )
         session.commit()
+        try:
+            from cyberplat.billing.metrics import observe_job_duration
+
+            observe_job_duration(str(getattr(db_job, "locked_by", "") or "unknown"), str(getattr(db_job, "provider", "") or ""), time.monotonic() - t0)
+        except Exception:
+            pass
         return "succeeded"
 
 

@@ -278,6 +278,47 @@ docker-compose up --build
 
 При `docker-compose stop` worker получает `SIGTERM`, выставляет stop flag, **не запускает новые итерации**, дожидается окончания текущей и выходит `0`.
 
+## Billing Worker Metrics (Prometheus)
+
+Worker поднимает отдельный `/metrics` HTTP endpoint (по умолчанию `:9101`) и публикует метрики pipeline.
+
+### Scrape config (пример)
+
+```yaml
+scrape_configs:
+  - job_name: "billing-worker"
+    static_configs:
+      - targets: ["worker:9101"]
+```
+
+### Key metrics
+
+- `billing_worker_up{worker_id}` (gauge)
+- `billing_worker_iterations_total{worker_id}` (counter)
+- `billing_worker_iteration_duration_seconds{worker_id}` (histogram)
+- `billing_worker_last_success_timestamp{worker_id}` (gauge)
+- `billing_jobs_claimed_total{worker_id}` (counter)
+- `billing_jobs_processed_total{worker_id,result}` (counter)
+- `billing_jobs_retry_scheduled_total{worker_id}` (counter)
+- `billing_jobs_queue_depth{status}` (gauge)
+- `billing_jobs_next_attempt_lag_seconds` (gauge)
+
+### Suggested alerts (пример)
+
+```promql
+# A) Worker down
+absent(billing_worker_up) OR billing_worker_up == 0
+
+# B) Queue stuck
+billing_jobs_queue_depth{status="pending_retry"} > 0
+
+# C) High failure rate (5m)
+rate(billing_jobs_processed_total{result="failed"}[5m]) > 0
+
+# D) No progress for 5 minutes
+time() - billing_worker_last_success_timestamp > 300
+```
+
 ### Навигация и drill-down
 
 Dashboard содержит кликабельные карточки для быстрого перехода:

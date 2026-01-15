@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from cyberplat.billing.jobs import process_due_billing_jobs_stats
 from cyberplat.product.infrastructure.database import get_engine
+from cyberplat.billing import metrics as billing_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ def single_iteration(*, batch_size: int, worker_id: str) -> Tuple[bool, Dict[str
     Runs one polling iteration. Never raises; returns (ok, stats/error_payload).
     """
     t0 = time.monotonic()
+    billing_metrics.inc_iteration(worker_id)
     try:
         stats = process_due_billing_jobs_stats(limit=batch_size, worker_id=worker_id)
         duration_ms = int((time.monotonic() - t0) * 1000)
@@ -69,9 +71,20 @@ def single_iteration(*, batch_size: int, worker_id: str) -> Tuple[bool, Dict[str
             "skipped_count": int(stats.get("skipped_count", 0) or 0),
             "duration_ms": duration_ms,
         }
+        billing_metrics.observe_iteration(worker_id, duration_ms / 1000.0)
+        billing_metrics.inc_claimed(worker_id, out["processed_count"])
+        billing_metrics.inc_processed(worker_id, "succeeded", out["succeeded_count"])
+        billing_metrics.inc_processed(worker_id, "failed", out["failed_count"])
+        billing_metrics.inc_processed(worker_id, "retried", out["retried_count"])
+        billing_metrics.inc_retry_scheduled(worker_id, out["retried_count"])
+        billing_metrics.inc_processed(worker_id, "skipped", out["skipped_count"])
+        billing_metrics.set_last_success(worker_id)
         return True, out
     except Exception as e:
         duration_ms = int((time.monotonic() - t0) * 1000)
+        billing_metrics.observe_iteration(worker_id, duration_ms / 1000.0)
+        billing_metrics.inc_processed(worker_id, "errored", 1)
+        billing_metrics.inc_worker_error(worker_id, type(e).__name__, 1)
         return (
             False,
             {
@@ -104,7 +117,11 @@ def run_loop(*, stop_event: Event, interval_seconds: float, batch_size: int, wor
     """
     Main polling loop. Stops quickly when stop_event is set.
     """
+    iter_n = 0
+    queue_every = max(1, _int_env("BILLING_WORKER_QUEUE_METRICS_EVERY_N_ITERATIONS", 12))
+
     while not stop_event.is_set():
+        iter_n += 1
         ok, payload = single_iteration(batch_size=batch_size, worker_id=worker_id)
         if ok:
             # Optional small jitter to avoid thundering herd (additive, simple and deterministic).
@@ -133,6 +150,22 @@ def run_loop(*, stop_event: Event, interval_seconds: float, batch_size: int, wor
         # Interruptible sleep (wake up immediately on stop)
         stop_event.wait(timeout=sleep_s)
 
+        # Update queue gauges periodically (best-effort)
+        if iter_n % queue_every == 0 and not stop_event.is_set():
+            try:
+                billing_metrics.update_queue_gauges()
+            except Exception as e:
+                billing_metrics.inc_worker_error(worker_id, f"queue_metrics_{type(e).__name__}", 1)
+                _log_json(
+                    "error",
+                    {
+                        "event": "billing_worker_error",
+                        "worker_id": worker_id,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)[:200],
+                    },
+                )
+
 
 def main() -> None:
     enabled = _bool_env("BILLING_WORKER_ENABLED", True)
@@ -156,6 +189,37 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+    # Metrics server (optional)
+    metrics_enabled = _bool_env("BILLING_WORKER_METRICS_ENABLED", True)
+    metrics_host = os.getenv("BILLING_WORKER_METRICS_HOST", "0.0.0.0").strip() or "0.0.0.0"
+    metrics_port = _int_env("BILLING_WORKER_METRICS_PORT", 9101)
+    if metrics_enabled:
+        try:
+            from prometheus_client import start_http_server
+
+            start_http_server(int(metrics_port), addr=str(metrics_host))
+            _log_json(
+                "info",
+                {
+                    "event": "billing_worker_metrics_started",
+                    "worker_id": worker_id,
+                    "host": metrics_host,
+                    "port": int(metrics_port),
+                },
+            )
+        except Exception as e:
+            _log_json(
+                "error",
+                {
+                    "event": "billing_worker_error",
+                    "worker_id": worker_id,
+                    "error_type": type(e).__name__,
+                    "error_message": f"Failed to start metrics server: {str(e)[:160]}",
+                },
+            )
+
+    billing_metrics.set_worker_up(worker_id, True)
+
     _log_json(
         "info",
         {
@@ -164,6 +228,7 @@ def main() -> None:
             "interval_seconds": interval_seconds,
             "batch_size": batch_size,
             "jitter_seconds": jitter_seconds,
+            "metrics_enabled": bool(metrics_enabled),
         },
     )
 
@@ -176,6 +241,7 @@ def main() -> None:
             jitter_seconds=jitter_seconds,
         )
     finally:
+        billing_metrics.set_worker_up(worker_id, False)
         _log_json("info", {"event": "billing_worker_stopped", "worker_id": worker_id})
 
 

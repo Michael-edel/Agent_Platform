@@ -1,0 +1,39 @@
+groups:
+  - name: billing-worker
+    rules:
+      - alert: BillingWorkerDown
+        expr: absent(billing_worker_up) OR billing_worker_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Billing worker is down"
+          description: "billing_worker_up is absent or 0"
+
+      - alert: BillingJobsQueueStuck
+        expr: billing_jobs_queue_depth{status="pending_retry"} > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing jobs pending_retry queue is not empty"
+          description: "pending_retry jobs exist for >10m"
+
+      - alert: BillingJobsFailing
+        expr: rate(billing_jobs_processed_total{result="failed"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing jobs are failing"
+          description: "Non-zero failed rate in last 5 minutes"
+
+      - alert: BillingWorkerNoProgress
+        expr: time() - billing_worker_last_success_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing worker makes no progress"
+          description: "No successful iteration in >5 minutes"
+
