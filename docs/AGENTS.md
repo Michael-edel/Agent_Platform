@@ -352,6 +352,73 @@ Execution API позволяет запускать агентов и отсле
 |------|----------|
 | `enabled` | `true` если `TenantAgent.status == "enabled"` |
 | `tenant_status` | Статус TenantAgent: `enabled`, `disabled`, `suspended`, или `null` если не подключён |
+| `addon_status` | Статус подписки: `active`, `inactive`, `canceled`, `past_due`, или `null` |
+| `paid` | `true` только если `addon_status == "active"` |
+
+---
+
+## Pricing v1: Subscription Add-on
+
+### Обзор
+
+Агенты являются платными add-on'ами. Для выполнения агента tenant должен иметь:
+1. `TenantAgent.status == "enabled"` (включён)
+2. `TenantAgentSubscription.status == "active"` (оплачен)
+
+### Модель: TenantAgentSubscription
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | Tenant |
+| `agent_sku_id` | UUID | FK на agent_skus |
+| `status` | enum | `active`, `inactive`, `canceled`, `past_due` |
+| `starts_at` | timestamp | Начало подписки |
+| `ends_at` | timestamp | Окончание (nullable) |
+| `cancel_at_period_end` | bool | Отмена в конце периода |
+| `source` | string | `admin`, `kaspi`, `stripe` |
+| `external_ref` | string | ID в платежной системе (nullable) |
+
+### Статусы подписки
+
+| Статус | Описание | Execute разрешён |
+|--------|----------|------------------|
+| `active` | Оплачен/активен | ✅ Да |
+| `inactive` | Не активирован | ❌ Нет |
+| `canceled` | Отменён | ❌ Нет |
+| `past_due` | Просрочен | ❌ Нет |
+
+### Gating: HTTP 402
+
+Если add-on не активен, execute возвращает:
+
+```json
+HTTP 402 Payment Required
+{
+  "error": "agent_addon_inactive",
+  "agent_code": "sales_assistant",
+  "tenant_id": "...",
+  "status": "inactive"
+}
+```
+
+### Приоритет проверок
+
+1. `TenantAgent.status` → 403 `agent_not_enabled`
+2. `TenantAgentSubscription.status` → 402 `agent_addon_inactive`
+3. Plan limits → 429 `plan_limit_exceeded`
+
+### Source
+
+Поле `source` указывает источник подписки:
+
+| Source | Описание |
+|--------|----------|
+| `admin` | Создано вручную через Admin Panel |
+| `kaspi` | Оплачено через Kaspi (будущее) |
+| `stripe` | Оплачено через Stripe (будущее) |
+
+⚠️ **Текущая версия**: только `admin`. Интеграция с платежными системами будет добавлена позже.
 
 ---
 

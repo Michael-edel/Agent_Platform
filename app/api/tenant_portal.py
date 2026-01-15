@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 
 from cyberplat.product.infrastructure.database import get_engine
-from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan, AgentSKU, TenantAgent
+from cyberplat.product.infrastructure.models import TenantPlan, TenantPortalToken, Plan, AgentSKU, TenantAgent, TenantAgentSubscription
 from cyberplat.billing.infrastructure.models_sqlalchemy import (
     TenantSubscription,
     BillingUsage,
@@ -104,6 +104,8 @@ class AgentCatalogItem(BaseModel):
     pricing_model: str
     enabled: bool  # True if TenantAgent.status == "enabled"
     tenant_status: Optional[str] = None  # enabled, disabled, suspended, or null
+    addon_status: Optional[str] = None  # active, inactive, canceled, past_due, or null
+    paid: bool = False  # True only if addon_status == "active"
 
 
 class AgentCatalogResponse(BaseModel):
@@ -558,11 +560,23 @@ async def get_agents_catalog(
                 m = ta_row._mapping
                 tenant_agents[m["agent_sku_id"]] = m["status"]
             
+            # Get all TenantAgentSubscription records for this tenant
+            subscriptions = {}
+            sub_query = (
+                select(TenantAgentSubscription)
+                .where(TenantAgentSubscription.tenant_id == tenant_id)
+            )
+            sub_rows = conn.execute(sub_query).fetchall()
+            for sub_row in sub_rows:
+                m = sub_row._mapping
+                subscriptions[m["agent_sku_id"]] = m["status"]
+            
             # Build catalog items
             for sku_row in sku_rows:
                 m = sku_row._mapping
                 sku_id = m["id"]
                 ta_status = tenant_agents.get(sku_id)
+                addon_status = subscriptions.get(sku_id)
                 
                 items.append(AgentCatalogItem(
                     code=m["code"],
@@ -572,6 +586,8 @@ async def get_agents_catalog(
                     pricing_model=m["pricing_model"],
                     enabled=(ta_status == "enabled"),
                     tenant_status=ta_status,
+                    addon_status=addon_status,
+                    paid=(addon_status == "active"),
                 ))
                 
     except Exception as e:

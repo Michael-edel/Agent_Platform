@@ -25,7 +25,7 @@ from cyberplat.billing.infrastructure.models_sqlalchemy import (
     BillingOrder,
     BillingUsage,
 )
-from cyberplat.product.infrastructure.models import TenantPortalToken, AgentSKU, TenantAgent
+from cyberplat.product.infrastructure.models import TenantPortalToken, AgentSKU, TenantAgent, TenantAgentSubscription
 
 from app.admin.auth import get_admin_role, get_admin_tenant_id
 
@@ -402,5 +402,25 @@ class TenantAgentAdmin(ModelView, model=TenantAgent):
     column_searchable_list = ["tenant_id", "agent_sku_id"]
     column_filters = ["status", "tenant_id"]
     column_sortable_list = ["tenant_id", "status", "activated_at", "disabled_at", "created_at", "updated_at"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
+
+
+class TenantAgentSubscriptionAdmin(ModelView, model=TenantAgentSubscription):
+    """Admin view for Tenant Agent Subscriptions (platform_admin only, no delete)."""
+    
+    name = "Agent Subscription"
+    name_plural = "Agent Subscriptions"
+    icon = "fa-solid fa-credit-card"
+    
+    can_create = True
+    can_edit = True
+    can_delete = False  # Use status=canceled instead
+    can_view_details = True
+    
+    column_list = ["tenant_id", "agent_sku_id", "status", "source", "starts_at", "ends_at", "created_at"]
+    column_searchable_list = ["tenant_id", "agent_sku_id", "external_ref"]
+    column_filters = ["status", "source", "tenant_id"]
+    column_sortable_list = ["tenant_id", "status", "source", "starts_at", "ends_at", "created_at"]
     column_default_sort = ("created_at", True)
     page_size = 50

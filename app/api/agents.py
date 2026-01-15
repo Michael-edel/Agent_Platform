@@ -16,8 +16,10 @@ from cyberplat.product.infrastructure.models import AgentSKU, AgentExecution
 from cyberplat.billing.infrastructure.models_sqlalchemy import BillingUsage
 from app.agents.guards import (
     assert_agent_enabled,
+    assert_agent_addon_active,
     AgentNotFoundError,
     AgentNotEnabledError,
+    AgentAddonInactiveError,
 )
 from app.billing.limits import check_plan_limit, PlanLimitExceededError
 
@@ -155,13 +157,24 @@ def execute_agent(
         if existing:
             # Return existing execution (idempotent)
             if existing.status == "rejected":
-                # Return same 429 for rejected execution
+                # Check error code to return appropriate status
+                if existing.error_code == "agent_addon_inactive":
+                    return JSONResponse(
+                        status_code=402,
+                        content={
+                            "error": "agent_addon_inactive",
+                            "agent_code": agent_code,
+                            "tenant_id": tenant_id,
+                            "status": None,
+                        },
+                    )
+                # Default to 429 for limit exceeded
                 return JSONResponse(
                     status_code=429,
                     content={
                         "error": "plan_limit_exceeded",
                         "metric": "agent_executions",
-                        "limit": 0,  # Original limit unknown from stored execution
+                        "limit": 0,
                         "used": 0,
                         "tenant_id": tenant_id,
                     },
@@ -171,6 +184,41 @@ def execute_agent(
                 execution_id=existing.id,
                 status=existing.status,
                 result=result,
+            )
+        
+        # Check add-on subscription is active
+        try:
+            assert_agent_addon_active(session, tenant_id, agent_code)
+        except AgentAddonInactiveError as e:
+            # Create rejected execution for idempotency
+            now = now_iso()
+            execution_id = str(uuid.uuid4())
+            execution = AgentExecution(
+                id=execution_id,
+                tenant_id=tenant_id,
+                agent_sku_id=sku.id,
+                status="rejected",
+                idempotency_key=request.idempotency_key,
+                input_json=json.dumps(request.input),
+                result_json=None,
+                error_code="agent_addon_inactive",
+                error_message=f"Agent add-on not active: {e.status or 'not subscribed'}",
+                created_at=now,
+                updated_at=now,
+                started_at=None,
+                finished_at=now,
+            )
+            session.add(execution)
+            session.commit()
+            
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": "agent_addon_inactive",
+                    "agent_code": e.agent_code,
+                    "tenant_id": e.tenant_id,
+                    "status": e.status,
+                },
             )
         
         # Check plan limits before creating execution

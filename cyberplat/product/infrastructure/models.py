@@ -271,6 +271,31 @@ class TenantAgent(Base):
     )
 
 
+class TenantAgentSubscription(Base):
+    """SQLAlchemy model for tenant agent add-on subscriptions."""
+    
+    __tablename__ = "tenant_agent_subscriptions"
+    
+    id = Column(String, primary_key=True)  # UUID
+    tenant_id = Column(String, nullable=False, index=True)
+    agent_sku_id = Column(String, ForeignKey("agent_skus.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="inactive", index=True)  # active, inactive, canceled, past_due
+    starts_at = Column(String, nullable=False)
+    ends_at = Column(String, nullable=True)
+    cancel_at_period_end = Column(Integer, nullable=False, default=0)  # Boolean as int for SQLite
+    source = Column(String, nullable=False, default="admin")  # admin, kaspi, stripe
+    external_ref = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "agent_sku_id", name="uq_tenant_agent_subscription"),
+        Index("idx_tenant_agent_subscriptions_tenant_id", "tenant_id"),
+        Index("idx_tenant_agent_subscriptions_agent_sku_id", "agent_sku_id"),
+        Index("idx_tenant_agent_subscriptions_status", "status"),
+    )
+
+
 class AgentExecution(Base):
     """SQLAlchemy model for agent execution records."""
     

@@ -1,9 +1,11 @@
 """Agent access guards for tenant enablement checks."""
 
+from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cyberplat.product.infrastructure.models import AgentSKU, TenantAgent
+from cyberplat.product.infrastructure.models import AgentSKU, TenantAgent, TenantAgentSubscription
 
 
 class AgentNotFoundError(Exception):
@@ -21,6 +23,16 @@ class AgentNotEnabledError(Exception):
         self.tenant_id = tenant_id
         self.agent_code = agent_code
         super().__init__(f"Agent '{agent_code}' is not enabled for tenant '{tenant_id}'")
+
+
+class AgentAddonInactiveError(Exception):
+    """Raised when agent add-on subscription is not active."""
+    
+    def __init__(self, tenant_id: str, agent_code: str, status: Optional[str] = None):
+        self.tenant_id = tenant_id
+        self.agent_code = agent_code
+        self.status = status
+        super().__init__(f"Agent add-on '{agent_code}' is not active for tenant '{tenant_id}'")
 
 
 def assert_agent_enabled(session: Session, tenant_id: str, agent_code: str) -> TenantAgent:
@@ -60,3 +72,44 @@ def assert_agent_enabled(session: Session, tenant_id: str, agent_code: str) -> T
         raise AgentNotEnabledError(tenant_id, agent_code)
     
     return tenant_agent
+
+
+def assert_agent_addon_active(session: Session, tenant_id: str, agent_code: str) -> TenantAgentSubscription:
+    """
+    Check if agent add-on subscription is active for tenant.
+    
+    Args:
+        session: SQLAlchemy session
+        tenant_id: Tenant UUID
+        agent_code: Agent SKU code
+    
+    Returns:
+        TenantAgentSubscription if active
+    
+    Raises:
+        AgentNotFoundError: Agent SKU does not exist
+        AgentAddonInactiveError: Add-on is not active
+    """
+    # Find AgentSKU by code
+    sku = session.execute(
+        select(AgentSKU).where(AgentSKU.code == agent_code)
+    ).scalar_one_or_none()
+    
+    if not sku:
+        raise AgentNotFoundError(agent_code)
+    
+    # Find TenantAgentSubscription
+    subscription = session.execute(
+        select(TenantAgentSubscription).where(
+            TenantAgentSubscription.tenant_id == tenant_id,
+            TenantAgentSubscription.agent_sku_id == sku.id,
+        )
+    ).scalar_one_or_none()
+    
+    if not subscription:
+        raise AgentAddonInactiveError(tenant_id, agent_code, None)
+    
+    if subscription.status != "active":
+        raise AgentAddonInactiveError(tenant_id, agent_code, subscription.status)
+    
+    return subscription

@@ -51,6 +51,7 @@ def setup_admin(app: FastAPI) -> None:
             TenantPortalTokenAdmin,
             AgentSKUAdmin,
             TenantAgentAdmin,
+            TenantAgentSubscriptionAdmin,
         )
         
         # Get secret key for sessions
@@ -95,6 +96,7 @@ def setup_admin(app: FastAPI) -> None:
         admin.add_view(TenantPortalTokenAdmin)
         admin.add_view(AgentSKUAdmin)
         admin.add_view(TenantAgentAdmin)
+        admin.add_view(TenantAgentSubscriptionAdmin)
         admin.add_view(TokenRotateView)
         
         logger.info("Admin panel enabled at /admin")
