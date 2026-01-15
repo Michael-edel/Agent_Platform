@@ -288,6 +288,25 @@ async def startup_event():
     app.include_router(tenant_portal_router, prefix="/api/v1", tags=["tenant-portal"])
     logger.info("Tenant portal router подключен")
     
+    # Подключение Tenant Portal Web UI
+    portal_session_secret = os.getenv("TENANT_PORTAL_SESSION_SECRET", "").strip()
+    if portal_session_secret:
+        from starlette.middleware.sessions import SessionMiddleware
+        app.add_middleware(
+            SessionMiddleware,
+            secret_key=portal_session_secret,
+            same_site="lax",
+            https_only=os.getenv("ENV", "dev").lower() == "prod",
+        )
+        from app.tenant_portal.web import router as tenant_portal_web_router
+        app.include_router(tenant_portal_web_router)
+        logger.info("Tenant portal web UI enabled at /tenant/")
+    else:
+        # Still mount routes but they will return 503
+        from app.tenant_portal.web import router as tenant_portal_web_router
+        app.include_router(tenant_portal_web_router)
+        logger.warning("Tenant portal web UI disabled (TENANT_PORTAL_SESSION_SECRET not set)")
+    
     # Регистрация webhook subscriber для создания deliveries
     from cyberplat.product.infrastructure.database import get_sessionmaker
     from cyberplat.product.infrastructure.webhook_repositories_sqlalchemy import (

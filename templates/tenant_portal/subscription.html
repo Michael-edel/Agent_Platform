@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Subscription - Tenant Portal{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Subscription Details</h4>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong>Current Plan</strong>
+            </div>
+            <div class="card-body">
+                {% if plan %}
+                <table class="table table-sm">
+                    <tr><th>Plan ID</th><td>{{ plan.get('plan_id', 'N/A') }}</td></tr>
+                    <tr><th>Status</th><td>{{ plan.get('subscription_status', 'N/A') }}</td></tr>
+                    <tr><th>Started</th><td>{{ plan.get('started_at', 'N/A')[:10] if plan.get('started_at') else 'N/A' }}</td></tr>
+                    <tr><th>Expires</th><td>{{ plan.get('expires_at', 'N/A')[:10] if plan.get('expires_at') else 'Never' }}</td></tr>
+                </table>
+                {% else %}
+                <p class="text-muted">No plan information available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong>Provider Subscription</strong>
+            </div>
+            <div class="card-body">
+                {% if subscription %}
+                <table class="table table-sm">
+                    <tr><th>Provider</th><td>{{ subscription.get('provider', 'N/A') }}</td></tr>
+                    <tr><th>Status</th><td>{{ subscription.get('status', 'N/A') }}</td></tr>
+                    <tr><th>Period Start</th><td>{{ subscription.get('current_period_start', 'N/A')[:10] if subscription.get('current_period_start') else 'N/A' }}</td></tr>
+                    <tr><th>Period End</th><td>{{ subscription.get('current_period_end', 'N/A')[:10] if subscription.get('current_period_end') else 'N/A' }}</td></tr>
+                    <tr><th>Created</th><td>{{ subscription.get('created_at', 'N/A')[:10] if subscription.get('created_at') else 'N/A' }}</td></tr>
+                </table>
+                {% else %}
+                <p class="text-muted">No provider subscription found.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="/tenant/" class="btn btn-outline-secondary">&larr; Back to Dashboard</a>
+</div>
+{% endblock %}

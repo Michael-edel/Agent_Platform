@@ -377,6 +377,36 @@ Read-only self-service API для tenant'ов с per-tenant токенами.
 - При DB ошибках — 503 (fail-closed)
 - Неверный токен — 403
 
+## Tenant Portal UI (v1)
+
+Браузерный интерфейс для tenant'ов (server-rendered, read-only).
+
+### Включение
+
+**ENV**: `TENANT_PORTAL_SESSION_SECRET` — секрет для session cookies (обязателен).
+
+Если не задан — все страницы `/tenant/*` вернут 503.
+
+### URL
+
+- `/tenant/login` — страница входа
+- `/tenant/` — dashboard (статус, подписка)
+- `/tenant/usage` — usage по периодам
+- `/tenant/subscription` — детали подписки
+
+### Логин
+
+1. Tenant вводит `tenant_id` + `portal_key`
+2. Portal key получается через Admin → Rotate Token
+3. После успешного входа создаётся HttpOnly session cookie
+
+### Безопасность
+
+- Cookie: `HttpOnly`, `SameSite=Lax`
+- В prod (`ENV=prod`): `Secure` (HTTPS only)
+- Токен не передаётся через URL
+- Токен не отображается после логина (только prefix)
+
 При переходе по drill-down ссылкам tenant scoping сохраняется:
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)

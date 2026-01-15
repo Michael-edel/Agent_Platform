@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Tenant Portal{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Dashboard</h4>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong>System Status</strong>
+            </div>
+            <div class="card-body">
+                <p>
+                    <strong>Status:</strong>
+                    <span class="status-{{ status.status }}">
+                        {% if status.status == 'ok' %}
+                        ✓ OK
+                        {% elif status.status == 'degraded' %}
+                        ⚠ Degraded
+                        {% else %}
+                        ? Unknown
+                        {% endif %}
+                    </span>
+                </p>
+                <p><strong>Webhook Errors (24h):</strong> {{ status.webhooks_failed_24h }}</p>
+                <p><strong>Order Errors (24h):</strong> {{ status.orders_failed_24h }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong>Subscription</strong>
+            </div>
+            <div class="card-body">
+                {% if subscription.plan_id %}
+                <p><strong>Plan:</strong> {{ subscription.plan_id }}</p>
+                <p><strong>Status:</strong> {{ subscription.subscription_status or 'N/A' }}</p>
+                <p><strong>Provider:</strong> {{ subscription.provider or 'N/A' }}</p>
+                {% if subscription.current_period_end %}
+                <p><strong>Period End:</strong> {{ subscription.current_period_end[:10] }}</p>
+                {% endif %}
+                {% else %}
+                <p class="text-muted">No active subscription</p>
+                {% endif %}
+                <a href="/tenant/subscription" class="btn btn-outline-primary btn-sm">View Details</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <strong>Quick Links</strong>
+            </div>
+            <div class="card-body">
+                <a href="/tenant/usage" class="btn btn-outline-secondary me-2">View Usage</a>
+                <a href="/tenant/subscription" class="btn btn-outline-secondary">Subscription Details</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

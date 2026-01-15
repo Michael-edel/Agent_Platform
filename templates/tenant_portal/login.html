@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Tenant Portal{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Tenant Portal Login</h5>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                
+                <form method="post">
+                    <div class="mb-3">
+                        <label class="form-label">Tenant ID</label>
+                        <input type="text" name="tenant_id" class="form-control" 
+                               required placeholder="your-tenant-id">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Portal Key</label>
+                        <input type="password" name="portal_key" class="form-control" 
+                               required placeholder="Your portal access key">
+                        <small class="text-muted">
+                            Contact your administrator if you don't have a portal key.
+                        </small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
