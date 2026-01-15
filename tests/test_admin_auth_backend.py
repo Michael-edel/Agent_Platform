@@ -27,7 +27,7 @@ async def test_admin_auth_authenticate_allows_when_logged_in():
     req = Request(scope)
 
     resp = await backend.authenticate(req)
-    assert resp is None
+    assert resp is True
 
 
 @pytest.mark.anyio

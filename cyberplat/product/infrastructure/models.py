@@ -1,6 +1,6 @@
 """SQLAlchemy models for product/UI layer."""
 
-from sqlalchemy import Column, String, Text, Integer, Boolean, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, String, Text, Integer, Boolean, Index, UniqueConstraint, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -419,4 +419,25 @@ class BillingJob(Base):
     __table_args__ = (
         Index("idx_billing_jobs_status_next", "status", "next_attempt_at"),
         Index("idx_billing_jobs_invoice", "invoice_id"),
+    )
+
+
+class AdminAuditLog(Base):
+    """Admin audit log (append-only, safe metadata)."""
+
+    __tablename__ = "admin_audit_log"
+
+    id = Column(String, primary_key=True)  # UUID
+    created_at = Column(String, nullable=False)
+    actor_username = Column(String, nullable=False)
+    actor_role = Column(String, nullable=False)
+    tenant_id = Column(String, nullable=True, index=True)
+    action = Column(String, nullable=False, index=True)
+    entity_type = Column(String, nullable=False, index=True)
+    entity_id = Column(String, nullable=False, index=True)
+    metadata_json = Column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index("idx_admin_audit_created_at", "created_at"),
+        Index("idx_admin_audit_actor", "actor_username"),
     )

@@ -28,13 +28,13 @@ def setup_admin(app: FastAPI) -> None:
     
     try:
         from sqladmin import Admin
-        from starlette.middleware.sessions import SessionMiddleware
         
         from cyberplat.product.infrastructure.database import get_engine
         from app.admin.auth import AdminAuthBackend
         from app.admin.dashboard import DashboardView
         from app.admin.search import SearchView
         from app.admin.access_rotate import TokenRotateView
+        from app.admin.actions import SafeActionsView
         from app.admin.views import (
             # Product views
             PlanAdmin,
@@ -57,13 +57,14 @@ def setup_admin(app: FastAPI) -> None:
             UsageInvoiceAdmin,
             UsageInvoiceLineAdmin,
             BillingJobAdmin,
+            AdminAuditLogAdmin,
         )
         
         # Get secret key for sessions
         secret_key = os.getenv("ADMIN_SECRET_KEY", os.getenv("SECRET_KEY", "change-me-in-production"))
-        
-        # Add session middleware (required for SQLAdmin auth)
-        app.add_middleware(SessionMiddleware, secret_key=secret_key)
+        # NOTE: SQLAdmin AuthenticationBackend already installs SessionMiddleware
+        # on its own mounted Starlette app. Adding SessionMiddleware again on the
+        # parent FastAPI app may override/clear admin sessions.
         
         # Get engine
         engine = get_engine()
@@ -82,6 +83,7 @@ def setup_admin(app: FastAPI) -> None:
         # Add Dashboard first (appears first in menu)
         admin.add_view(DashboardView)
         admin.add_view(SearchView)
+        admin.add_view(SafeActionsView)
         
         # Add Product views
         admin.add_view(PlanAdmin)
@@ -106,6 +108,7 @@ def setup_admin(app: FastAPI) -> None:
         admin.add_view(TenantAgentAdmin)
         admin.add_view(TenantAgentSubscriptionAdmin)
         admin.add_view(TokenRotateView)
+        admin.add_view(AdminAuditLogAdmin)
         
         logger.info("Admin panel enabled at /admin")
         

@@ -222,6 +222,21 @@ ADMIN_TENANT_ID=your-tenant-id
 
 **Tenant scoping:** Фильтрация применяется как к спискам данных, так и к total/pagination (count query). Это предотвращает утечку информации о количестве записей других tenant'ов.
 
+### Admin Safe Actions (billing ops)
+
+В админке есть **безопасные действия** для операционной поддержки биллинга (только `platform_admin`):
+
+- **Refresh from provider** (Billing Job details):
+  - Делает **только чтение** статуса платежа у провайдера (Stripe `PaymentIntent.retrieve(provider_ref)`).
+  - **Не создаёт** новый PaymentIntent и **не инициирует** списания.
+  - Обновляет `usage_invoices.payment_status` на основе текущего статуса у провайдера.
+
+- **Mark job for retry** (Billing Job details):
+  - **Не выполняет** retry и не вызывает провайдера.
+  - Только переводит job в `pending_retry` и ставит `next_attempt_at=now`, чтобы процессор jobs мог подхватить позже.
+
+Все действия записываются в **audit log** (`admin_audit_log`) и доступны в SQLAdmin как read-only view.
+
 ### Навигация и drill-down
 
 Dashboard содержит кликабельные карточки для быстрого перехода:

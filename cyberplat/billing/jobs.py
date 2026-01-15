@@ -63,7 +63,7 @@ def fetch_due_jobs(now: str, limit: int = 50) -> List[DueJob]:
                 BillingJob.max_attempts,
                 BillingJob.next_attempt_at,
             )
-            .where(BillingJob.status.in_(["pending", "failed"]))
+            .where(BillingJob.status.in_(["pending", "failed", "pending_retry"]))
             .where((BillingJob.next_attempt_at.is_(None)) | (BillingJob.next_attempt_at <= now))
             .where(BillingJob.attempt_count < BillingJob.max_attempts)
             .order_by(
@@ -93,7 +93,7 @@ def claim_job(job_id: str, now: str) -> bool:
         res = session.execute(
             update(BillingJob)
             .where(BillingJob.id == job_id)
-            .where(BillingJob.status.in_(["pending", "failed"]))
+            .where(BillingJob.status.in_(["pending", "failed", "pending_retry"]))
             .values(status="processing", processing_started_at=now, updated_at=now)
         )
         session.commit()

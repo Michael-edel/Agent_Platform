@@ -19,6 +19,7 @@ from cyberplat.product.infrastructure.models import (
     UsageInvoice,
     UsageInvoiceLine,
     BillingJob,
+    AdminAuditLog,
 )
 
 # Billing models
@@ -517,6 +518,7 @@ class BillingJobAdmin(TenantScopedMixin, ModelView, model=BillingJob):
     name_plural = "Billing Jobs"
     icon = "fa-solid fa-tasks"
     identity = "billing-job"
+    details_template = "admin/billing_job_details.html"
 
     can_create = False
     can_edit = False
@@ -565,6 +567,36 @@ class BillingJobAdmin(TenantScopedMixin, ModelView, model=BillingJob):
         if getattr(m, "last_error_message", None)
         else "",
     }
+
+
+class AdminAuditLogAdmin(TenantScopedMixin, ModelView, model=AdminAuditLog):
+    """Admin view for audit log (read-only)."""
+
+    name = "Admin Audit Log"
+    name_plural = "Admin Audit Log"
+    icon = "fa-solid fa-clipboard-list"
+    identity = "admin-audit-log"
+
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+
+    column_list = [
+        "created_at",
+        "actor_username",
+        "actor_role",
+        "tenant_id",
+        "action",
+        "entity_type",
+        "entity_id",
+    ]
+    column_searchable_list = ["actor_username", "tenant_id", "action", "entity_type", "entity_id"]
+    column_filters = ["actor_role", "tenant_id", "action", "entity_type", "created_at"]
+    column_sortable_list = ["created_at", "actor_username", "action", "entity_type"]
+    column_default_sort = ("created_at", True)
+    page_size = 50
+
 
 
 class TenantPortalTokenAdmin(ModelView, model=TenantPortalToken):

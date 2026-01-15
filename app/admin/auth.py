@@ -40,6 +40,7 @@ class AdminAuthBackend(AuthenticationBackend):
             # Store in session
             request.session.update({
                 "admin_logged_in": True,
+                "admin_username": username,
                 "admin_role": role,
                 "admin_tenant_id": tenant_id if role == "tenant_admin" else "",
             })
@@ -62,8 +63,8 @@ class AdminAuthBackend(AuthenticationBackend):
         
         Returns None if authenticated, redirect response if not.
         """
-        if request.session.get("admin_logged_in") is True:
-            return None
+        if request.session.get("admin_logged_in") == True:  # noqa: E712
+            return True
         
         # Not authenticated - force redirect to login.
         return RedirectResponse(url="/admin/login", status_code=302)
@@ -72,6 +73,11 @@ class AdminAuthBackend(AuthenticationBackend):
 def get_admin_role(request: Request) -> Optional[str]:
     """Get current admin role from session. Returns None if not set (deny by default)."""
     return request.session.get("admin_role")
+
+
+def get_admin_username(request: Request) -> Optional[str]:
+    """Get current admin username from session."""
+    return request.session.get("admin_username")
 
 
 def get_admin_tenant_id(request: Request) -> Optional[str]:
