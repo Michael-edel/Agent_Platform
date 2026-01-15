@@ -5,58 +5,81 @@ Prometheus метрики для observability.
 - HTTP requests (total, duration)
 - Billing webhook events
 - Recurring billing runs
+
+METRICS_ENABLED=false отключает метрики (для тестов без prometheus_client).
 """
 
 import os
 from typing import Optional
 
-from prometheus_client import (
-    Counter,
-    Histogram,
-    REGISTRY,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-)
+# Check if metrics are enabled (default: true)
+METRICS_ENABLED = os.getenv("METRICS_ENABLED", "true").lower() == "true"
+
+# Conditional import of prometheus_client
+if METRICS_ENABLED:
+    try:
+        from prometheus_client import (
+            Counter,
+            Histogram,
+            REGISTRY,
+            generate_latest,
+            CONTENT_TYPE_LATEST,
+        )
+        _prometheus_available = True
+    except ImportError:
+        _prometheus_available = False
+        METRICS_ENABLED = False
+else:
+    _prometheus_available = False
+
 from starlette.responses import Response
 
 # Registry для метрик
-_metrics_registry = REGISTRY
+_metrics_registry = REGISTRY if _prometheus_available else None
 
 
-# HTTP метрики
-http_requests_total = Counter(
-    "http_requests_total",
-    "Total number of HTTP requests",
-    ["method", "path", "status"],
-)
+# HTTP метрики (only if prometheus available)
+if _prometheus_available:
+    http_requests_total = Counter(
+        "http_requests_total",
+        "Total number of HTTP requests",
+        ["method", "path", "status"],
+    )
 
-http_request_duration_seconds = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request duration in seconds",
-    ["method", "path", "status"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-)
+    http_request_duration_seconds = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request duration in seconds",
+        ["method", "path", "status"],
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    )
 
-# Billing метрики
-billing_webhook_events_total = Counter(
-    "billing_webhook_events_total",
-    "Total number of billing webhook events",
-    ["provider", "event_type", "status"],  # status: ok, invalid, duplicate, error
-)
+    # Billing метрики
+    billing_webhook_events_total = Counter(
+        "billing_webhook_events_total",
+        "Total number of billing webhook events",
+        ["provider", "event_type", "status"],  # status: ok, invalid, duplicate, error
+    )
 
-# Recurring billing метрики
-recurring_runs_total = Counter(
-    "recurring_runs_total",
-    "Total number of recurring billing runs",
-    ["provider", "status"],  # status: success, failed, skipped
-)
+    # Recurring billing метрики
+    recurring_runs_total = Counter(
+        "recurring_runs_total",
+        "Total number of recurring billing runs",
+        ["provider", "status"],  # status: success, failed, skipped
+    )
 
-recurring_duration_seconds = Histogram(
-    "recurring_duration_seconds",
-    "Recurring billing run duration in seconds",
-    ["provider"],
-    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
-)
+    recurring_duration_seconds = Histogram(
+        "recurring_duration_seconds",
+        "Recurring billing run duration in seconds",
+        ["provider"],
+        buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0),
+    )
+else:
+    # Stub objects when metrics disabled
+    http_requests_total = None
+    http_request_duration_seconds = None
+    billing_webhook_events_total = None
+    recurring_runs_total = None
+    recurring_duration_seconds = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:
@@ -67,9 +90,9 @@ def setup_metrics(enabled: bool = True) -> bool:
         enabled: Включены ли метрики
     
     Returns:
-        True если метрики включены, False иначе
+        True если метрики включены и доступны, False иначе
     """
-    return enabled
+    return enabled and _prometheus_available
 
 
 def get_metrics_registry():
@@ -87,6 +110,9 @@ def record_http_request(method: str, path: str, status_code: int, duration: floa
         status_code: HTTP статус код
         duration: Длительность запроса в секундах
     """
+    if not _prometheus_available:
+        return
+        
     # Нормализуем path (убираем tenant_id и другие динамические части)
     normalized_path = _normalize_path(path)
     
@@ -106,6 +132,9 @@ def record_webhook_event(provider: str, event_type: str, status: str):
         event_type: Тип события (checkout.completed, invoice.paid, etc.)
         status: Статус обработки (ok, invalid, duplicate, error)
     """
+    if not _prometheus_available:
+        return
+        
     billing_webhook_events_total.labels(
         provider=provider, event_type=event_type, status=status
     ).inc()
@@ -120,6 +149,9 @@ def record_recurring_run(provider: str, status: str, duration: Optional[float] =
         status: Статус (success, failed, skipped)
         duration: Длительность в секундах (опционально)
     """
+    if not _prometheus_available:
+        return
+        
     recurring_runs_total.labels(provider=provider, status=status).inc()
     if duration is not None:
         recurring_duration_seconds.labels(provider=provider).observe(duration)
@@ -160,6 +192,12 @@ def metrics_endpoint() -> Response:
     Returns:
         Response с метриками в Prometheus exposition format
     """
+    if not _prometheus_available:
+        return Response(
+            content="# Metrics disabled\n",
+            media_type="text/plain",
+        )
+        
     return Response(
         content=generate_latest(_metrics_registry),
         media_type=CONTENT_TYPE_LATEST,

@@ -32,6 +32,12 @@ curl http://localhost:8000/ready
 docker exec -it agent-platform-app alembic upgrade head
 ```
 
+## Observability
+
+**METRICS_ENABLED** — переменная окружения для включения/выключения Prometheus метрик.
+- По умолчанию: `true`
+- В тестах: `METRICS_ENABLED=false` отключает метрики и позволяет запускать приложение без `prometheus_client`
+
 ## Диагностика
 
 ### Health Endpoints
