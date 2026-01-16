@@ -15,10 +15,26 @@ _engine_url = None
 _SessionLocal = None
 
 
+def _is_testing_mode() -> bool:
+    """Проверка, запущен ли код в тестовом режиме."""
+    return os.getenv("CYBERPLAT_TESTING") == "1" or os.getenv("PYTEST_CURRENT_TEST") is not None
+
+
 def get_database_url() -> str:
     """Получить нормализованный DATABASE_URL для SQLAlchemy."""
     database_url = os.getenv("DATABASE_URL", "").strip()
-    if not database_url:
+    
+    # В тестовом режиме принудительно используем SQLite (игнорируем non-sqlite DATABASE_URL)
+    if _is_testing_mode():
+        if not database_url or not database_url.startswith("sqlite"):
+            # Игнорируем non-sqlite DATABASE_URL в тестах, используем SQLite
+            db_path = os.getenv("PLATFORM_DB_PATH", "platform.db")
+            # Преобразуем относительный путь в абсолютный для SQLite
+            if not os.path.isabs(db_path):
+                db_path = os.path.abspath(db_path)
+            database_url = f"sqlite:///{db_path}"
+        # Если уже sqlite:// - используем как есть
+    elif not database_url:
         # Fallback для dev (SQLite) - используем тот же путь, что и legacy сервисы
         db_path = os.getenv("PLATFORM_DB_PATH", "platform.db")
         # Преобразуем относительный путь в абсолютный для SQLite
@@ -26,9 +42,13 @@ def get_database_url() -> str:
             db_path = os.path.abspath(db_path)
         database_url = f"sqlite:///{db_path}"
     
-    # Нормализация для PostgreSQL (psycopg v3)
-    normalized = normalize_sqlalchemy_database_url(database_url)
-    return normalized or database_url
+    # Нормализация для PostgreSQL (psycopg v3) - только в non-test режиме
+    if not _is_testing_mode():
+        normalized = normalize_sqlalchemy_database_url(database_url)
+        return normalized or database_url
+    
+    # В тестах возвращаем как есть (уже sqlite://)
+    return database_url
 
 
 def get_engine():

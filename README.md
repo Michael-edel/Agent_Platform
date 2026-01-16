@@ -200,6 +200,7 @@ pytest tests/ -v
 - В тестах используется встроенный `prometheus_client` shim (без внешней зависимости) для работы метрик.
 - Переменная окружения `CYBERPLAT_TESTING=1` (или наличие `PYTEST_CURRENT_TEST`) включает режим немедленных retry без backoff для integration jobs.
 - В тестах/SQLite billing plans schema auto-bootstrap при `CYBERPLAT_TESTING=1` или `PYTEST_CURRENT_TEST`; в production авто-создания таблиц нет.
+- В тестовом режиме Postgres через `DATABASE_URL` игнорируется, используется SQLite (SQLite-only тесты).
 
 ### Тесты в Docker
 
