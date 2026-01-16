@@ -49,6 +49,11 @@ class InvalidApprovalError(Exception):
     pass
 
 
+class InvalidIntegrationConfirmationError(Exception):
+    """Ошибка подтверждения из внешней системы (например, 1С)."""
+    pass
+
+
 class PaymentService:
     """Сервис для управления платёжными поручениями."""
     
@@ -501,6 +506,101 @@ class PaymentService:
                 payments_reconciled_total.labels(source=source).inc()
         except Exception:
             pass
+
+    def apply_1c_confirmation(
+        self,
+        *,
+        tenant_id: str,
+        payment_id: str,
+        external_id: Optional[str],
+        result: str,  # CONFIRMED | REJECTED
+        confirmed_at: str,  # YYYY-MM-DD
+        reason: Optional[str],
+        idempotency_key: str,
+    ) -> str:
+        """
+        Apply inbound confirmation from 1C (trust bridge).
+
+        - CONFIRMED -> state SENT (unless already RECONCILED), event payment.sent
+        - REJECTED  -> state FAILED, event payment.sent_failed (reason required)
+        """
+        order = self.get_payment_order(payment_id, tenant_id=tenant_id)
+        if not order:
+            raise PaymentNotFoundError(f"Платёжное поручение {payment_id} не найдено")
+
+        current = order["status"]
+        if result == "CONFIRMED":
+            if current == PaymentState.FAILED.value:
+                raise InvalidIntegrationConfirmationError("Нельзя подтвердить в 1С платеж со статусом FAILED")
+            target_state = PaymentState.RECONCILED if current == PaymentState.RECONCILED.value else PaymentState.SENT
+            event_type = "payment.sent"
+            event_payload = {
+                "actor": "onec",
+                "external_id": external_id,
+                "result": result,
+                "confirmed_at": confirmed_at,
+                "idempotency_key": idempotency_key,
+            }
+        elif result == "REJECTED":
+            if not reason or not str(reason).strip():
+                raise InvalidIntegrationConfirmationError("reason обязателен для REJECTED")
+            target_state = PaymentState.FAILED
+            event_type = "payment.sent_failed"
+            event_payload = {
+                "actor": "onec",
+                "external_id": external_id,
+                "result": result,
+                "confirmed_at": confirmed_at,
+                "reason": reason,
+                "idempotency_key": idempotency_key,
+            }
+        else:
+            raise InvalidIntegrationConfirmationError("result должен быть CONFIRMED|REJECTED")
+
+        conn = self._get_connection()
+        try:
+            if current != target_state.value:
+                self._set_state(
+                    conn,
+                    tenant_id=tenant_id,
+                    payment_id=payment_id,
+                    new_state=target_state,
+                    actor="onec",
+                    reason=reason,
+                )
+            self._emit_lifecycle_event(
+                event_type=event_type,
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                payload=event_payload,
+                conn=conn,
+            )
+            conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        # Metrics
+        try:
+            from cyberplat.observability.metrics import (
+                payments_1c_confirmed_total,
+                payments_1c_rejected_total,
+                payments_1c_external_id_linked_total,
+                METRICS_ENABLED,
+            )
+            if METRICS_ENABLED:
+                if result == "CONFIRMED" and payments_1c_confirmed_total:
+                    payments_1c_confirmed_total.inc()
+                if result == "REJECTED" and payments_1c_rejected_total:
+                    payments_1c_rejected_total.inc()
+                if external_id and payments_1c_external_id_linked_total:
+                    payments_1c_external_id_linked_total.inc()
+        except Exception:
+            pass
+
+        return target_state.name
     
     def get_payment_order(self, order_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Получить платёжное поручение по ID."""

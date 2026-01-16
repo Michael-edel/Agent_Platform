@@ -8,6 +8,13 @@ from pydantic import BaseModel
 from cyberplat.integrations.onec_settings_service import OneCSettingsService
 from cyberplat.integrations.onec_client import OneCClient, OneCAuthError, OneCTransportError
 from cyberplat.integrations.integration_job_service import IntegrationJobService
+from cyberplat.payments.payment_service import (
+    PaymentService,
+    PaymentNotFoundError,
+    PaymentState,
+    InvalidIntegrationConfirmationError,
+)
+from cyberplat.event_service import EventService
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,164 @@ def get_job_service() -> IntegrationJobService:
     """Получить экземпляр IntegrationJobService."""
     return IntegrationJobService()
 
+
+def get_payment_service() -> PaymentService:
+    return PaymentService()
+
+
+def get_event_service() -> EventService:
+    return EventService()
+
+
+class OneCPaymentSummaryTimeline(BaseModel):
+    created_at: Optional[str] = None
+    approved_at: Optional[str] = None
+    reconciled_at: Optional[str] = None
+
+
+class OneCPaymentSummaryResponse(BaseModel):
+    payment_id: str
+    tenant_id: str
+    state: str
+    amount: float
+    currency: str
+    document_id: Optional[str] = None
+    case_id: Optional[str] = None
+    timeline: OneCPaymentSummaryTimeline
+
+
+class OneCConfirmRequest(BaseModel):
+    payment_id: str
+    external_id: Optional[str] = None
+    result: str  # CONFIRMED|REJECTED
+    confirmed_at: str  # YYYY-MM-DD
+    reason: Optional[str] = None
+
+
+class OneCConfirmResponse(BaseModel):
+    success: bool
+    payment_id: str
+    new_state: str
+    message: str
+
+
+@router.get("/integrations/1c/payments/{payment_id}/summary", response_model=OneCPaymentSummaryResponse)
+async def get_onec_payment_summary(
+    payment_id: str,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+):
+    """Read-only payment summary for 1C (trust bridge)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    order = payment_service.get_payment_order(payment_id, tenant_id=x_tenant_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Платёжное поручение не найдено")
+
+    # derive timestamps from timeline events (source of truth)
+    timeline_items = payment_service.get_payment_timeline(tenant_id=x_tenant_id, payment_id=payment_id)
+    created_at = None
+    approved_at = None
+    reconciled_at = None
+    for it in timeline_items:
+        if it.get("event") == "payment.created" and not created_at:
+            created_at = it.get("at")
+        if it.get("event") == "payment.approved" and not approved_at:
+            approved_at = it.get("at")
+        if it.get("event") == "payment.reconciled" and not reconciled_at:
+            reconciled_at = it.get("at")
+
+    try:
+        state = PaymentState(order["status"]).name
+    except Exception:
+        state = (order.get("status") or "").upper() or "UNKNOWN"
+
+    return OneCPaymentSummaryResponse(
+        payment_id=payment_id,
+        tenant_id=order["tenant_id"],
+        state=state,
+        amount=float(order["amount"]),
+        currency=order.get("currency") or "KZT",
+        document_id=order.get("source_invoice_id"),
+        case_id=order.get("case_id"),
+        timeline=OneCPaymentSummaryTimeline(
+            created_at=created_at or order.get("created_at"),
+            approved_at=approved_at or order.get("approved_at"),
+            reconciled_at=reconciled_at,
+        ),
+    )
+
+
+@router.post("/integrations/1c/payments/confirm", response_model=OneCConfirmResponse, status_code=200)
+async def confirm_onec_payment(
+    request: OneCConfirmRequest,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+    event_service: EventService = Depends(get_event_service),
+):
+    """Inbound confirmation from 1C (idempotent, minimal side-effects)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    if request.result not in {"CONFIRMED", "REJECTED"}:
+        raise HTTPException(status_code=400, detail="result должен быть CONFIRMED|REJECTED")
+    if request.result == "REJECTED" and (not request.reason or not request.reason.strip()):
+        raise HTTPException(status_code=400, detail="reason обязателен для REJECTED")
+
+    try:
+        from datetime import datetime as _dt
+
+        _dt.strptime(request.confirmed_at, "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail="confirmed_at должен быть в формате YYYY-MM-DD")
+
+    external_id_part = (request.external_id or "").strip()
+    idempotency_key = f"1c_confirm:{x_tenant_id}:{request.payment_id}:{external_id_part}:{request.result}"
+    event_type = "payment.sent" if request.result == "CONFIRMED" else "payment.sent_failed"
+
+    # Idempotency by existing event
+    if event_service.has_event_with_idempotency_key(
+        tenant_id=x_tenant_id,
+        artifact_id=request.payment_id,
+        event_type=event_type,
+        idempotency_key=idempotency_key,
+    ):
+        order = payment_service.get_payment_order(request.payment_id, tenant_id=x_tenant_id) or {}
+        try:
+            state = PaymentState(order.get("status")).name
+        except Exception:
+            state = (order.get("status") or "").upper() or "UNKNOWN"
+        return OneCConfirmResponse(
+            success=True,
+            payment_id=request.payment_id,
+            new_state=state,
+            message="Подтверждение уже обработано (идемпотентно)",
+        )
+
+    try:
+        new_state = payment_service.apply_1c_confirmation(
+            tenant_id=x_tenant_id,
+            payment_id=request.payment_id,
+            external_id=request.external_id,
+            result=request.result,
+            confirmed_at=request.confirmed_at,
+            reason=request.reason,
+            idempotency_key=idempotency_key,
+        )
+        return OneCConfirmResponse(
+            success=True,
+            payment_id=request.payment_id,
+            new_state=new_state,
+            message="Подтверждение принято",
+        )
+    except PaymentNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidIntegrationConfirmationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Ошибка при обработке подтверждения 1С: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при обработке подтверждения 1С: {str(e)}")
 
 @router.get("/integrations/onec/settings", response_model=OneCSettingsResponse)
 async def get_onec_settings(

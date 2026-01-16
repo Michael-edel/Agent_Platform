@@ -99,3 +99,31 @@ date,amount,description
 
 Возвращает suggestions по `amount == payment.amount` и `date ± N дней`, без действий.
 
+---
+
+## Phase 3 (45–60 дней): 1C Trust Bridge — Export summary + Import confirmation
+
+### Цель Phase 3
+
+Закрыть доверие между системой и учётом (1С) без «интеграционного ада»:
+- система отдаёт краткую сводку по платежу (summary)
+- система принимает подтверждение (confirm) и фиксирует исход
+
+### Что добавлено
+
+#### 1) Export payment summary (read-only)
+
+- `GET /api/v1/integrations/1c/payments/{payment_id}/summary`
+
+Сводка берётся из payment + событий timeline (read-only, tenant-scoped).
+
+#### 2) Import confirmation (write, idempotent)
+
+- `POST /api/v1/integrations/1c/payments/confirm`
+
+Правила:
+- tenant-scoped (через `X-Tenant-ID`)
+- идемпотентность по ключу `(tenant_id, payment_id, external_id, result)` через `idempotency_key` в событиях
+- `CONFIRMED` → state `SENT` (или оставляет `RECONCILED`, если уже было оплачено) + событие `payment.sent`
+- `REJECTED` → state `FAILED` + событие `payment.sent_failed` (reason обязателен)
+

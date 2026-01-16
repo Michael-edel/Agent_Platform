@@ -137,9 +137,11 @@ if metrics_enabled:
 from app.api.cases import router as cases_router
 from app.api.payments import router as payments_router
 from app.api.reconciliation import router as reconciliation_router
+from app.api.integrations import router as integrations_router
 app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
 app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
 app.include_router(reconciliation_router, prefix="/api/v1", tags=["reconciliation"])
+app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
 
 # Глобальные объекты (инициализируются при старте)
 settings: Optional[Settings] = None
@@ -176,14 +178,16 @@ async def startup_event():
     # Инициализация очереди задач
     queue = JobQueue()
     
-    # Запуск воркера
+    # Stop event is used to stop *all* background threads.
+    # It must exist even when DocumentWorker is disabled (e.g. in tests).
+    stop_event = threading.Event()
+
+    # Запуск воркера (опционально)
     openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not openai_api_key:
         logger.warning("OPENAI_API_KEY is empty; DocumentWorker will not be started")
-        stop_event = None
         worker = None
     else:
-        stop_event = threading.Event()
         worker = DocumentWorker(queue, stop_event)
         worker.start()
     
@@ -375,8 +379,13 @@ async def startup_event():
     logger.info("Cases router подключен")
     
     # Подключение Integrations router
-    from app.api.integrations import router as integrations_router
-    app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
+    integrations_router_included = any(
+        hasattr(r, "path") and "/api/v1/integrations" in str(r.path)
+        for r in app.routes
+    )
+    if not integrations_router_included:
+        from app.api.integrations import router as integrations_router
+        app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
     logger.info("Integrations router подключен")
     
     # Подключение Payments router (уже подключён на import-time, но логируем)

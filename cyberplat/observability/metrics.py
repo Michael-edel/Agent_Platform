@@ -263,6 +263,33 @@ if _prometheus_available:
         ),
     )
 
+    payments_1c_confirmed_total = _get_or_create_collector(
+        "payments_1c_confirmed_total",
+        lambda: Counter(
+            "payments_1c_confirmed_total",
+            "Total number of 1C confirmations (CONFIRMED)",
+            [],
+        ),
+    )
+
+    payments_1c_rejected_total = _get_or_create_collector(
+        "payments_1c_rejected_total",
+        lambda: Counter(
+            "payments_1c_rejected_total",
+            "Total number of 1C confirmations (REJECTED)",
+            [],
+        ),
+    )
+
+    payments_1c_external_id_linked_total = _get_or_create_collector(
+        "payments_1c_external_id_linked_total",
+        lambda: Counter(
+            "payments_1c_external_id_linked_total",
+            "Total number of payments linked to 1C external_id",
+            [],
+        ),
+    )
+
     # Reconciliation метрики
     reconciliation_transactions_total = _get_or_create_collector(
         "reconciliation_transactions_total",

@@ -293,3 +293,35 @@ class EventService:
             ),
         )
         return event_id
+
+    def has_event_with_idempotency_key(
+        self,
+        *,
+        tenant_id: str,
+        artifact_id: str,
+        event_type: str,
+        idempotency_key: str,
+    ) -> bool:
+        """
+        Best-effort idempotency based on an idempotency_key embedded in payload JSON.
+
+        This is intentionally simple (no extra tables): we check the existing `events` rows.
+        """
+        needle = f"\"idempotency_key\": \"{idempotency_key}\""
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT 1
+                FROM events
+                WHERE tenant_id = ? AND artifact_id = ? AND event_type = ?
+                  AND payload LIKE ?
+                LIMIT 1
+                """,
+                (tenant_id, artifact_id, event_type, f"%{needle}%"),
+            )
+            row = cur.fetchone()
+            return row is not None
+        finally:
+            conn.close()
