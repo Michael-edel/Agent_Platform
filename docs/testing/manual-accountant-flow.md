@@ -18,6 +18,8 @@ docker compose up -d
 pwsh -File .\scripts\manual-accountant-flow.ps1 -PdfPath "C:\path\to\invoice.pdf"
 ```
 
+Если хотите прогнать цепочку “бухгалтер → директор” одной командой — используйте `scripts/pilot-demo-v1.ps1` (см. `docs/testing/pilot-demo-v1.md`).
+
 ## Что должно получиться
 
 - Скрипт проверяет `GET http://localhost:8000/health`.

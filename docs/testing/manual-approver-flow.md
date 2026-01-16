@@ -26,6 +26,8 @@ pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action ap
 pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action reject -Reason "Недостаточно оснований"
 ```
 
+Если хотите прогнать цепочку “бухгалтер → директор” одной командой — используйте `scripts/pilot-demo-v1.ps1` (см. `docs/testing/pilot-demo-v1.md`).
+
 ## Что делает скрипт
 
 - Проверяет доступность сервиса: `GET http://localhost:8000/health`
