@@ -5,6 +5,7 @@ import logging
 import os
 import json
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -155,7 +156,6 @@ s3_exporter: Optional[S3Exporter] = None
 billing_service: Optional[BillingService] = None
 
 
-@app.on_event("startup")
 async def startup_event():
     """Инициализация при старте приложения."""
     global settings, db, queue, worker, stop_event
@@ -496,7 +496,6 @@ async def startup_event():
     logger.info("Приложение готово к работе (API + Worker + Agent Platform + Billing + Entitlements + Product/UI + Webhooks + Money Ops)")
 
 
-@app.on_event("shutdown")
 async def shutdown_event():
     """Очистка при завершении приложения."""
     global worker, stop_event
@@ -511,6 +510,20 @@ async def shutdown_event():
         stop_event.set()
     
     logger.info("Приложение остановлено")
+
+
+@asynccontextmanager
+async def lifespan(app_: FastAPI):
+    # Поведение должно быть эквивалентно прежним startup/shutdown handlers.
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
+# Подключаем lifespan (вместо deprecated @app.on_event).
+app.router.lifespan_context = lifespan
 
 
 # Модели ответов
