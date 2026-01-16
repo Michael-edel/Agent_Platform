@@ -20,6 +20,8 @@ docker compose up -d
 pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action approve
 # или с явным tenant:
 pwsh -File .\scripts\manual-approver-flow.ps1 -TenantId "tenant-123" -PaymentId "<order_id>" -Action approve
+# если включён AUTH_ENABLED=true:
+pwsh -File .\scripts\manual-approver-flow.ps1 -TenantId "tenant-123" -PaymentId "<order_id>" -Action approve -AuthToken "<token>"
 ```
 
 Отклонить:

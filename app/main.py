@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Request, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -105,6 +105,10 @@ setup_metrics(enabled=metrics_enabled)
 
 # Подключение middleware для request_id (должен быть первым)
 app.add_middleware(RequestIDMiddleware)
+
+# Opt-in auth + RBAC (pilots)
+from app.security.auth import AuthMiddleware, require_roles
+app.add_middleware(AuthMiddleware)
 
 # Middleware для метрик HTTP запросов (если включены)
 if metrics_enabled:
@@ -886,7 +890,8 @@ async def get_stats(
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("accountant")),
 ):
     """
     Загрузить документ и создать артефакт.

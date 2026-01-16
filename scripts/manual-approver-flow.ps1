@@ -17,6 +17,9 @@ Param(
     [string]$TenantId = "demo-tenant",
 
     [Parameter(Mandatory = $false)]
+    [string]$AuthToken = "",
+
+    [Parameter(Mandatory = $false)]
     [ValidateSet("approve","reject")]
     [string]$Action = "approve",
 
@@ -55,9 +58,9 @@ function Invoke-Json([string]$Method, [string]$Url, [hashtable]$Headers, [string
     return $text
 }
 
-function Get-OpenApiPaths() {
+function Get-OpenApiPaths([hashtable]$Headers) {
     try {
-        $raw = Invoke-Json "GET" "http://localhost:8000/openapi.json" @{}
+        $raw = Invoke-Json "GET" "http://localhost:8000/openapi.json" $Headers
         $obj = $raw | ConvertFrom-Json
         return $obj.paths
     } catch {
@@ -91,10 +94,10 @@ try {
     Write-Ok("/health (HTTP $healthCode)")
     $done.Add("/health") | Out-Null
 
-    $headersTenant = @{ "X-Tenant-ID" = $TenantId }
+    $headersTenant = New-ApiHeaders $TenantId "approver" $AuthToken
 
     Write-Step "Проверка OpenAPI"
-    $paths = Get-OpenApiPaths
+    $paths = Get-OpenApiPaths $headersTenant
     if (-not $paths) {
         Write-Warn("не удалось получить /openapi.json, пропускаю (best-effort)")
         $skipped.Add("openapi unavailable") | Out-Null

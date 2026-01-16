@@ -26,6 +26,8 @@ pwsh -File .\scripts\pilot-demo-v1.ps1
 
 ```powershell
 pwsh -File .\scripts\pilot-demo-v1.ps1 -TenantId "tenant-123" -PdfPath "C:\path\to\invoice.pdf" -DirectorAction approve
+# если включён AUTH_ENABLED=true:
+pwsh -File .\scripts\pilot-demo-v1.ps1 -TenantId "tenant-123" -PdfPath "C:\path\to\invoice.pdf" -DirectorAction approve -AuthToken "<token>"
 ```
 
 Отклонить директором:

@@ -20,6 +20,9 @@ Param(
     [string]$TenantId = "demo-tenant",
 
     [Parameter(Mandatory = $false)]
+    [string]$AuthToken = "",
+
+    [Parameter(Mandatory = $false)]
     [ValidateSet("approve","reject")]
     [string]$DirectorAction = "approve",
 
@@ -94,7 +97,9 @@ try {
     $accountantScript = Join-Path $PSScriptRoot "manual-accountant-flow.ps1"
     if (-not (Test-Path $accountantScript)) { Fail("Не найден скрипт: $accountantScript") }
 
-    $accountantOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $accountantScript -PdfPath $PdfPath -TenantId $TenantId 2>&1 | Out-String
+    $accountantArgs = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$accountantScript,"-PdfPath",$PdfPath,"-TenantId",$TenantId)
+    if ($AuthToken) { $accountantArgs += @("-AuthToken",$AuthToken) }
+    $accountantOut = & pwsh @accountantArgs 2>&1 | Out-String
     $accountantExit = $LASTEXITCODE
     $accountantOut | Set-Content -Path $logFile -Encoding UTF8
     Write-Ok("Лог сохранён: $logFile")
@@ -123,7 +128,9 @@ try {
         $approverScript = Join-Path $PSScriptRoot "manual-approver-flow.ps1"
         if (-not (Test-Path $approverScript)) { Fail("Не найден скрипт: $approverScript") }
 
-        $approverOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $approverScript -PaymentId $paymentId -TenantId $TenantId -Action $DirectorAction -Reason $Reason 2>&1 | Out-String
+        $approverArgs = @("-NoProfile","-ExecutionPolicy","Bypass","-File",$approverScript,"-PaymentId",$paymentId,"-TenantId",$TenantId,"-Action",$DirectorAction,"-Reason",$Reason)
+        if ($AuthToken) { $approverArgs += @("-AuthToken",$AuthToken) }
+        $approverOut = & pwsh @approverArgs 2>&1 | Out-String
         $approverExit = $LASTEXITCODE
 
         # best-effort: директорский скрипт может "пропустить" эндпоинты и выйти 0

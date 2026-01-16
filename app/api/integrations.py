@@ -2,7 +2,7 @@
 
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Header, Depends, Query
+from fastapi import APIRouter, HTTPException, Header, Depends, Query, Request
 from pydantic import BaseModel
 
 from cyberplat.integrations.onec_settings_service import OneCSettingsService
@@ -15,6 +15,7 @@ from cyberplat.payments.payment_service import (
     InvalidIntegrationConfirmationError,
 )
 from cyberplat.event_service import EventService
+from app.security.auth import require_roles, get_actor
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +170,11 @@ async def get_onec_payment_summary(
 @router.post("/integrations/1c/payments/confirm", response_model=OneCConfirmResponse, status_code=200)
 async def confirm_onec_payment(
     request: OneCConfirmRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
     event_service: EventService = Depends(get_event_service),
+    _: None = Depends(require_roles("system", "accountant")),
 ):
     """Inbound confirmation from 1C (idempotent, minimal side-effects)."""
     if not x_tenant_id:
@@ -213,6 +216,7 @@ async def confirm_onec_payment(
         )
 
     try:
+        actor = get_actor(http_request)
         new_state = payment_service.apply_1c_confirmation(
             tenant_id=x_tenant_id,
             payment_id=request.payment_id,
@@ -221,6 +225,8 @@ async def confirm_onec_payment(
             confirmed_at=request.confirmed_at,
             reason=request.reason,
             idempotency_key=idempotency_key,
+            actor_role=actor.role,
+            actor_subject=actor.subject,
         )
         return OneCConfirmResponse(
             success=True,

@@ -10,7 +10,10 @@
 [CmdletBinding()]
 Param(
     [Parameter(Mandatory = $false)]
-    [string]$TenantId = "demo-tenant"
+    [string]$TenantId = "demo-tenant",
+
+    [Parameter(Mandatory = $false)]
+    [string]$AuthToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -99,10 +102,12 @@ try {
     }
     else {
         $tenantId = $TenantId
+        $headers = New-ApiHeaders $tenantId "accountant" $AuthToken
         Write-Host ("Использую fixture: " + $pdfFixture.FullName)
-        $respText = & curl.exe -s -X POST "http://localhost:8000/documents/upload" `
-            -H ("X-Tenant-ID: " + $tenantId) `
-            -F ("file=@" + $pdfFixture.FullName + ";type=application/pdf")
+        $uploadArgs = @("-s","-X","POST","http://localhost:8000/documents/upload")
+        foreach ($k in $headers.Keys) { $uploadArgs += @("-H", "${k}: $($headers[$k])") }
+        $uploadArgs += @("-F", ("file=@" + $pdfFixture.FullName + ";type=application/pdf"))
+        $respText = & curl.exe @uploadArgs
         if ($LASTEXITCODE -ne 0) {
             Fail("Smoke upload: curl.exe завершился с ошибкой (exit code=$LASTEXITCODE)")
         }
@@ -116,8 +121,9 @@ try {
             Write-Host ("OK: upload artifact_id=" + $artifactId)
 
             $docsCode = Get-HttpStatus "http://localhost:8000/api/v1/documents?limit=20"
-            # Этот endpoint требует X-Tenant-ID, поэтому делаем полноценный запрос:
-            $docsText = & curl.exe -s "http://localhost:8000/api/v1/documents?limit=20" -H ("X-Tenant-ID: " + $tenantId)
+            $docsArgs = @("-s","http://localhost:8000/api/v1/documents?limit=20")
+            foreach ($k in $headers.Keys) { $docsArgs += @("-H", "${k}: $($headers[$k])") }
+            $docsText = & curl.exe @docsArgs
             $docs = $docsText | ConvertFrom-Json
             $items = $docs.items
             $found = $false

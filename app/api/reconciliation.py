@@ -13,6 +13,7 @@ from cyberplat.reconciliation.reconciliation_service import ReconciliationServic
 from cyberplat.payments.payment_service import PaymentService
 from cyberplat.case_service import CaseService
 from cyberplat.artifact_service import ArtifactService
+from app.security.auth import require_roles
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ async def import_bank_statement_lines(
     file: UploadFile = File(...),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     artifact_service: ArtifactService = Depends(get_artifact_service),
+    _: None = Depends(require_roles("accountant")),
 ):
     """
     Импорт выписки (CSV) как артефакты bank.statement.line.

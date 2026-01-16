@@ -24,3 +24,14 @@ function Write-Warn([string]$Text) {
     Write-Host ("WARN: " + $Text) -ForegroundColor Yellow
 }
 
+function New-ApiHeaders(
+    [string]$TenantId,
+    [string]$Role = "",
+    [string]$AuthToken = ""
+) {
+    $h = @{ "X-Tenant-ID" = $TenantId }
+    if ($Role) { $h["X-Role"] = $Role }
+    if ($AuthToken) { $h["Authorization"] = ("Bearer " + $AuthToken) }
+    return $h
+}
+

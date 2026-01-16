@@ -13,7 +13,10 @@ Param(
     [string]$PdfPath,
 
     [Parameter(Mandatory = $false)]
-    [string]$TenantId = "demo-tenant"
+    [string]$TenantId = "demo-tenant",
+
+    [Parameter(Mandatory = $false)]
+    [string]$AuthToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -125,12 +128,13 @@ try {
     Write-Ok("/health (HTTP $healthCode)")
     $summaryDone.Add("/health") | Out-Null
 
-    $headersTenant = @{ "X-Tenant-ID" = $TenantId }
+    $headersTenant = New-ApiHeaders $TenantId "accountant" $AuthToken
 
     Write-Step "Загрузка PDF (POST /documents/upload)"
-    $uploadRespText = & curl.exe -s -X POST "http://localhost:8000/documents/upload" `
-        -H ("X-Tenant-ID: " + $TenantId) `
-        -F ("file=@" + $PdfPath + ";type=application/pdf")
+    $uploadArgs = @("-s", "-X", "POST", "http://localhost:8000/documents/upload")
+    foreach ($k in $headersTenant.Keys) { $uploadArgs += @("-H", "${k}: $($headersTenant[$k])") }
+    $uploadArgs += @("-F", ("file=@" + $PdfPath + ";type=application/pdf"))
+    $uploadRespText = & curl.exe @uploadArgs
     if ($LASTEXITCODE -ne 0) {
         Fail("curl.exe upload завершился с ошибкой (exit code=$LASTEXITCODE)")
     }

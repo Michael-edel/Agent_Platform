@@ -2,11 +2,13 @@
 
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Header, Depends, Query
+from fastapi import APIRouter, HTTPException, Header, Depends, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from cyberplat.payments.payment_service import PaymentService, PaymentNotFoundError, InvalidApprovalError, PaymentState
 from cyberplat.case_service import CaseService
+from app.security.auth import require_roles, get_actor
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,13 @@ class PaymentTimelineResponse(BaseModel):
     payment_id: str
     current_state: str
     timeline: List[dict]
+
+
+class PaymentAuditResponse(BaseModel):
+    payment: PaymentOrderResponse
+    current_state: str
+    timeline: List[dict]
+    external_links: dict
 
 
 class ManualReconcileRequest(BaseModel):
@@ -144,9 +153,11 @@ def get_case_service() -> CaseService:
 @router.post("/payments/orders", response_model=CreatePaymentOrderContractResponse, status_code=201)
 async def create_payment_order(
     request: CreatePaymentOrderRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant")),
 ):
     """
     Создать платёжное поручение.
@@ -255,12 +266,91 @@ async def get_payment_timeline(
     return PaymentTimelineResponse(payment_id=payment_id, current_state=current_state, timeline=timeline)
 
 
+@router.get("/payments/{payment_id}/audit", response_model=PaymentAuditResponse)
+async def get_payment_audit(
+    payment_id: str,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+):
+    """Read-only audit export (JSON): payment summary + timeline + external links."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    order = payment_service.get_payment_order(payment_id, tenant_id=x_tenant_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Платёжное поручение не найдено")
+
+    try:
+        current_state = PaymentState(order["status"]).name
+    except Exception:
+        current_state = (order.get("status") or "").upper() or "UNKNOWN"
+
+    timeline = payment_service.get_payment_timeline(tenant_id=x_tenant_id, payment_id=payment_id)
+
+    onec_external_id = None
+    for it in timeline:
+        if it.get("event") in {"payment.sent", "payment.sent_failed"} and it.get("external_id"):
+            onec_external_id = it["external_id"]
+            break
+
+    return PaymentAuditResponse(
+        payment=PaymentOrderResponse(**order),
+        current_state=current_state,
+        timeline=timeline,
+        external_links={"onec_external_id": onec_external_id},
+    )
+
+
+@router.get("/payments/{payment_id}/audit.csv")
+async def get_payment_audit_csv(
+    payment_id: str,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+):
+    """Read-only audit export (CSV)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    order = payment_service.get_payment_order(payment_id, tenant_id=x_tenant_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Платёжное поручение не найдено")
+
+    import csv
+    import io
+    import json
+
+    timeline = payment_service.get_payment_timeline(tenant_id=x_tenant_id, payment_id=payment_id)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["at", "event", "actor", "from_state", "to_state", "reason", "metadata_json"])
+    for it in timeline:
+        at = it.get("at")
+        event = it.get("event")
+        actor = it.get("actor")
+        from_state = it.get("from")
+        to_state = it.get("to")
+        reason = it.get("reason")
+        metadata = {k: v for k, v in it.items() if k not in {"at", "event", "actor", "from", "to", "reason"}}
+        writer.writerow([at, event, actor, from_state, to_state, reason, json.dumps(metadata, ensure_ascii=False)])
+
+    csv_text = buf.getvalue()
+    filename = f"payment_audit_{payment_id}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/payments/{payment_id}/reconcile/manual", response_model=ManualReconcileResponse, status_code=200)
 async def manual_reconcile_payment(
     payment_id: str,
     request: ManualReconcileRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
+    _: None = Depends(require_roles("accountant")),
 ):
     """Mark payment as paid (manual-first reconciliation)."""
     if not x_tenant_id:
@@ -283,6 +373,8 @@ async def manual_reconcile_payment(
             source=request.source,
             note=request.note,
             statement_line_id=request.statement_line_id,
+            actor_role=get_actor(http_request).role,
+            actor_subject=get_actor(http_request).subject,
         )
         return ManualReconcileResponse(success=True, message="Платёж помечен как оплаченный (reconciled)")
     except PaymentNotFoundError as e:
@@ -328,9 +420,11 @@ async def list_payment_orders(
 @router.post("/payments/orders/{order_id}/submit", response_model=SubmitForApprovalResponse, status_code=200)
 async def submit_for_approval(
     order_id: str,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant")),
 ):
     """
     Отправить платёжное поручение на согласование.
@@ -341,7 +435,12 @@ async def submit_for_approval(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
-        payment_service.submit_for_approval(order_id, x_tenant_id)
+        payment_service.submit_for_approval(
+            order_id,
+            x_tenant_id,
+            actor_role=get_actor(http_request).role,
+            actor_subject=get_actor(http_request).subject,
+        )
         
         # Получаем обновлённый order для проверки case_id
         order = payment_service.get_payment_order(order_id, tenant_id=x_tenant_id)
@@ -396,9 +495,11 @@ async def submit_for_approval(
 async def approve_payment_order(
     order_id: str,
     request: ApproveRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("approver")),
 ):
     """
     Одобрить шаг согласования платёжного поручения.
@@ -414,7 +515,9 @@ async def approve_payment_order(
             tenant_id=x_tenant_id,
             role=request.role,
             comment=request.comment,
-            decided_by=request.decided_by
+            decided_by=request.decided_by,
+            actor_role=get_actor(http_request).role,
+            actor_subject=get_actor(http_request).subject,
         )
         
         # Получаем обновлённый order
@@ -464,9 +567,11 @@ async def approve_payment_order(
 async def reject_payment_order(
     order_id: str,
     request: RejectRequest,
+    http_request: Request,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("approver")),
 ):
     """
     Отклонить платёжное поручение.
@@ -484,7 +589,9 @@ async def reject_payment_order(
             tenant_id=x_tenant_id,
             role=request.role,
             comment=request.comment,
-            decided_by=request.decided_by
+            decided_by=request.decided_by,
+            actor_role=get_actor(http_request).role,
+            actor_subject=get_actor(http_request).subject,
         )
         
         # Логируем событие в кейсе

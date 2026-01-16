@@ -18,6 +18,8 @@ docker compose up -d
 pwsh -File .\scripts\manual-accountant-flow.ps1
 # или явно:
 pwsh -File .\scripts\manual-accountant-flow.ps1 -TenantId "tenant-123" -PdfPath "C:\path\to\invoice.pdf"
+# если включён AUTH_ENABLED=true:
+pwsh -File .\scripts\manual-accountant-flow.ps1 -TenantId "tenant-123" -PdfPath "C:\path\to\invoice.pdf" -AuthToken "<token>"
 ```
 
 Если хотите прогнать цепочку “бухгалтер → директор” одной командой — используйте `scripts/pilot-demo-v1.ps1` (см. `docs/testing/pilot-demo-v1.md`).

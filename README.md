@@ -18,6 +18,17 @@ Agent Platform для финансовых операций: платформа,
 
 Также есть **1С Trust Bridge**: read-only summary по платежу для учёта и inbound подтверждение из 1С (события `payment.sent` / `payment.sent_failed`), с идемпотентностью и без фоновых очередей.
 
+## Auth (opt-in) для пилотов
+
+По умолчанию аутентификация **выключена**. Чтобы включить простой token-gate:
+
+- `AUTH_ENABLED=true`
+- `API_TOKEN=...` *(или несколько через `API_TOKENS=token1,token2`)*
+
+Когда включено:
+- нужен заголовок `Authorization: Bearer <token>`
+- нужна роль `X-Role: accountant|approver|system`
+
 ## Что это
 
 Платформа для автоматической обработки документов (OCR, извлечение данных, создание платежей) с поддержкой:

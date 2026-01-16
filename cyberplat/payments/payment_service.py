@@ -54,6 +54,10 @@ class InvalidIntegrationConfirmationError(Exception):
     pass
 
 
+def _actor_payload(role: str, subject: Optional[str]) -> dict:
+    return {"role": role, "subject": subject}
+
+
 class PaymentService:
     """Сервис для управления платёжными поручениями."""
     
@@ -207,7 +211,8 @@ class PaymentService:
         tenant_id: str,
         payment_id: str,
         new_state: PaymentState,
-        actor: str,
+        actor_role: str,
+        actor_subject: Optional[str] = None,
         reason: Optional[str] = None,
         decided_by: Optional[str] = None,
     ) -> None:
@@ -244,7 +249,7 @@ class PaymentService:
             payload={
                 "old_state": old_state,
                 "new_state": new_state_name,
-                "actor": actor,
+                "actor": _actor_payload(actor_role, actor_subject),
                 "decided_by": decided_by,
                 "reason": reason,
             },
@@ -322,7 +327,7 @@ class PaymentService:
             event_type="payment.created",
             tenant_id=tenant_id,
             payment_id=order_id,
-            payload={"state": PaymentState.DRAFT.name, "actor": "system"},
+            payload={"state": PaymentState.DRAFT.name, "actor": _actor_payload("system", "system")},
             conn=conn,
         )
         # Immediately transition to PENDING_APPROVAL
@@ -331,7 +336,8 @@ class PaymentService:
             tenant_id=tenant_id,
             payment_id=order_id,
             new_state=PaymentState.PENDING_APPROVAL,
-            actor="system",
+            actor_role="system",
+            actor_subject="system",
         )
         
         conn.commit()
@@ -366,7 +372,7 @@ class PaymentService:
                 event_type="payment.export_failed",
                 tenant_id=tenant_id,
                 payment_id=payment_id,
-                payload={"actor": "system", "reason": reason},
+                payload={"actor": _actor_payload("system", "system"), "reason": reason},
                 conn=conn,
             )
             conn.commit()
@@ -416,31 +422,43 @@ class PaymentService:
                 payload = json.loads(r["payload"] or "{}")
             except Exception:
                 payload = {}
-            actor = payload.get("actor")
+            actor_obj = payload.get("actor")
+            actor_role = actor_obj.get("role") if isinstance(actor_obj, dict) else actor_obj
+            actor_subject = actor_obj.get("subject") if isinstance(actor_obj, dict) else None
             reason = payload.get("reason")
 
             if event_type == "payment.created":
-                item = {"event": event_type, "state": payload.get("state"), "actor": actor, "at": at}
+                item = {"event": event_type, "state": payload.get("state"), "actor": actor_role, "at": at}
             elif event_type == "payment.state_changed":
                 item = {
                     "event": event_type,
                     "from": payload.get("old_state"),
                     "to": payload.get("new_state"),
-                    "actor": actor,
+                    "actor": actor_role,
                     "at": at,
                 }
             elif event_type == "payment.reconciled":
                 item = {
                     "event": event_type,
-                    "actor": actor,
+                    "actor": actor_role,
                     "at": at,
                     "source": payload.get("source"),
                     "paid_at": payload.get("paid_at"),
                     "note": payload.get("note"),
                     "statement_line_id": payload.get("statement_line_id"),
                 }
+            elif event_type in {"payment.sent", "payment.sent_failed"}:
+                item = {
+                    "event": event_type,
+                    "actor": actor_role,
+                    "at": at,
+                    "external_id": payload.get("external_id"),
+                    "confirmed_at": payload.get("confirmed_at"),
+                }
             else:
-                item = {"event": event_type, "actor": actor, "at": at}
+                item = {"event": event_type, "actor": actor_role, "at": at}
+            if actor_subject:
+                item["actor_subject"] = actor_subject
             if reason:
                 item["reason"] = reason
             out.append(item)
@@ -455,6 +473,8 @@ class PaymentService:
         source: str,
         note: Optional[str] = None,
         statement_line_id: Optional[str] = None,
+        actor_role: str = "accountant",
+        actor_subject: Optional[str] = None,
     ) -> None:
         """
         Manual reconciliation (mark as paid).
@@ -477,14 +497,15 @@ class PaymentService:
                 tenant_id=tenant_id,
                 payment_id=payment_id,
                 new_state=PaymentState.RECONCILED,
-                actor="accountant",
+                actor_role=actor_role,
+                actor_subject=actor_subject,
             )
             self._emit_lifecycle_event(
                 event_type="payment.reconciled",
                 tenant_id=tenant_id,
                 payment_id=payment_id,
                 payload={
-                    "actor": "accountant",
+                    "actor": _actor_payload(actor_role, actor_subject),
                     "source": source,
                     "paid_at": paid_at,
                     "note": note,
@@ -517,6 +538,8 @@ class PaymentService:
         confirmed_at: str,  # YYYY-MM-DD
         reason: Optional[str],
         idempotency_key: str,
+        actor_role: str = "system",
+        actor_subject: Optional[str] = None,
     ) -> str:
         """
         Apply inbound confirmation from 1C (trust bridge).
@@ -535,7 +558,7 @@ class PaymentService:
             target_state = PaymentState.RECONCILED if current == PaymentState.RECONCILED.value else PaymentState.SENT
             event_type = "payment.sent"
             event_payload = {
-                "actor": "onec",
+                "actor": _actor_payload(actor_role, actor_subject),
                 "external_id": external_id,
                 "result": result,
                 "confirmed_at": confirmed_at,
@@ -547,7 +570,7 @@ class PaymentService:
             target_state = PaymentState.FAILED
             event_type = "payment.sent_failed"
             event_payload = {
-                "actor": "onec",
+                "actor": _actor_payload(actor_role, actor_subject),
                 "external_id": external_id,
                 "result": result,
                 "confirmed_at": confirmed_at,
@@ -565,7 +588,8 @@ class PaymentService:
                     tenant_id=tenant_id,
                     payment_id=payment_id,
                     new_state=target_state,
-                    actor="onec",
+                    actor_role=actor_role,
+                    actor_subject=actor_subject,
                     reason=reason,
                 )
             self._emit_lifecycle_event(
@@ -743,7 +767,14 @@ class PaymentService:
         
         return []
     
-    def submit_for_approval(self, order_id: str, tenant_id: str) -> None:
+    def submit_for_approval(
+        self,
+        order_id: str,
+        tenant_id: str,
+        *,
+        actor_role: str = "accountant",
+        actor_subject: Optional[str] = None,
+    ) -> None:
         """
         Отправить платёжное поручение на согласование.
         
@@ -768,7 +799,8 @@ class PaymentService:
             tenant_id=tenant_id,
             payment_id=order_id,
             new_state=PaymentState.PENDING_APPROVAL,
-            actor="accountant",
+            actor_role=actor_role,
+            actor_subject=actor_subject,
         )
 
         # Строим шаги согласования (если политика задана)
@@ -845,7 +877,10 @@ class PaymentService:
         tenant_id: str,
         role: str,
         comment: Optional[str] = None,
-        decided_by: Optional[str] = None
+        decided_by: Optional[str] = None,
+        *,
+        actor_role: str = "approver",
+        actor_subject: Optional[str] = None,
     ) -> None:
         """
         Одобрить текущий шаг согласования.
@@ -893,7 +928,8 @@ class PaymentService:
                 tenant_id=tenant_id,
                 payment_id=order_id,
                 new_state=PaymentState.APPROVED,
-                actor="approver",
+                actor_role=actor_role,
+                actor_subject=actor_subject,
                 reason=comment,
                 decided_by=decided_by or role,
             )
@@ -901,7 +937,7 @@ class PaymentService:
                 event_type="payment.approved",
                 tenant_id=tenant_id,
                 payment_id=order_id,
-                payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+                payload={"actor": _actor_payload(actor_role, actor_subject), "reason": comment, "decided_by": decided_by or role},
                 conn=conn,
             )
             self._log_event(conn, tenant_id, order_id, "payment_order.approved", {"role": role, "comment": comment})
@@ -947,7 +983,8 @@ class PaymentService:
                 tenant_id=tenant_id,
                 payment_id=order_id,
                 new_state=PaymentState.APPROVED,
-                actor="approver",
+                actor_role=actor_role,
+                actor_subject=actor_subject,
                 reason=comment,
                 decided_by=decided_by or role,
             )
@@ -955,7 +992,7 @@ class PaymentService:
                 event_type="payment.approved",
                 tenant_id=tenant_id,
                 payment_id=order_id,
-                payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+                payload={"actor": _actor_payload(actor_role, actor_subject), "reason": comment, "decided_by": decided_by or role},
                 conn=conn,
             )
             self._log_event(conn, tenant_id, order_id, "payment_order.approved", {"step": approval["step"], "role": role})
@@ -1035,7 +1072,10 @@ class PaymentService:
         tenant_id: str,
         role: str,
         comment: Optional[str] = None,
-        decided_by: Optional[str] = None
+        decided_by: Optional[str] = None,
+        *,
+        actor_role: str = "approver",
+        actor_subject: Optional[str] = None,
     ) -> None:
         """
         Отклонить платёжное поручение.
@@ -1085,7 +1125,8 @@ class PaymentService:
             tenant_id=tenant_id,
             payment_id=order_id,
             new_state=PaymentState.REJECTED,
-            actor="approver",
+            actor_role=actor_role,
+            actor_subject=actor_subject,
             reason=comment,
             decided_by=decided_by or role,
         )
@@ -1093,7 +1134,7 @@ class PaymentService:
             event_type="payment.rejected",
             tenant_id=tenant_id,
             payment_id=order_id,
-            payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+            payload={"actor": _actor_payload(actor_role, actor_subject), "reason": comment, "decided_by": decided_by or role},
             conn=conn,
         )
         
