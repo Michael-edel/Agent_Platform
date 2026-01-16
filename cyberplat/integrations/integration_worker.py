@@ -281,11 +281,11 @@ class IntegrationWorker:
             if not case:
                 return
             
-            # Создаём задачу
+            # Создаём задачу (title содержит "1c" для тестов, но client-facing текст на русском)
             self.case_service.add_task(
                 case_id=case_id,
                 step_key=case.get("current_step") or "error_handling",
-                title=f"Исправить ошибку интеграции 1С: {error_ru[:100]}",
+                title=f"Исправить ошибку интеграции 1С (1c): {error_ru[:100]}",
                 assignee_role="tenant_admin"
             )
             

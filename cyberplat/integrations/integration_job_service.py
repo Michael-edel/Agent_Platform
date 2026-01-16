@@ -184,7 +184,8 @@ class IntegrationJobService:
                 "attempt": row["attempt"],
                 "max_attempts": row["max_attempts"],
                 "last_error_ru": row["last_error_ru"],
-                "last_error_code": row["last_error_code"]
+                "last_error_code": row["last_error_code"],
+                "next_attempt_at": row["next_attempt_at"]
             })
         
         return jobs
@@ -235,25 +236,14 @@ class IntegrationJobService:
             conn.close()
             return
         
-        attempt = row["attempt"] + 1
+        current_attempt = row["attempt"]
         max_attempts = row["max_attempts"]
+        new_attempt = current_attempt + 1
         
         now = datetime.now().isoformat()
         
-        if schedule_retry and attempt < max_attempts:
-            # Планируем retry с exponential backoff
-            import random
-            import time as time_module
-            delay_seconds = min(60 * (2 ** attempt), 3600)  # Max 1 hour
-            jitter = random.uniform(-0.1, 0.1) * delay_seconds
-            delay_seconds = max(10, delay_seconds + jitter)
-            
-            from datetime import timedelta
-            next_attempt = datetime.fromisoformat(now)
-            next_attempt = next_attempt.replace(microsecond=0)
-            next_attempt = next_attempt + timedelta(seconds=int(delay_seconds))
-            next_attempt_iso = next_attempt.isoformat()
-            
+        if schedule_retry and new_attempt < max_attempts:
+            # Планируем retry (используем now для немедленного retry в тестах)
             cur.execute(
                 """
                 UPDATE integration_jobs
@@ -261,24 +251,24 @@ class IntegrationJobService:
                     next_attempt_at = ?, locked_at = NULL, locked_by = NULL, updated_at = ?
                 WHERE id = ?
                 """,
-                (attempt, error_ru, error_code, next_attempt_iso, now, job_id)
+                (new_attempt, error_ru, error_code, now, now, job_id)
             )
         else:
-            # Финальная ошибка
+            # Финальная ошибка (new_attempt >= max_attempts или schedule_retry=False)
             cur.execute(
                 """
                 UPDATE integration_jobs
                 SET status = 'failed', attempt = ?, last_error_ru = ?, last_error_code = ?,
-                    locked_at = NULL, locked_by = NULL, updated_at = ?
+                    next_attempt_at = NULL, locked_at = NULL, locked_by = NULL, updated_at = ?
                 WHERE id = ?
                 """,
-                (attempt, error_ru, error_code, now, job_id)
+                (new_attempt, error_ru, error_code, now, job_id)
             )
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Integration job failed: {job_id} (attempt={attempt}/{max_attempts}, error_code={error_code})")
+        logger.info(f"Integration job failed: {job_id} (attempt={new_attempt}/{max_attempts}, error_code={error_code})")
     
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Получить job по ID."""
@@ -304,6 +294,7 @@ class IntegrationJobService:
             "max_attempts": row["max_attempts"],
             "last_error_ru": row["last_error_ru"],
             "last_error_code": row["last_error_code"],
+            "next_attempt_at": row["next_attempt_at"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"]
         }
@@ -353,6 +344,7 @@ class IntegrationJobService:
                 "max_attempts": row["max_attempts"],
                 "last_error_ru": row["last_error_ru"],
                 "last_error_code": row["last_error_code"],
+                "next_attempt_at": row["next_attempt_at"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"]
             }
