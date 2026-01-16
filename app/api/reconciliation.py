@@ -12,6 +12,7 @@ from datetime import date
 from cyberplat.reconciliation.reconciliation_service import ReconciliationService, ReconciliationError
 from cyberplat.payments.payment_service import PaymentService
 from cyberplat.case_service import CaseService
+from cyberplat.artifact_service import ArtifactService
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,26 @@ class UploadResponse(BaseModel):
     transactions_count: int
 
 
+class BankStatementImportResponse(BaseModel):
+    success: bool
+    message: str
+    imported_count: int
+    skipped_count: int
+    statement_line_ids: List[str]
+
+
+class SuggestionItem(BaseModel):
+    statement_line_id: str
+    date: str
+    amount: float
+    confidence: str  # low|medium
+
+
+class SuggestionsResponse(BaseModel):
+    payment_id: str
+    suggestions: List[SuggestionItem]
+
+
 # Dependencies
 def get_reconciliation_service() -> ReconciliationService:
     """Получить экземпляр ReconciliationService."""
@@ -95,6 +116,165 @@ def get_case_service() -> CaseService:
     """Получить экземпляр CaseService."""
     return CaseService()
 
+
+def get_artifact_service() -> ArtifactService:
+    """Получить экземпляр ArtifactService."""
+    return ArtifactService()
+
+
+@router.post("/reconciliation/bank-statements/import", response_model=BankStatementImportResponse, status_code=201)
+async def import_bank_statement_lines(
+    file: UploadFile = File(...),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    artifact_service: ArtifactService = Depends(get_artifact_service),
+):
+    """
+    Импорт выписки (CSV) как артефакты bank.statement.line.
+
+    Формат CSV (фиксированный):
+    date,amount,description
+    2026-01-15,1000.00,Payment INV-123
+
+    Важно:
+    - tenant-scoped
+    - не делает матчинга и не меняет платежи автоматически
+    """
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Поддерживается только формат CSV")
+
+    import csv
+    from datetime import datetime as _dt
+
+    content = (await file.read()).decode("utf-8", errors="replace")
+    reader = csv.reader(content.splitlines())
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Пустой CSV")
+
+    header = [h.strip() for h in rows[0]]
+    if header[:3] != ["date", "amount", "description"]:
+        raise HTTPException(status_code=400, detail="Неверный формат CSV: ожидается header date,amount,description")
+
+    imported = 0
+    skipped = 0
+    ids: List[str] = []
+    for row in rows[1:]:
+        try:
+            if len(row) < 3:
+                skipped += 1
+                continue
+            date_str = row[0].strip()
+            amount_str = row[1].strip()
+            desc = row[2].strip()
+            _dt.strptime(date_str, "%Y-%m-%d")
+            amount = float(amount_str)
+            raw_line = ",".join(row)
+            artifact_id = artifact_service.create_artifact(
+                kind="bank.statement.line",
+                source="bank_statement_import",
+                tenant_id=x_tenant_id,
+                data={
+                    "date": date_str,
+                    "amount": amount,
+                    "description": desc,
+                    "raw_line": raw_line,
+                },
+            )
+            ids.append(artifact_id)
+            imported += 1
+        except Exception:
+            skipped += 1
+            continue
+
+    # Метрики
+    try:
+        from cyberplat.observability.metrics import bank_statement_lines_imported_total, METRICS_ENABLED
+        if METRICS_ENABLED and bank_statement_lines_imported_total:
+            bank_statement_lines_imported_total.inc(imported)
+    except Exception:
+        pass
+
+    return BankStatementImportResponse(
+        success=True,
+        message="Импорт строк выписки завершён",
+        imported_count=imported,
+        skipped_count=skipped,
+        statement_line_ids=ids,
+    )
+
+
+@router.get("/reconciliation/suggestions", response_model=SuggestionsResponse)
+async def get_reconciliation_suggestions(
+    payment_id: str,
+    days: int = 3,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+    artifact_service: ArtifactService = Depends(get_artifact_service),
+):
+    """Read-only suggestions for reconciliation (no automatic matching)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+    if days < 0 or days > 31:
+        raise HTTPException(status_code=400, detail="days должен быть в диапазоне 0..31")
+
+    order = payment_service.get_payment_order(payment_id, tenant_id=x_tenant_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Платёжное поручение не найдено")
+
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    def _parse_iso_date(value: Optional[str]) -> Optional[date]:
+        if not value:
+            return None
+        raw = str(value)
+        try:
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            return _dt.fromisoformat(raw).date()
+        except Exception:
+            try:
+                return _dt.strptime(raw[:10], "%Y-%m-%d").date()
+            except Exception:
+                return None
+
+    ref_date = _parse_iso_date(order.get("approved_at")) or _parse_iso_date(order.get("created_at"))
+    if not ref_date:
+        ref_date = date.today()
+
+    payment_amount = float(order["amount"])
+    artifacts = artifact_service.list_artifacts(kind="bank.statement.line", tenant_id=x_tenant_id, limit=5000)
+
+    suggestions: List[SuggestionItem] = []
+    for a in artifacts:
+        data = a.get("data") or {}
+        try:
+            line_amount = float(data.get("amount"))
+            line_date_str = str(data.get("date") or "")
+            line_date = _dt.strptime(line_date_str, "%Y-%m-%d").date()
+        except Exception:
+            continue
+
+        if abs(line_amount - payment_amount) > 0.01:
+            continue
+        delta = abs((line_date - ref_date).days)
+        if delta > days:
+            continue
+        confidence = "medium" if delta == 0 else "low"
+        suggestions.append(
+            SuggestionItem(
+                statement_line_id=a["id"],
+                date=line_date_str,
+                amount=line_amount,
+                confidence=confidence,
+            )
+        )
+
+    # Sort by closest date, then newest
+    suggestions.sort(key=lambda s: (abs((_dt.strptime(s.date, "%Y-%m-%d").date() - ref_date).days), s.statement_line_id))
+    return SuggestionsResponse(payment_id=payment_id, suggestions=suggestions[:50])
 
 @router.post("/reconciliation/statements/upload", response_model=UploadResponse, status_code=201)
 async def upload_statement(

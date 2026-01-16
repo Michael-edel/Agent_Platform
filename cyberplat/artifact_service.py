@@ -160,3 +160,46 @@ class ArtifactService:
             "data": json.loads(row["data"]),
             "created_at": row["created_at"]
         }
+
+    def list_artifacts(
+        self,
+        *,
+        kind: str,
+        tenant_id: str,
+        limit: int = 5000,
+    ) -> list[Dict[str, Any]]:
+        """List artifacts by kind + tenant_id (read-only helper for Phase 2)."""
+        import json
+
+        conn = self._get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, kind, source, tenant_id, data, created_at
+            FROM artifacts
+            WHERE kind = ? AND tenant_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (kind, tenant_id, int(limit)),
+        )
+        rows = cur.fetchall()
+        conn.close()
+
+        out: list[Dict[str, Any]] = []
+        for row in rows:
+            try:
+                data = json.loads(row["data"])
+            except Exception:
+                data = {}
+            out.append(
+                {
+                    "id": row["id"],
+                    "kind": row["kind"],
+                    "source": row["source"],
+                    "tenant_id": row["tenant_id"],
+                    "data": data,
+                    "created_at": row["created_at"],
+                }
+            )
+        return out

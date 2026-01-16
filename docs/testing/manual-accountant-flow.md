@@ -62,6 +62,8 @@ pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action re
 - Документы (список/детали):
   - `GET /api/v1/documents`
   - `GET /api/v1/documents/{id}`
+- Пометить платёж как реально оплаченный (manual-first):
+  - `POST /api/v1/payments/{payment_id}/reconcile/manual` (с `X-Tenant-ID`)
 - Timeline платежа (аудит по событиям):
   - `GET /api/v1/payments/{payment_id}/timeline` (с `X-Tenant-ID`)
 - Логи:

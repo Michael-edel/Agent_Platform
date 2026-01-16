@@ -245,6 +245,24 @@ if _prometheus_available:
         ),
     )
 
+    payments_reconciled_total = _get_or_create_collector(
+        "payments_reconciled_total",
+        lambda: Counter(
+            "payments_reconciled_total",
+            "Total number of reconciled payments (manual first)",
+            ["source"],  # source: bank | 1c | manual
+        ),
+    )
+
+    bank_statement_lines_imported_total = _get_or_create_collector(
+        "bank_statement_lines_imported_total",
+        lambda: Counter(
+            "bank_statement_lines_imported_total",
+            "Total number of imported bank statement lines (artifacts)",
+            [],
+        ),
+    )
+
     # Reconciliation метрики
     reconciliation_transactions_total = _get_or_create_collector(
         "reconciliation_transactions_total",

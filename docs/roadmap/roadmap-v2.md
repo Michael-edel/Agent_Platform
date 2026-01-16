@@ -51,3 +51,51 @@ Endpoint:
 
 Финансовый директор может открыть платёж и понять, что с ним было (создание → переходы → решение), без добавления автоматизации.
 
+---
+
+## Phase 2 (30–45 дней): Manual Reconciliation + Bank Statement Import (best-effort)
+
+### Цель Phase 2
+
+Ответить на главный вопрос после approve: **“Этот платёж реально ушёл?”**
+
+Принцип: reconciliation начинается вручную; автоматизация — помощник, не источник истины.
+
+### Что добавлено
+
+#### 1) Manual reconciliation: “Mark as paid”
+
+- `POST /api/v1/payments/{payment_id}/reconcile/manual`
+
+Payload:
+- `paid_at` (обязательно, `YYYY-MM-DD`)
+- `source` (обязательно: `bank|1c|manual`)
+- `note` (опционально)
+- `statement_line_id` (опционально)
+
+Правила:
+- разрешено только если `state = APPROVED`
+- переводит в `state = RECONCILED`
+- пишет событие `payment.reconciled` (без silent updates)
+
+#### 2) Bank statement import (artifacts only)
+
+- `POST /api/v1/reconciliation/bank-statements/import` (CSV multipart)
+
+Формат CSV (фиксированный):
+
+```
+date,amount,description
+2026-01-15,1000.00,Payment INV-123
+```
+
+На этом этапе:
+- создаются артефакты `bank.statement.line`
+- никакого матчинга и изменений платежей автоматически
+
+#### 3) Assisted matching (read-only suggestions)
+
+- `GET /api/v1/reconciliation/suggestions?payment_id=...`
+
+Возвращает suggestions по `amount == payment.amount` и `date ± N дней`, без действий.
+

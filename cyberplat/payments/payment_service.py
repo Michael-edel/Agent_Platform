@@ -424,12 +424,83 @@ class PaymentService:
                     "actor": actor,
                     "at": at,
                 }
+            elif event_type == "payment.reconciled":
+                item = {
+                    "event": event_type,
+                    "actor": actor,
+                    "at": at,
+                    "source": payload.get("source"),
+                    "paid_at": payload.get("paid_at"),
+                    "note": payload.get("note"),
+                    "statement_line_id": payload.get("statement_line_id"),
+                }
             else:
                 item = {"event": event_type, "actor": actor, "at": at}
             if reason:
                 item["reason"] = reason
             out.append(item)
         return out
+
+    def manual_reconcile(
+        self,
+        *,
+        payment_id: str,
+        tenant_id: str,
+        paid_at: str,
+        source: str,
+        note: Optional[str] = None,
+        statement_line_id: Optional[str] = None,
+    ) -> None:
+        """
+        Manual reconciliation (mark as paid).
+
+        Rules:
+        - allowed only when state = APPROVED
+        - transitions payment to RECONCILED
+        - emits payment.reconciled (no silent updates)
+        """
+        order = self.get_payment_order(payment_id, tenant_id=tenant_id)
+        if not order:
+            raise PaymentNotFoundError(f"Платёжное поручение {payment_id} не найдено")
+        if order["status"] != PaymentState.APPROVED.value:
+            raise InvalidApprovalError("Сверка разрешена только для платежей в статусе APPROVED")
+
+        conn = self._get_connection()
+        try:
+            self._set_state(
+                conn,
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                new_state=PaymentState.RECONCILED,
+                actor="accountant",
+            )
+            self._emit_lifecycle_event(
+                event_type="payment.reconciled",
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                payload={
+                    "actor": "accountant",
+                    "source": source,
+                    "paid_at": paid_at,
+                    "note": note,
+                    "statement_line_id": statement_line_id,
+                },
+                conn=conn,
+            )
+            self._log_event(conn, tenant_id, payment_id, "payment_order.reconciled", {"source": source, "paid_at": paid_at})
+            conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        try:
+            from cyberplat.observability.metrics import payments_reconciled_total, METRICS_ENABLED
+            if METRICS_ENABLED and payments_reconciled_total:
+                payments_reconciled_total.labels(source=source).inc()
+        except Exception:
+            pass
     
     def get_payment_order(self, order_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Получить платёжное поручение по ID."""

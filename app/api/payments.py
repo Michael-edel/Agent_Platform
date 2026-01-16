@@ -66,6 +66,18 @@ class PaymentTimelineResponse(BaseModel):
     timeline: List[dict]
 
 
+class ManualReconcileRequest(BaseModel):
+    paid_at: str  # YYYY-MM-DD
+    source: str  # bank|1c|manual
+    note: Optional[str] = None
+    statement_line_id: Optional[str] = None
+
+
+class ManualReconcileResponse(BaseModel):
+    success: bool
+    message: str
+
+
 class SubmitForApprovalResponse(BaseModel):
     success: bool
     message: str
@@ -241,6 +253,45 @@ async def get_payment_timeline(
 
     timeline = payment_service.get_payment_timeline(tenant_id=x_tenant_id, payment_id=payment_id)
     return PaymentTimelineResponse(payment_id=payment_id, current_state=current_state, timeline=timeline)
+
+
+@router.post("/payments/{payment_id}/reconcile/manual", response_model=ManualReconcileResponse, status_code=200)
+async def manual_reconcile_payment(
+    payment_id: str,
+    request: ManualReconcileRequest,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+):
+    """Mark payment as paid (manual-first reconciliation)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    if request.source not in {"bank", "1c", "manual"}:
+        raise HTTPException(status_code=400, detail="source должен быть bank|1c|manual")
+    try:
+        from datetime import datetime as _dt
+
+        _dt.strptime(request.paid_at, "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail="paid_at должен быть в формате YYYY-MM-DD")
+
+    try:
+        payment_service.manual_reconcile(
+            payment_id=payment_id,
+            tenant_id=x_tenant_id,
+            paid_at=request.paid_at,
+            source=request.source,
+            note=request.note,
+            statement_line_id=request.statement_line_id,
+        )
+        return ManualReconcileResponse(success=True, message="Платёж помечен как оплаченный (reconciled)")
+    except PaymentNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidApprovalError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Ошибка при ручной сверке: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка при ручной сверке: {str(e)}")
 
 @router.get("/payments/orders", response_model=PaymentOrdersListResponse)
 async def list_payment_orders(

@@ -136,8 +136,10 @@ if metrics_enabled:
 # Роутеры подключаются здесь, чтобы быть доступными без startup_event
 from app.api.cases import router as cases_router
 from app.api.payments import router as payments_router
+from app.api.reconciliation import router as reconciliation_router
 app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
 app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
+app.include_router(reconciliation_router, prefix="/api/v1", tags=["reconciliation"])
 
 # Глобальные объекты (инициализируются при старте)
 settings: Optional[Settings] = None
@@ -388,8 +390,13 @@ async def startup_event():
     logger.info("Payments router подключен")
     
     # Подключение Reconciliation router
-    from app.api.reconciliation import router as reconciliation_router
-    app.include_router(reconciliation_router, prefix="/api/v1", tags=["reconciliation"])
+    reconciliation_router_included = any(
+        hasattr(r, "path") and "/api/v1/reconciliation" in str(r.path)
+        for r in app.routes
+    )
+    if not reconciliation_router_included:
+        from app.api.reconciliation import router as reconciliation_router
+        app.include_router(reconciliation_router, prefix="/api/v1", tags=["reconciliation"])
     logger.info("Reconciliation router подключен")
     
     # Start Agent Executor (if enabled)
