@@ -951,6 +951,92 @@ curl -X POST "http://localhost:8000/api/v1/payments/orders/{order_id}/export" \
 - `roles` → шаги согласования (по порядку)
 - Если политика отключена → auto-approve
 
+## Банковская выписка и сверка (MVP)
+
+API для импорта банковских выписок, автоматического сопоставления транзакций с платёжными поручениями и экспорта результатов.
+
+### Хранение
+
+- **Storage**: SQLite через `PLATFORM_DB_PATH` или `platform.db` (dev/tests)
+- **Таблицы**: `bank_statements`, `bank_transactions`, `reconciliation_matches`, `reconciliation_events`
+
+### Endpoints
+
+- `POST /api/v1/reconciliation/statements/upload` — загрузить выписку (CSV)
+- `POST /api/v1/reconciliation/statements/{id}/auto-match` — автоматическое сопоставление
+- `GET /api/v1/reconciliation/statements/{id}` — получить выписку
+- `GET /api/v1/reconciliation/statements/{id}/transactions` — получить транзакции
+- `POST /api/v1/reconciliation/match` — ручное сопоставление
+- `POST /api/v1/reconciliation/statements/{id}/finalize` — завершить обработку
+
+### Формат CSV
+
+Выписка должна быть в формате CSV с колонками:
+- `date` — дата транзакции (YYYY-MM-DD)
+- `amount` — сумма (отрицательная для исходящих, положительная для входящих)
+- `description` — описание транзакции
+- `counterparty` — контрагент
+
+### Примеры использования
+
+**1. Загрузить выписку:**
+```bash
+curl -X POST http://localhost:8000/api/v1/reconciliation/statements/upload \
+  -H "X-Tenant-ID: tenant-123" \
+  -F "file=@statement.csv"
+```
+
+**2. Автоматическое сопоставление:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/auto-match" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**3. Ручное сопоставление:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/reconciliation/match" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_id": "txn-uuid",
+    "payment_order_id": "order-uuid"
+  }'
+```
+
+**4. Получить транзакции:**
+```bash
+curl "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/transactions?matched=true" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**5. Завершить обработку:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/finalize" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+### Автоматическое сопоставление
+
+Auto-match использует следующие критерии:
+- **Amount match** (0.6) — точное совпадение суммы (±1% tolerance)
+- **Description hint** (0.3) — наличие ключевых слов из `purpose` в `description`
+- **Confidence threshold** — >= 0.8 для создания match
+
+Сопоставляются только транзакции с `direction=out` и payment orders со статусом `approved` или `exported`.
+
+### Интеграция с кейсами
+
+При ручном сопоставлении транзакции с payment order, привязанным к кейсу:
+- Закрывается задача "Ожидается оплата" (если есть)
+- Создаётся событие `payment.reconciled` в `case_events`
+
+### Метрики
+
+- `reconciliation_transactions_total{matched}` — количество транзакций
+- `reconciliation_auto_match_rate` — процент автоматически сопоставленных
+- `reconciliation_latency_seconds` — задержка обработки
+- `reconciliation_failures_total{error_code}` — ошибки
+
 ### Переменные окружения
 
 - `PLATFORM_DB_PATH` — путь к SQLite БД (по умолчанию `platform.db`)

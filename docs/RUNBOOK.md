@@ -951,6 +951,74 @@ curl http://localhost:8000/metrics | grep payment_
 - Нужно переотправить после исправления данных артефакта
 - Тестирование интеграции
 
+## Банковская выписка и сверка (MVP)
+
+API для импорта банковских выписок и автоматического сопоставления транзакций с платёжными поручениями.
+
+### Диагностика reconciliation
+
+**1. Проверить статус выписки:**
+```bash
+curl "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**2. Проверить транзакции:**
+```bash
+# Все транзакции
+curl "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/transactions" \
+  -H "X-Tenant-ID: tenant-123"
+
+# Только сопоставленные
+curl "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/transactions?matched=true" \
+  -H "X-Tenant-ID: tenant-123"
+
+# Только несопоставленные
+curl "http://localhost:8000/api/v1/reconciliation/statements/{statement_id}/transactions?matched=false" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**3. Типичные проблемы:**
+
+| Проблема | Причина | Решение |
+|----------|---------|---------|
+| Транзакции не сопоставляются | Нет подходящих payment orders | Проверить наличие approved/exported orders |
+| Низкий confidence | Несовпадение суммы/описания | Использовать ручное сопоставление |
+| CSV не парсится | Неверный формат | Проверить колонки: date, amount, description, counterparty |
+| Транзакция уже сопоставлена | Повторный match | Проверить matches через БД |
+
+**4. Проверить метрики:**
+```bash
+curl http://localhost:8000/metrics | grep reconciliation_
+```
+
+**5. Логи:**
+- События в `reconciliation_events` (audit trail)
+- Логи парсинга CSV в application logs
+- Ошибки auto-match в application logs
+
+### Auto-match алгоритм
+
+1. Выбираются все `direction=out` транзакции с `matched=0`
+2. Для каждой транзакции ищутся подходящие payment orders (status=approved|exported)
+3. Вычисляется confidence:
+   - Amount match (0.6) — точное совпадение ±1%
+   - Description hint (0.3) — общие слова из purpose в description
+4. Если confidence >= 0.8 → создаётся match (auto)
+
+### Ручное сопоставление
+
+Используется когда:
+- Auto-match не нашёл подходящий order (confidence < 0.8)
+- Нужно сопоставить вручную по другим критериям
+- Исправление ошибки auto-match
+
+### Интеграция с кейсами
+
+При успешном match payment order с `case_id`:
+- Закрывается задача "Ожидается оплата" (если есть)
+- Создаётся событие `payment.reconciled` в `case_events`
+
 ### Автосинхронизация артефактов
 
 Система автоматически ставит jobs в очередь 1С при создании артефактов:

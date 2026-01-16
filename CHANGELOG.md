@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Банковская выписка и сверка (MVP)** (`cyberplat/reconciliation/`, `app/api/reconciliation.py`):
+  - Импорт банковских выписок (CSV)
+  - Автоматическое сопоставление транзакций с payment orders (confidence-based)
+  - Ручное сопоставление (fallback)
+  - Интеграция с Case/Payments (закрытие задач при match)
+  - Метрики: `reconciliation_transactions_total`, `reconciliation_auto_match_rate`, `reconciliation_latency_seconds`, `reconciliation_failures_total`
+  - API endpoints: upload, auto-match, manual match, get statements/transactions, finalize
+  - Тесты: reconciliation_ingest, reconciliation_auto_match, reconciliation_manual_match, reconciliation_case_integration
+
 - **Платежи и согласование (MVP)** (`cyberplat/payments/`, `app/api/payments.py`):
   - Payment orders (платёжные поручения) с согласованием
   - Approval engine на основе политик (thresholds по сумме)
