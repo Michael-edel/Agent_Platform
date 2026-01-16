@@ -1,0 +1,66 @@
+groups:
+  - name: money_ops_recording_rules
+    interval: 30s
+    rules:
+      # Error ratios для 1C jobs
+      - record: money_ops:onec_jobs_error_ratio_5m
+        expr: |
+          sum(rate(onec_job_outcomes_total{status="failed"}[5m])) /
+          sum(rate(onec_job_outcomes_total[5m]))
+      
+      - record: money_ops:onec_jobs_error_ratio_30m
+        expr: |
+          sum(rate(onec_job_outcomes_total{status="failed"}[30m])) /
+          sum(rate(onec_job_outcomes_total[30m]))
+      
+      - record: money_ops:onec_jobs_success_ratio_30m
+        expr: |
+          sum(rate(onec_job_outcomes_total{status="succeeded"}[30m])) /
+          sum(rate(onec_job_outcomes_total[30m]))
+      
+      # Error ratios для reconciliation
+      - record: money_ops:reconciliation_error_ratio_5m
+        expr: |
+          sum(rate(reconciliation_failures_total[5m])) /
+          (sum(rate(reconciliation_failures_total[5m])) + sum(rate(reconciliation_transactions_total{matched="true"}[5m])))
+      
+      - record: money_ops:reconciliation_error_ratio_30m
+        expr: |
+          sum(rate(reconciliation_failures_total[30m])) /
+          (sum(rate(reconciliation_failures_total[30m])) + sum(rate(reconciliation_transactions_total{matched="true"}[30m])))
+      
+      # Latency percentiles для approval
+      - record: money_ops:payment_approval_latency_p50
+        expr: histogram_quantile(0.50, sum(rate(payment_approval_latency_seconds_bucket[5m])) by (le))
+      
+      - record: money_ops:payment_approval_latency_p95
+        expr: histogram_quantile(0.95, sum(rate(payment_approval_latency_seconds_bucket[5m])) by (le))
+      
+      - record: money_ops:payment_approval_latency_p99
+        expr: histogram_quantile(0.99, sum(rate(payment_approval_latency_seconds_bucket[5m])) by (le))
+      
+      # Latency percentiles для reconciliation
+      - record: money_ops:reconciliation_latency_p50
+        expr: histogram_quantile(0.50, sum(rate(reconciliation_latency_seconds_bucket[5m])) by (le))
+      
+      - record: money_ops:reconciliation_latency_p95
+        expr: histogram_quantile(0.95, sum(rate(reconciliation_latency_seconds_bucket[5m])) by (le))
+      
+      - record: money_ops:reconciliation_latency_p99
+        expr: histogram_quantile(0.99, sum(rate(reconciliation_latency_seconds_bucket[5m])) by (le))
+      
+      # Backlog series
+      - record: money_ops:queue_backlog_onec_jobs
+        expr: money_ops_queue_backlog{queue="onec_jobs"}
+      
+      - record: money_ops:payment_orders_backlog_pending
+        expr: payment_orders_backlog{status="pending_approval"}
+      
+      - record: money_ops:reconciliation_unmatched_count
+        expr: reconciliation_unmatched_total
+      
+      # Auto-match rate (вычисляемый)
+      - record: money_ops:reconciliation_auto_match_rate
+        expr: |
+          sum(rate(reconciliation_transactions_total{matched="true"}[5m])) /
+          sum(rate(reconciliation_transactions_total[5m]))

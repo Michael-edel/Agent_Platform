@@ -1,0 +1,153 @@
+groups:
+  - name: money_ops_alerts
+    interval: 30s
+    rules:
+      # SLO-1: Payment Approval Latency (burn-rate)
+      - alert: MoneyOpsPaymentApprovalLatencyFastBurn
+        expr: |
+          (
+            (money_ops:payment_approval_latency_p99 > 600) and
+            (sum(rate(payment_approval_latency_seconds_count[5m])) >= 20/300)
+          )
+        for: 5m
+        labels:
+          severity: critical
+          slo: payment_approval_latency
+          burn_rate: fast
+        annotations:
+          summary: "Payment approval latency SLO fast burn (5m/1h)"
+          description: "p99 approval latency > 10min for 5m (fast burn rate)"
+      
+      - alert: MoneyOpsPaymentApprovalLatencySlowBurn
+        expr: |
+          (
+            (money_ops:payment_approval_latency_p99 > 600) and
+            (sum(rate(payment_approval_latency_seconds_count[30m])) >= 20/1800)
+          )
+        for: 30m
+        labels:
+          severity: warning
+          slo: payment_approval_latency
+          burn_rate: slow
+        annotations:
+          summary: "Payment approval latency SLO slow burn (30m/6h)"
+          description: "p99 approval latency > 10min for 30m (slow burn rate)"
+      
+      # SLO-2: Reconciliation Latency (burn-rate)
+      - alert: MoneyOpsReconciliationLatencyFastBurn
+        expr: |
+          (
+            (money_ops:reconciliation_latency_p99 > 900) and
+            (sum(rate(reconciliation_latency_seconds_count[5m])) >= 20/300)
+          )
+        for: 5m
+        labels:
+          severity: critical
+          slo: reconciliation_latency
+          burn_rate: fast
+        annotations:
+          summary: "Reconciliation latency SLO fast burn (5m/1h)"
+          description: "p99 reconciliation latency > 15min for 5m (fast burn rate)"
+      
+      - alert: MoneyOpsReconciliationLatencySlowBurn
+        expr: |
+          (
+            (money_ops:reconciliation_latency_p99 > 900) and
+            (sum(rate(reconciliation_latency_seconds_count[30m])) >= 20/1800)
+          )
+        for: 30m
+        labels:
+          severity: warning
+          slo: reconciliation_latency
+          burn_rate: slow
+        annotations:
+          summary: "Reconciliation latency SLO slow burn (30m/6h)"
+          description: "p99 reconciliation latency > 15min for 30m (slow burn rate)"
+      
+      # SLO-3: 1C Jobs Success Ratio (burn-rate)
+      - alert: MoneyOpsOneCJobsSuccessRatioFastBurn
+        expr: |
+          (
+            (money_ops:onec_jobs_success_ratio_30m < 0.99) and
+            (sum(rate(onec_job_outcomes_total[5m])) >= 20/300)
+          )
+        for: 5m
+        labels:
+          severity: critical
+          slo: onec_jobs_success_ratio
+          burn_rate: fast
+        annotations:
+          summary: "1C jobs success ratio SLO fast burn (5m/1h)"
+          description: "1C jobs success ratio < 99% for 5m (fast burn rate)"
+      
+      - alert: MoneyOpsOneCJobsSuccessRatioSlowBurn
+        expr: |
+          (
+            (money_ops:onec_jobs_success_ratio_30m < 0.99) and
+            (sum(rate(onec_job_outcomes_total[30m])) >= 20/1800)
+          )
+        for: 30m
+        labels:
+          severity: warning
+          slo: onec_jobs_success_ratio
+          burn_rate: slow
+        annotations:
+          summary: "1C jobs success ratio SLO slow burn (30m/6h)"
+          description: "1C jobs success ratio < 99% for 30m (slow burn rate)"
+      
+      # Backlog alerts
+      - alert: MoneyOpsOneCJobsBacklogHigh
+        expr: money_ops:queue_backlog_onec_jobs > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "1C jobs queue backlog is high"
+          description: "1C jobs backlog > 100 for 10m"
+      
+      - alert: MoneyOpsPaymentOrdersBacklogHigh
+        expr: money_ops:payment_orders_backlog_pending > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment orders approval backlog is high"
+          description: "Pending approval orders > 50 for 15m"
+      
+      - alert: MoneyOpsReconciliationUnmatchedHigh
+        expr: money_ops:reconciliation_unmatched_count > 200
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Reconciliation unmatched transactions count is high"
+          description: "Unmatched transactions > 200 for 30m"
+      
+      # Error spikes
+      - alert: MoneyOpsOneCFailuresSpike
+        expr: sum(rate(onec_failures_total[10m])) by (error_code) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "1C integration failures spike"
+          description: "1C failures rate > 0.5/s per error_code for 10m"
+      
+      - alert: MoneyOpsReconciliationFailuresSpike
+        expr: sum(rate(reconciliation_failures_total[10m])) by (error_code) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Reconciliation failures spike"
+          description: "Reconciliation failures rate > 0.1/s per error_code for 10m"
+      
+      # Circuit breaker
+      - alert: MoneyOpsOneCCircuitBreakerOpen
+        expr: increase(onec_circuit_open_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "1C circuit breaker opened"
+          description: "1C circuit breaker opened (fail-fast mode active)"
