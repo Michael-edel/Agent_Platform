@@ -32,6 +32,19 @@ pwsh -File .\scripts\manual-accountant-flow.ps1 -PdfPath "C:\path\to\invoice.pdf
   - пытается экспортировать (csv)
   Если эндпоинта нет или контракт не подходит — шаг печатается как “Пропущено”.
 
+## Передать на согласование директору
+
+После создания `PaymentOrder` бухгалтеру нужно передать директору:
+- `PaymentId` (это `id` платёжного поручения в ответе create payment order).
+
+Пример запуска скрипта согласующего:
+
+```powershell
+pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action approve
+# или отклонить:
+pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action reject -Reason "Недостаточно оснований"
+```
+
 ## Где смотреть результат
 
 - Swagger UI: `http://localhost:8000/docs`

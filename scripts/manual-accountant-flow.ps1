@@ -50,7 +50,7 @@ function Get-HttpStatus([string]$Url) {
 function Invoke-Json([string]$Method, [string]$Url, [hashtable]$Headers, [string]$BodyJson = $null) {
     $args = @("-s", "-X", $Method, $Url)
     foreach ($k in $Headers.Keys) {
-        $args += @("-H", "$k: $($Headers[$k])")
+        $args += @("-H", "${k}: $($Headers[$k])")
     }
     if ($BodyJson) {
         $args += @("-H", "Content-Type: application/json", "--data", $BodyJson)
