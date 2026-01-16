@@ -245,3 +245,51 @@ class EventService:
                 # Продолжаем работу, не падаем
         
         return event_id
+
+    def emit_to_connection(
+        self,
+        conn: sqlite3.Connection,
+        event_type: str,
+        tenant_id: Optional[str] = None,
+        artifact_id: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Emit an event using an existing DB connection (no commit/close).
+
+        Intended for cases where the caller already holds a write transaction
+        and wants to avoid SQLite "database is locked" errors.
+
+        Notes:
+        - Writes only to the `events` table.
+        - Does NOT call subscribers (best-effort audit trail only).
+        """
+        import json as _json
+
+        if tenant_id is None and artifact_id is None:
+            if event_type in {"email.ingest.failed"}:
+                resolved_tenant_id = None
+            else:
+                resolved_tenant_id = self._resolve_tenant_id(tenant_id, artifact_id)
+        else:
+            resolved_tenant_id = self._resolve_tenant_id(tenant_id, artifact_id)
+
+        event_id = str(uuid.uuid4())
+        created_at = datetime.now().isoformat()
+
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO events (id, event_type, tenant_id, artifact_id, payload, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                event_type,
+                resolved_tenant_id,
+                artifact_id,
+                _json.dumps(payload, ensure_ascii=False) if payload else None,
+                created_at,
+            ),
+        )
+        return event_id

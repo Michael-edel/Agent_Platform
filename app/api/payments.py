@@ -5,7 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Header, Depends, Query
 from pydantic import BaseModel
 
-from cyberplat.payments.payment_service import PaymentService, PaymentNotFoundError, InvalidApprovalError
+from cyberplat.payments.payment_service import PaymentService, PaymentNotFoundError, InvalidApprovalError, PaymentState
 from cyberplat.case_service import CaseService
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,12 @@ class PaymentOrderResponse(BaseModel):
 class PaymentOrdersListResponse(BaseModel):
     items: List[PaymentOrderResponse]
     total: int
+
+
+class PaymentTimelineResponse(BaseModel):
+    payment_id: str
+    current_state: str
+    timeline: List[dict]
 
 
 class SubmitForApprovalResponse(BaseModel):
@@ -213,6 +219,28 @@ async def get_payment_order(
         logger.error(f"Ошибка при получении платёжного поручения: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при получении платёжного поручения: {str(e)}")
 
+
+@router.get("/payments/{payment_id}/timeline", response_model=PaymentTimelineResponse)
+async def get_payment_timeline(
+    payment_id: str,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    payment_service: PaymentService = Depends(get_payment_service),
+):
+    """Read-only timeline of payment lifecycle events (tenant-scoped)."""
+    if not x_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
+
+    order = payment_service.get_payment_order(payment_id, tenant_id=x_tenant_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Платёжное поручение не найдено")
+
+    try:
+        current_state = PaymentState(order["status"]).name
+    except Exception:
+        current_state = (order.get("status") or "").upper() or "UNKNOWN"
+
+    timeline = payment_service.get_payment_timeline(tenant_id=x_tenant_id, payment_id=payment_id)
+    return PaymentTimelineResponse(payment_id=payment_id, current_state=current_state, timeline=timeline)
 
 @router.get("/payments/orders", response_model=PaymentOrdersListResponse)
 async def list_payment_orders(
@@ -398,6 +426,8 @@ async def reject_payment_order(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        if not request.comment or not request.comment.strip():
+            raise HTTPException(status_code=400, detail="Причина отклонения обязательна")
         payment_service.reject(
             order_id=order_id,
             tenant_id=x_tenant_id,

@@ -74,7 +74,8 @@ def test_create_payment_order_api(services):
         order = payment_service.get_payment_order(data["payment_id"], tenant_id="tenant-123")
         assert order is not None
         assert order["amount"] == 100000.0
-        assert order["status"] == "draft"
+        # Phase 1 lifecycle: create sets DRAFT then transitions to PENDING_APPROVAL
+        assert order["status"] == "pending_approval"
         
     finally:
         app.dependency_overrides.clear()
@@ -345,7 +346,8 @@ def test_export_csv_api(services):
     )
     
     payment_service.submit_for_approval(order_id, "tenant-123")
-    # Auto-approve
+    # Approve before export (Phase 1: no auto-approve)
+    payment_service.approve(order_id, "tenant-123", "director", comment="Одобрено")
     
     from app.api.payments import get_payment_service, get_case_service
     

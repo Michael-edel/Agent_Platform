@@ -5,11 +5,38 @@ import logging
 import sqlite3
 import os
 import json
+from enum import Enum
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
+from cyberplat.event_service import EventService
+
 logger = logging.getLogger(__name__)
+
+
+class PaymentState(str, Enum):
+    """Payment lifecycle states (stable API)."""
+
+    # Keep DB values backward-compatible (lowercase), expose uppercase names in API/timeline.
+    DRAFT = "draft"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SENT = "sent"
+    FAILED = "failed"
+    RECONCILED = "reconciled"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _state_name_from_value(value: Optional[str]) -> str:
+    try:
+        return PaymentState(value or "").name
+    except Exception:
+        return (value or "").upper() or "UNKNOWN"
 
 
 class PaymentNotFoundError(Exception):
@@ -38,6 +65,8 @@ class PaymentService:
             self._sqlite_connect_kwargs = {"uri": True}
             self._keeper_conn = sqlite3.connect(self._sqlite_connect_target, **self._sqlite_connect_kwargs)
             self._keeper_conn.row_factory = sqlite3.Row
+        # EventService is the source of truth for Timeline API (events table).
+        self._event_service = EventService(db_path=db_path)
         self._init_database()
     
     def _get_connection(self) -> sqlite3.Connection:
@@ -144,6 +173,85 @@ class PaymentService:
             "INSERT INTO payment_events (id, tenant_id, payment_order_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (event_id, tenant_id, payment_order_id, event_type, payload_json, datetime.now().isoformat())
         )
+
+    def _emit_lifecycle_event(
+        self,
+        *,
+        event_type: str,
+        tenant_id: str,
+        payment_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+        conn: Optional[sqlite3.Connection] = None,
+    ) -> None:
+        # Timeline API reads from EventService.events table (tenant_id + artifact_id).
+        base = {"payment_id": payment_id, "timestamp": _now_iso()}
+        if payload:
+            base.update(payload)
+        try:
+            if conn is not None:
+                self._event_service.emit_to_connection(conn, event_type, tenant_id=tenant_id, artifact_id=payment_id, payload=base)
+            else:
+                self._event_service.emit(event_type, tenant_id=tenant_id, artifact_id=payment_id, payload=base)
+        except Exception:
+            logger.warning("Failed to emit lifecycle event %s for payment_id=%s", event_type, payment_id, exc_info=True)
+
+    def _set_state(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        payment_id: str,
+        new_state: PaymentState,
+        actor: str,
+        reason: Optional[str] = None,
+        decided_by: Optional[str] = None,
+    ) -> None:
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM payment_orders WHERE id = ? AND tenant_id = ? LIMIT 1", (payment_id, tenant_id))
+        row = cur.fetchone()
+        if not row:
+            raise PaymentNotFoundError(f"Платёжное поручение {payment_id} не найдено")
+
+        old_value = row["status"]
+        old_state = _state_name_from_value(old_value)
+        new_state_name = new_state.name
+
+        now = _now_iso()
+        approved_at = now if new_state == PaymentState.APPROVED else None
+        rejected_at = now if new_state == PaymentState.REJECTED else None
+
+        if old_value != new_state.value:
+            cur.execute(
+                """
+                UPDATE payment_orders
+                SET status = ?, updated_at = ?,
+                    approved_at = COALESCE(?, approved_at),
+                    rejected_at = COALESCE(?, rejected_at)
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (new_state.value, now, approved_at, rejected_at, payment_id, tenant_id),
+            )
+
+        self._emit_lifecycle_event(
+            event_type="payment.state_changed",
+            tenant_id=tenant_id,
+            payment_id=payment_id,
+            payload={
+                "old_state": old_state,
+                "new_state": new_state_name,
+                "actor": actor,
+                "decided_by": decided_by,
+                "reason": reason,
+            },
+            conn=conn,
+        )
+
+        try:
+            from cyberplat.observability.metrics import payments_state_transition_total, METRICS_ENABLED
+            if METRICS_ENABLED and payments_state_transition_total:
+                payments_state_transition_total.labels(from_state=old_state, to_state=new_state_name).inc()
+        except Exception:
+            pass
     
     def create_payment_order(
         self,
@@ -203,6 +311,23 @@ class PaymentService:
             "currency": currency,
             "beneficiary_name": beneficiary_name
         })
+
+        # Lifecycle events (Timeline API source of truth)
+        self._emit_lifecycle_event(
+            event_type="payment.created",
+            tenant_id=tenant_id,
+            payment_id=order_id,
+            payload={"state": PaymentState.DRAFT.name, "actor": "system"},
+            conn=conn,
+        )
+        # Immediately transition to PENDING_APPROVAL
+        self._set_state(
+            conn,
+            tenant_id=tenant_id,
+            payment_id=order_id,
+            new_state=PaymentState.PENDING_APPROVAL,
+            actor="system",
+        )
         
         conn.commit()
         conn.close()
@@ -232,6 +357,13 @@ class PaymentService:
         conn = self._get_connection()
         try:
             self._log_event(conn, tenant_id, payment_id, "payment.export_failed", {"reason": reason})
+            self._emit_lifecycle_event(
+                event_type="payment.export_failed",
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                payload={"actor": "system", "reason": reason},
+                conn=conn,
+            )
             conn.commit()
         finally:
             try:
@@ -246,6 +378,58 @@ class PaymentService:
                 payments_export_fail_total.labels(reason="post_create_integration_failed").inc()
         except Exception:
             pass
+
+    def get_payment_timeline(self, *, tenant_id: str, payment_id: str) -> List[Dict[str, Any]]:
+        """Build timeline from EventService.events table (read-only)."""
+        # Note: for db_path=":memory:" timeline is best-effort (not used in prod flows).
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+        except Exception:
+            conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT event_type, payload, created_at
+                FROM events
+                WHERE tenant_id = ? AND artifact_id = ? AND event_type LIKE 'payment.%'
+                ORDER BY created_at ASC
+                """,
+                (tenant_id, payment_id),
+            )
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            event_type = r["event_type"]
+            at = r["created_at"]
+            payload = {}
+            try:
+                payload = json.loads(r["payload"] or "{}")
+            except Exception:
+                payload = {}
+            actor = payload.get("actor")
+            reason = payload.get("reason")
+
+            if event_type == "payment.created":
+                item = {"event": event_type, "state": payload.get("state"), "actor": actor, "at": at}
+            elif event_type == "payment.state_changed":
+                item = {
+                    "event": event_type,
+                    "from": payload.get("old_state"),
+                    "to": payload.get("new_state"),
+                    "actor": actor,
+                    "at": at,
+                }
+            else:
+                item = {"event": event_type, "actor": actor, "at": at}
+            if reason:
+                item["reason"] = reason
+            out.append(item)
+        return out
     
     def get_payment_order(self, order_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Получить платёжное поручение по ID."""
@@ -399,47 +583,31 @@ class PaymentService:
         order = self.get_payment_order(order_id, tenant_id=tenant_id)
         if not order:
             raise PaymentNotFoundError(f"Платёжное поручение {order_id} не найдено")
-        
-        if order["status"] != "draft":
-            raise InvalidApprovalError(f"Платёжное поручение уже отправлено на согласование или обработано")
-        
+
+        if order["status"] not in {"draft", "pending_approval"}:
+            raise InvalidApprovalError("Платёжное поручение уже обработано и не может быть отправлено на согласование")
+
         conn = self._get_connection()
         cur = conn.cursor()
         now = datetime.now().isoformat()
-        
-        # Строим шаги согласования
+
+        # Всегда приводим к PENDING_APPROVAL (идемпотентно) и фиксируем lifecycle событие
+        self._set_state(
+            conn,
+            tenant_id=tenant_id,
+            payment_id=order_id,
+            new_state=PaymentState.PENDING_APPROVAL,
+            actor="accountant",
+        )
+
+        # Строим шаги согласования (если политика задана)
         steps = self._build_approval_steps(tenant_id, order["amount"])
-        
-        if not steps:
-            # Auto-approve (политика отключена или нет политики)
-            cur.execute(
-                "UPDATE payment_orders SET status = 'approved', approved_at = ?, updated_at = ? WHERE id = ?",
-                (now, now, order_id)
-            )
-            self._log_event(conn, tenant_id, order_id, "payment_order.auto_approved", {})
-            
-            # Метрики
-            try:
-                from cyberplat.observability.metrics import payment_orders_total, METRICS_ENABLED
-                if METRICS_ENABLED and payment_orders_total:
-                    payment_orders_total.labels(status="approved").inc()
-            except Exception:
-                pass
-        else:
-            # Создаём шаги согласования
-            cur.execute(
-                "UPDATE payment_orders SET status = 'pending_approval', updated_at = ? WHERE id = ?",
-                (now, order_id)
-            )
-            
-            # Метрики
-            try:
-                from cyberplat.observability.metrics import payment_orders_total, METRICS_ENABLED
-                if METRICS_ENABLED and payment_orders_total:
-                    payment_orders_total.labels(status="pending_approval").inc()
-            except Exception:
-                pass
-            
+
+        # Создаём шаги только один раз (idempotent best-effort)
+        cur.execute("SELECT COUNT(*) as cnt FROM payment_approvals WHERE payment_order_id = ?", (order_id,))
+        approvals_exist = int(cur.fetchone()["cnt"]) > 0
+
+        if steps and not approvals_exist:
             for step_info in steps:
                 step_id = str(uuid.uuid4())
                 cur.execute(
@@ -448,58 +616,56 @@ class PaymentService:
                     (id, payment_order_id, tenant_id, step, required_role, status, created_at)
                     VALUES (?, ?, ?, ?, ?, 'pending', ?)
                     """,
-                    (step_id, order_id, tenant_id, step_info["step"], step_info["required_role"], now)
+                    (step_id, order_id, tenant_id, step_info["step"], step_info["required_role"], now),
                 )
-            
-            self._log_event(conn, tenant_id, order_id, "payment_order.submitted", {
-                "steps_count": len(steps)
-            })
-            
+
+            self._log_event(conn, tenant_id, order_id, "payment_order.submitted", {"steps_count": len(steps)})
+
             # Интеграция с Case: создаём задачу и событие, если есть case_id
-            if order.get("case_id") and steps:
+            if order.get("case_id"):
                 case_id = order["case_id"]
                 try:
-                    # Используем то же соединение для записи в case_tasks и case_events
-                    # Проверяем, что кейс существует
                     cur.execute("SELECT * FROM cases WHERE id = ? AND tenant_id = ?", (case_id, tenant_id))
                     case = cur.fetchone()
                     if case:
-                        # Определяем роль для задачи (первый required_role из steps)
                         required_role = steps[0]["required_role"]
                         task_id = str(uuid.uuid4())
                         step_key = case["current_step"] if case["current_step"] else "approval"
-                        
-                        # Создаём задачу
                         cur.execute(
                             """
                             INSERT INTO case_tasks
                             (id, case_id, step_key, title, assignee_role, status, created_at)
                             VALUES (?, ?, ?, ?, ?, 'pending', ?)
                             """,
-                            (task_id, case_id, step_key, "Согласовать платеж", required_role, now)
+                            (task_id, case_id, step_key, "Согласовать платеж", required_role, now),
                         )
-                        
-                        # Логируем событие
                         event_id = str(uuid.uuid4())
-                        event_payload = json.dumps({
-                            "payment_order_id": order_id,
-                            "amount": order["amount"],
-                            "currency": order["currency"]
-                        }, ensure_ascii=False)
+                        event_payload = json.dumps(
+                            {"payment_order_id": order_id, "amount": order["amount"], "currency": order["currency"]},
+                            ensure_ascii=False,
+                        )
                         cur.execute(
                             """
                             INSERT INTO case_events
                             (id, case_id, event_type, payload_json, created_at)
                             VALUES (?, ?, ?, ?, ?)
                             """,
-                            (event_id, case_id, "payment_submitted", event_payload, now)
+                            (event_id, case_id, "payment_submitted", event_payload, now),
                         )
                 except Exception as e:
                     logger.warning(f"Ошибка при создании задачи в кейсе: {e}")
-        
+
+        # Метрики (queueing to approval)
+        try:
+            from cyberplat.observability.metrics import payment_orders_total, METRICS_ENABLED
+            if METRICS_ENABLED and payment_orders_total:
+                payment_orders_total.labels(status="pending_approval").inc()
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
-        
+
         logger.info(f"Платёжное поручение {order_id} отправлено на согласование ({len(steps)} шагов)")
     
     def approve(
@@ -528,6 +694,10 @@ class PaymentService:
             if order["status"] == "rejected":
                 raise InvalidApprovalError("Платёжное поручение уже отклонено")
             raise InvalidApprovalError(f"Платёжное поручение в статусе {order['status']}, нельзя одобрить")
+
+        # Идемпотентно: уже одобрено
+        if order["status"] == "approved":
+            return
         
         conn = self._get_connection()
         cur = conn.cursor()
@@ -546,20 +716,35 @@ class PaymentService:
         approval = cur.fetchone()
         
         if not approval:
-            # Нет pending шагов - проверяем, может уже все одобрены
-            cur.execute(
-                "SELECT COUNT(*) as cnt FROM payment_approvals WHERE payment_order_id = ? AND status = 'approved'",
-                (order_id,)
+            # Нет шагов согласования -> разрешаем прямое одобрение (Phase 1).
+            self._set_state(
+                conn,
+                tenant_id=tenant_id,
+                payment_id=order_id,
+                new_state=PaymentState.APPROVED,
+                actor="approver",
+                reason=comment,
+                decided_by=decided_by or role,
             )
-            approved_count = cur.fetchone()["cnt"]
-            
-            if approved_count > 0:
-                # Все шаги одобрены - идемпотентно
-                logger.debug(f"Все шаги согласования для {order_id} уже одобрены")
-                conn.close()
-                return
-            
-            raise InvalidApprovalError("Нет шагов согласования для одобрения")
+            self._emit_lifecycle_event(
+                event_type="payment.approved",
+                tenant_id=tenant_id,
+                payment_id=order_id,
+                payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+                conn=conn,
+            )
+            self._log_event(conn, tenant_id, order_id, "payment_order.approved", {"role": role, "comment": comment})
+
+            try:
+                from cyberplat.observability.metrics import payments_approved_total, METRICS_ENABLED
+                if METRICS_ENABLED and payments_approved_total:
+                    payments_approved_total.inc()
+            except Exception:
+                pass
+
+            conn.commit()
+            conn.close()
+            return
         
         # Проверяем, что роль совпадает
         if approval["required_role"] != role:
@@ -586,14 +771,23 @@ class PaymentService:
         
         if pending_count == 0:
             # Все шаги одобрены
-            cur.execute(
-                "UPDATE payment_orders SET status = 'approved', approved_at = ?, updated_at = ? WHERE id = ?",
-                (now, now, order_id)
+            self._set_state(
+                conn,
+                tenant_id=tenant_id,
+                payment_id=order_id,
+                new_state=PaymentState.APPROVED,
+                actor="approver",
+                reason=comment,
+                decided_by=decided_by or role,
             )
-            self._log_event(conn, tenant_id, order_id, "payment_order.approved", {
-                "step": approval["step"],
-                "role": role
-            })
+            self._emit_lifecycle_event(
+                event_type="payment.approved",
+                tenant_id=tenant_id,
+                payment_id=order_id,
+                payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+                conn=conn,
+            )
+            self._log_event(conn, tenant_id, order_id, "payment_order.approved", {"step": approval["step"], "role": role})
             
             # Интеграция с Case: создаём задачу на экспорт и событие, если есть case_id
             if order.get("case_id"):
@@ -638,11 +832,14 @@ class PaymentService:
                 from cyberplat.observability.metrics import (
                     payment_orders_total,
                     payment_approval_latency_seconds,
+                    payments_approved_total,
                     METRICS_ENABLED
                 )
                 if METRICS_ENABLED:
                     if payment_orders_total:
                         payment_orders_total.labels(status="approved").inc()
+                    if payments_approved_total:
+                        payments_approved_total.inc()
                     if payment_approval_latency_seconds:
                         # Вычисляем latency (упрощённо, в production нужно хранить submit timestamp)
                         latency = 0.0  # Для MVP упрощённо
@@ -682,6 +879,10 @@ class PaymentService:
         order = self.get_payment_order(order_id, tenant_id=tenant_id)
         if not order:
             raise PaymentNotFoundError(f"Платёжное поручение {order_id} не найдено")
+
+        # Причина обязательна
+        if not comment or not str(comment).strip():
+            raise InvalidApprovalError("Причина отклонения обязательна")
         
         if order["status"] in {"rejected", "exported"}:
             if order["status"] == "rejected":
@@ -707,10 +908,22 @@ class PaymentService:
             (now, decided_by or role, comment, order_id)
         )
         
-        # Обновляем статус поручения
-        cur.execute(
-            "UPDATE payment_orders SET status = 'rejected', rejected_at = ?, updated_at = ? WHERE id = ?",
-            (now, now, order_id)
+        # Обновляем lifecycle state + события (не откатываем payment)
+        self._set_state(
+            conn,
+            tenant_id=tenant_id,
+            payment_id=order_id,
+            new_state=PaymentState.REJECTED,
+            actor="approver",
+            reason=comment,
+            decided_by=decided_by or role,
+        )
+        self._emit_lifecycle_event(
+            event_type="payment.rejected",
+            tenant_id=tenant_id,
+            payment_id=order_id,
+            payload={"actor": "approver", "reason": comment, "decided_by": decided_by or role},
+            conn=conn,
         )
         
         self._log_event(conn, tenant_id, order_id, "payment_order.rejected", {
@@ -745,9 +958,11 @@ class PaymentService:
         
         # Метрики
         try:
-            from cyberplat.observability.metrics import payment_orders_total, METRICS_ENABLED
+            from cyberplat.observability.metrics import payment_orders_total, payments_rejected_total, METRICS_ENABLED
             if METRICS_ENABLED and payment_orders_total:
                 payment_orders_total.labels(status="rejected").inc()
+            if METRICS_ENABLED and payments_rejected_total:
+                payments_rejected_total.inc()
         except Exception:
             pass
         

@@ -54,12 +54,13 @@ def test_create_payment_order(payment_service_memory):
     assert order is not None
     assert order["tenant_id"] == "tenant-123"
     assert order["amount"] == 100000.0
-    assert order["status"] == "draft"
+    # Phase 1 lifecycle: create sets DRAFT then transitions to PENDING_APPROVAL
+    assert order["status"] == "pending_approval"
     assert order["currency"] == "KZT"
 
 
-def test_submit_for_approval_auto_approve(payment_service_memory):
-    """Тест: submit_for_approval без политики -> auto-approve."""
+def test_submit_for_approval_no_policy(payment_service_memory):
+    """Тест: submit_for_approval без политики оставляет pending_approval."""
     order_id = payment_service_memory.create_payment_order(
         tenant_id="tenant-123",
         amount=50000.0,
@@ -72,8 +73,8 @@ def test_submit_for_approval_auto_approve(payment_service_memory):
     payment_service_memory.submit_for_approval(order_id, "tenant-123")
     
     order = payment_service_memory.get_payment_order(order_id)
-    assert order["status"] == "approved"
-    assert order["approved_at"] is not None
+    assert order["status"] == "pending_approval"
+    assert order["approved_at"] is None
 
 
 def test_submit_for_approval_with_policy(payment_service_memory):
@@ -242,10 +243,10 @@ def test_reject_idempotent(payment_service_memory):
     payment_service_memory.submit_for_approval(order_id, "tenant-123")
 
     # Первое отклонение
-    payment_service_memory.reject(order_id, "tenant-123", "accountant")
+    payment_service_memory.reject(order_id, "tenant-123", "accountant", comment="Отклонено")
 
     # Второе отклонение (идемпотентно)
-    payment_service_memory.reject(order_id, "tenant-123", "accountant")
+    payment_service_memory.reject(order_id, "tenant-123", "accountant", comment="Отклонено")
     
     order = payment_service_memory.get_payment_order(order_id)
     assert order["status"] == "rejected"
@@ -263,11 +264,11 @@ def test_reject_after_approved_fails(payment_service_memory):
     )
     
     payment_service_memory.submit_for_approval(order_id, "tenant-123")
-    # Auto-approve (нет политики)
+    payment_service_memory.approve(order_id, "tenant-123", "director", comment="Одобрено")
     
     # Пытаемся отклонить после одобрения
     with pytest.raises(InvalidApprovalError) as exc_info:
-        payment_service_memory.reject(order_id, "tenant-123", "accountant")
+        payment_service_memory.reject(order_id, "tenant-123", "accountant", comment="Отклонено")
     
     assert "одобрено" in str(exc_info.value).lower() or "approved" in str(exc_info.value).lower() or "экспортировано" in str(exc_info.value).lower() or "exported" in str(exc_info.value).lower()
 
@@ -284,7 +285,7 @@ def test_export_csv(payment_service_memory):
     )
     
     payment_service_memory.submit_for_approval(order_id, "tenant-123")
-    # Auto-approve
+    payment_service_memory.approve(order_id, "tenant-123", "director", comment="Одобрено")
     
     result = payment_service_memory.export(order_id, "tenant-123", format="csv")
     
@@ -308,7 +309,7 @@ def test_export_not_approved_fails(payment_service_memory):
         created_by_role="accountant"
     )
     
-    # Пытаемся экспортировать draft
+    # Пытаемся экспортировать не-APPROVED
     with pytest.raises(InvalidApprovalError) as exc_info:
         payment_service_memory.export(order_id, "tenant-123", format="csv")
     

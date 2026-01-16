@@ -56,6 +56,7 @@ def test_auto_match_exact_amount(services):
     
     # Auto-approve
     payment_service.submit_for_approval(order_id, "tenant-123")
+    payment_service.approve(order_id, "tenant-123", "director", comment="Одобрено")
     
     # Создаём выписку
     statement_id = reconciliation_service.ingest_statement(
@@ -121,6 +122,7 @@ def test_auto_match_with_tolerance(services):
     )
     
     payment_service.submit_for_approval(order_id, "tenant-123")
+    payment_service.approve(order_id, "tenant-123", "director", comment="Одобрено")
     
     # Создаём выписку
     statement_id = reconciliation_service.ingest_statement(

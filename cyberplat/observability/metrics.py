@@ -218,6 +218,33 @@ if _prometheus_available:
         ),
     )
 
+    payments_state_transition_total = _get_or_create_collector(
+        "payments_state_transition_total",
+        lambda: Counter(
+            "payments_state_transition_total",
+            "Total number of payment state transitions",
+            ["from_state", "to_state"],
+        ),
+    )
+
+    payments_approved_total = _get_or_create_collector(
+        "payments_approved_total",
+        lambda: Counter(
+            "payments_approved_total",
+            "Total number of payment approvals",
+            [],
+        ),
+    )
+
+    payments_rejected_total = _get_or_create_collector(
+        "payments_rejected_total",
+        lambda: Counter(
+            "payments_rejected_total",
+            "Total number of payment rejections",
+            [],
+        ),
+    )
+
     # Reconciliation метрики
     reconciliation_transactions_total = _get_or_create_collector(
         "reconciliation_transactions_total",
