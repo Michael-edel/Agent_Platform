@@ -951,6 +951,162 @@ curl http://localhost:8000/metrics | grep payment_
 - Нужно переотправить после исправления данных артефакта
 - Тестирование интеграции
 
+## Money Ops — инциденты
+
+Операционные playbooks для инцидентов в денежном контуре.
+
+### 1C Integration Failures Spike
+
+**Symptoms:**
+- Alert: `MoneyOpsOneCJobsSuccessRatioFastBurn` или `MoneyOpsOneCJobsSuccessRatioSlowBurn`
+- Метрика: `onec_job_outcomes_total{status="failed"}` растёт
+- Dashboard: панель "1C Failures by Error Code" показывает рост
+- Alert: `MoneyOpsOneCFailuresSpike`
+
+**Immediate actions:**
+1. Проверить Grafana dashboard "Money Ops v1" → панель "1C Failures by Error Code"
+2. Определить преобладающий `error_code`:
+   - `onec_auth_error` → проверить credentials в настройках tenant
+   - `onec_transport_error` → проверить доступность 1С API (network, firewall)
+   - `onec_response_5xx` → проблема на стороне 1С
+   - `onec_circuit_open` → circuit breaker открыт (fail-fast mode)
+3. Проверить backlog: `money_ops_queue_backlog{queue="onec_jobs"}`
+
+**How to mitigate:**
+- **Circuit breaker открыт:** Подождать cooldown (2 минуты), затем проверить доступность 1С
+- **Auth error:** Обновить credentials через API `/api/v1/integrations/onec/settings`
+- **Transport error:** Проверить сеть, firewall, DNS
+- **1С недоступна:** Использовать manual fallback через `/api/v1/cases/{case_id}/sync/onec`
+- **Backlog растёт:** Увеличить количество worker процессов (если возможно)
+
+**How to verify recovery:**
+- Метрика `onec_job_outcomes_total{status="succeeded"}` начинает расти
+- Backlog уменьшается: `money_ops_queue_backlog{queue="onec_jobs"}` → 0
+- Alert перестаёт firing
+
+---
+
+### Reconciliation Auto-Match Rate Dropped
+
+**Symptoms:**
+- Метрика: `money_ops:reconciliation_auto_match_rate < 0.70` (KPI, не paging)
+- Dashboard: панель "Reconciliation Auto-Match Rate" показывает падение
+- Метрика: `reconciliation_unmatched_total` растёт
+
+**Immediate actions:**
+1. Проверить количество несопоставленных транзакций: `reconciliation_unmatched_total`
+2. Проверить наличие approved/exported payment orders для tenant
+3. Проверить логи на ошибки парсинга CSV или mapping
+
+**How to mitigate:**
+- **Нет payment orders:** Создать payment orders для несопоставленных транзакций
+- **Низкий confidence:** Использовать manual match через `/api/v1/reconciliation/match`
+- **Ошибки парсинга:** Проверить формат CSV (date, amount, description, counterparty)
+- **Stuck statements:** Проверить stuck detectors (см. ниже)
+
+**How to verify recovery:**
+- `reconciliation_auto_match_rate` возвращается к > 0.70
+- `reconciliation_unmatched_total` уменьшается
+- Новые транзакции автоматически сопоставляются
+
+---
+
+### Approval Backlog Grows
+
+**Symptoms:**
+- Alert: `MoneyOpsPaymentOrdersBacklogHigh`
+- Метрика: `payment_orders_backlog{status="pending_approval"} > 50`
+- Dashboard: панель "Payment Orders Backlog" показывает рост
+
+**Immediate actions:**
+1. Проверить stuck detectors: застрявшие поручения (> 8 часов)
+2. Проверить политику согласования для tenant
+3. Проверить наличие задач в кейсах: "Платёж ожидает согласования"
+
+**How to mitigate:**
+- **Stuck orders:** Использовать stuck detector для создания задач в кейсах
+- **Нет approvers:** Уведомить ответственных (director, accountant) через кейсы
+- **Политика слишком строгая:** Временно снизить threshold или отключить политику (auto-approve)
+- **Manual approve:** Использовать `/api/v1/payments/orders/{id}/approve` для ручного одобрения
+
+**How to verify recovery:**
+- `payment_orders_backlog{status="pending_approval"}` уменьшается
+- Alert перестаёт firing
+- Новые поручения проходят согласование в срок
+
+---
+
+### Circuit Breaker Opened
+
+**Symptoms:**
+- Alert: `MoneyOpsOneCCircuitBreakerOpen`
+- Метрика: `onec_circuit_open_total` увеличивается
+- Все запросы к 1С fail-fast с `error_code="onec_circuit_open"`
+
+**Immediate actions:**
+1. Проверить доступность 1С API (ping, curl)
+2. Проверить логи на транспортные ошибки (timeout, connection)
+3. Проверить network/firewall между приложением и 1С
+
+**How to mitigate:**
+- **1С недоступна:** Подождать восстановления, circuit закроется автоматически через cooldown (2 минуты)
+- **Network issue:** Исправить сетевую проблему
+- **1С перегружена:** Связаться с администраторами 1С
+- **Degraded mode:** Jobs будут rescheduled позже (не тратят попытки)
+
+**How to verify recovery:**
+- Circuit breaker закрывается автоматически после cooldown
+- Успешные запросы к 1С возобновляются
+- Метрика `onec_job_outcomes_total{status="succeeded"}` растёт
+
+---
+
+### Reconciliation Stuck
+
+**Symptoms:**
+- Выписки в статусе `parsed` с несопоставленными транзакциями > 24 часов
+- Метрика: `reconciliation_unmatched_total` не уменьшается
+- Stuck detector создаёт задачи в кейсах
+
+**Immediate actions:**
+1. Проверить stuck statements через stuck detector
+2. Проверить наличие задач "Требуется ручная сверка выписки"
+3. Проверить логи на ошибки auto-match
+
+**How to mitigate:**
+- **Manual match:** Использовать `/api/v1/reconciliation/match` для ручного сопоставления
+- **Проверить payment orders:** Убедиться, что есть approved orders для сопоставления
+- **Исправить данные:** Обновить payment orders или транзакции для корректного matching
+
+**How to verify recovery:**
+- Выписки переходят в статус `reconciled`
+- `reconciliation_unmatched_total` уменьшается
+- Новые выписки обрабатываются автоматически
+
+---
+
+### Approval Stuck
+
+**Symptoms:**
+- Payment orders в статусе `pending_approval` > 8 часов
+- Stuck detector создаёт задачи "Платёж ожидает согласования"
+- Метрика: `payment_orders_backlog{status="pending_approval"}` не уменьшается
+
+**Immediate actions:**
+1. Проверить stuck orders через stuck detector
+2. Проверить наличие задач в кейсах
+3. Проверить политику согласования (может быть слишком строгой)
+
+**How to mitigate:**
+- **Manual approve:** Использовать `/api/v1/payments/orders/{id}/approve` с правильной ролью
+- **Обновить политику:** Временно снизить threshold или отключить
+- **Уведомить approvers:** Через кейсы или внешние каналы
+
+**How to verify recovery:**
+- Поручения переходят в статус `approved` или `rejected`
+- Backlog уменьшается
+- Новые поручения проходят согласование в срок
+
 ## Банковская выписка и сверка (MVP)
 
 API для импорта банковских выписок и автоматического сопоставления транзакций с платёжными поручениями.

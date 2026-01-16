@@ -102,3 +102,13 @@ CyberPlat:
 ## 11. Контактные лица
 
 Контактные лица по вопросам SLA указываются в основном договоре или отдельном приложении.
+
+---
+
+## Техническое приложение
+
+**SLO и целевые показатели:**
+- [SLO_MONEY_OPS.md](SLO_MONEY_OPS.md) — Service Level Objectives для денежного контура (Payment Orders, Reconciliation, 1C Integration)
+
+**Операционные playbooks:**
+- [RUNBOOK.md](RUNBOOK.md) — раздел "Money Ops — инциденты" для диагностики и реагирования на инциденты

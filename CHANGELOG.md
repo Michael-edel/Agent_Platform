@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Enterprise Hardening: Money Ops SLO/alerts/dashboard/degradation** (`cyberplat/money_ops/`, `monitoring/`):
+  - SLI/SLO определения для Money Ops контура (Payment Orders, Reconciliation, 1C Integration)
+  - Prometheus recording rules и burn-rate alerts (fast/slow с low-traffic guard)
+  - Grafana dashboard "Money Ops v1" с панелями для latency, backlog, outcomes, auto-match rate
+  - Circuit breaker для 1C интеграции (fail-fast при недоступности)
+  - Stuck detectors для approval и reconciliation (создание задач в кейсах)
+  - Backlog metrics updater (периодическое обновление метрик)
+  - Runbook incident playbooks для Money Ops инцидентов
+  - Тесты: circuit breaker, stuck detectors
+
 - **Банковская выписка и сверка (MVP)** (`cyberplat/reconciliation/`, `app/api/reconciliation.py`):
   - Импорт банковских выписок (CSV)
   - Автоматическое сопоставление транзакций с payment orders (confidence-based)
