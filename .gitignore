@@ -65,6 +65,9 @@ platform.db
 *.pdf
 *.json
 
+# Allow checked-in demo PDF for pilot
+!demo/demo-invoice.pdf
+
 # Allow checked-in Grafana dashboards
 !observability/grafana/dashboards/*.json
 !monitoring/grafana/dashboards/*.json

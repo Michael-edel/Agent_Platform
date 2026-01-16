@@ -18,6 +18,8 @@ docker compose up -d
 
 ```powershell
 pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action approve
+# или с явным tenant:
+pwsh -File .\scripts\manual-approver-flow.ps1 -TenantId "tenant-123" -PaymentId "<order_id>" -Action approve
 ```
 
 Отклонить:
@@ -27,6 +29,10 @@ pwsh -File .\scripts\manual-approver-flow.ps1 -PaymentId "<order_id>" -Action re
 ```
 
 Если хотите прогнать цепочку “бухгалтер → директор” одной командой — используйте `scripts/pilot-demo-v1.ps1` (см. `docs/testing/pilot-demo-v1.md`).
+
+## Значения по умолчанию
+
+- `TenantId`: `demo-tenant`
 
 ## Что делает скрипт
 

@@ -13,8 +13,11 @@ Pilot Demo v1 — один скрипт для цепочки "бухгалте�
 
 [CmdletBinding()]
 Param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$PdfPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$TenantId = "demo-tenant",
 
     [Parameter(Mandatory = $false)]
     [ValidateSet("approve","reject")]
@@ -64,8 +67,13 @@ $accountantSkipped = $null
 $approverStatus = $null
 
 try {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    if (-not $PdfPath) {
+        $PdfPath = (Join-Path $repoRoot "demo\demo-invoice.pdf")
+    }
+
     if (-not (Test-Path $PdfPath)) {
-        Fail("PDF файл не найден: $PdfPath")
+        Fail("PDF файл не найден: $PdfPath. Укажите -PdfPath или сгенерируйте demo PDF через scripts/gen-demo-invoice-pdf.py")
     }
 
     Write-Step "Проверка доступности сервиса (/health)"
@@ -83,7 +91,7 @@ try {
     $accountantScript = Join-Path $PSScriptRoot "manual-accountant-flow.ps1"
     if (-not (Test-Path $accountantScript)) { Fail("Не найден скрипт: $accountantScript") }
 
-    $accountantOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $accountantScript -PdfPath $PdfPath 2>&1 | Out-String
+    $accountantOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $accountantScript -PdfPath $PdfPath -TenantId $TenantId 2>&1 | Out-String
     $accountantExit = $LASTEXITCODE
     $accountantOut | Set-Content -Path $logFile -Encoding UTF8
     Write-Ok("Лог сохранён: $logFile")
@@ -100,35 +108,50 @@ try {
     Write-Step "Извлечение PaymentId из вывода бухгалтера"
     $paymentId = Try-Parse $accountantOut "^PaymentId:\s*([^\s]+)\s*$"
     if (-not $paymentId) {
-        Fail("PaymentId не найден в выводе бухгалтерского скрипта. Проверьте лог: $logFile")
+        $noPaymentReason = Try-Parse $accountantOut "^(PaymentId не получен:.*)$"
+        if ($noPaymentReason) {
+            Write-Warn($noPaymentReason)
+            $stepsSkipped.Add("director $DirectorAction (нет PaymentId)") | Out-Null
+            $finalStatus = $null
+        } else {
+            Fail("PaymentId не найден в выводе бухгалтерского скрипта. Проверьте лог: $logFile")
+        }
+    } else {
+        Write-Ok("PaymentId найден: $paymentId")
+        $stepsOk.Add("extract PaymentId") | Out-Null
     }
-    Write-Ok("PaymentId найден: $paymentId")
-    $stepsOk.Add("extract PaymentId") | Out-Null
 
-    Write-Step "Запуск согласующего (manual-approver-flow.ps1) — действие директора: $DirectorAction"
-    $approverScript = Join-Path $PSScriptRoot "manual-approver-flow.ps1"
-    if (-not (Test-Path $approverScript)) { Fail("Не найден скрипт: $approverScript") }
+    if ($paymentId) {
+        Write-Step "Запуск согласующего (manual-approver-flow.ps1) — действие директора: $DirectorAction"
+        $approverScript = Join-Path $PSScriptRoot "manual-approver-flow.ps1"
+        if (-not (Test-Path $approverScript)) { Fail("Не найден скрипт: $approverScript") }
 
-    $approverOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $approverScript -PaymentId $paymentId -Action $DirectorAction -Reason $Reason 2>&1 | Out-String
-    $approverExit = $LASTEXITCODE
+        $approverOut = & pwsh -NoProfile -ExecutionPolicy Bypass -File $approverScript -PaymentId $paymentId -TenantId $TenantId -Action $DirectorAction -Reason $Reason 2>&1 | Out-String
+        $approverExit = $LASTEXITCODE
 
-    # best-effort: директорский скрипт может "пропустить" эндпоинты и выйти 0
-    if ($approverExit -ne 0) {
-        Fail("Скрипт согласующего завершился с ошибкой (exit code=$approverExit). Вывод: `n$approverOut")
+        # best-effort: директорский скрипт может "пропустить" эндпоинты и выйти 0
+        if ($approverExit -ne 0) {
+            Fail("Скрипт согласующего завершился с ошибкой (exit code=$approverExit). Вывод: `n$approverOut")
+        }
+        $stepsOk.Add("director $DirectorAction") | Out-Null
+
+        # best-effort: финальный статус из вывода согласующего
+        $approverStatus = Try-Parse $approverOut "статус платежа:\s*([^\s]+)\s*$"
+        if ($approverStatus) { $finalStatus = $approverStatus }
     }
-    $stepsOk.Add("director $DirectorAction") | Out-Null
-
-    # best-effort: финальный статус из вывода согласующего
-    $approverStatus = Try-Parse $approverOut "статус платежа:\s*([^\s]+)\s*$"
-    if ($approverStatus) { $finalStatus = $approverStatus }
 
     Write-Host ""
     Write-Host "=============================="
     Write-Host "ИТОГ ПИЛОТА"
     Write-Host "=============================="
     Write-Host ("- PDF: " + $PdfPath)
+    Write-Host ("- TenantId: " + $TenantId)
     Write-Host ("- Лог бухгалтера: " + $logFile)
-    Write-Host ("- PaymentId: " + $paymentId)
+    if ($paymentId) {
+        Write-Host ("- PaymentId: " + $paymentId)
+    } else {
+        Write-Host "- PaymentId: (не получен)"
+    }
     if ($finalStatus) {
         Write-Host ("- Финальный статус платежа: " + $finalStatus)
     } else {

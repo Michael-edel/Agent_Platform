@@ -17,6 +17,12 @@
 pwsh -File .\scripts\local-qa.ps1
 ```
 
+По умолчанию для smoke upload используется `TenantId=demo-tenant`. Можно переопределить:
+
+```powershell
+pwsh -File .\scripts\local-qa.ps1 -TenantId "tenant-123"
+```
+
 ## PASS / FAIL
 
 **PASS**, если скрипт завершился с кодом `0` и печатает:

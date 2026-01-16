@@ -12,19 +12,36 @@ docker compose up -d
 
 ## Запуск (PowerShell 7)
 
-Одобрить директором:
+Запуск “из коробки” (TenantId и PDF по умолчанию):
 
 ```powershell
-pwsh -File .\scripts\pilot-demo-v1.ps1 -PdfPath "C:\path\to\invoice.pdf" -DirectorAction approve
+pwsh -File .\scripts\pilot-demo-v1.ps1
+```
+
+Одобрить директором с явными параметрами:
+
+```powershell
+pwsh -File .\scripts\pilot-demo-v1.ps1 -TenantId "tenant-123" -PdfPath "C:\path\to\invoice.pdf" -DirectorAction approve
 ```
 
 Отклонить директором:
 
 ```powershell
-pwsh -File .\scripts\pilot-demo-v1.ps1 -PdfPath "C:\path\to\invoice.pdf" -DirectorAction reject -Reason "Отклонено для теста"
+pwsh -File .\scripts\pilot-demo-v1.ps1 -DirectorAction reject -Reason "Отклонено для теста"
 ```
 
-Скрипт сохраняет лог бухгалтерского прогона в `logs/pilot_demo_*.log` и печатает `PaymentId`.
+Скрипт сохраняет лог бухгалтерского прогона в `logs/pilot_demo_*.log` и печатает `PaymentId` (если payment API доступен).
+
+## Значения по умолчанию
+
+- `TenantId`: `demo-tenant`
+- `PdfPath`: `demo/demo-invoice.pdf` (файл можно пересоздать командой `python scripts/gen-demo-invoice-pdf.py`)
+
+## Поведение по PaymentId
+
+- Если payment API доступен — в логе бухгалтера будет строка `PaymentId: <id>` и pilot demo запустит шаг директора.
+- Если endpoint недоступен (404/405) — в логе будет строка `PaymentId не получен: endpoint недоступен ...`, а шаг директора будет пропущен.
+- Если backend вернул 5xx/таймаут/битый JSON на create payment — demo **падает** (это честная поломка пилота).
 
 ## Где смотреть результат
 

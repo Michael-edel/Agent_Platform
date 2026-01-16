@@ -10,7 +10,10 @@
 [CmdletBinding()]
 Param(
     [Parameter(Mandatory = $false)]
-    [string]$PdfPath
+    [string]$PdfPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$TenantId = "demo-tenant"
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,21 +65,29 @@ function Invoke-Json([string]$Method, [string]$Url, [hashtable]$Headers, [string
     return $text
 }
 
-function Get-OpenApiPaths() {
+function Invoke-JsonWithStatus(
+    [string]$Method,
+    [string]$Url,
+    [hashtable]$Headers,
+    [string]$BodyJson = $null,
+    [int]$TimeoutSeconds = 20
+) {
+    $tmp = [System.IO.Path]::GetTempFileName()
     try {
-        $raw = Invoke-Json "GET" "http://localhost:8000/openapi.json" @{}
-        $obj = $raw | ConvertFrom-Json
-        return $obj.paths
-    } catch {
-        return $null
-    }
-}
+        $args = @("-s", "--max-time", "$TimeoutSeconds", "-o", $tmp, "-w", "%{http_code}", "-X", $Method, $Url)
+        foreach ($k in $Headers.Keys) { $args += @("-H", "${k}: $($Headers[$k])") }
+        if ($BodyJson) { $args += @("-H", "Content-Type: application/json", "--data", $BodyJson) }
 
-function Has-OpenApiPath($paths, [string]$Path, [string]$Method) {
-    if (-not $paths) { return $false }
-    $p = $paths.$Path
-    if (-not $p) { return $false }
-    return ($p.PSObject.Properties.Name -contains $Method.ToLower())
+        $statusText = & curl.exe @args
+        if ($LASTEXITCODE -ne 0) { throw "curl.exe завершился с ошибкой (exit code=$LASTEXITCODE)" }
+        $status = [int]$statusText
+
+        $bodyBytes = [System.IO.File]::ReadAllBytes($tmp)
+        $body = [System.Text.Encoding]::UTF8.GetString($bodyBytes)
+        return @{ status = $status; body = $body }
+    } finally {
+        try { Remove-Item -Force $tmp -ErrorAction SilentlyContinue } catch { }
+    }
 }
 
 $summaryDone = New-Object System.Collections.Generic.List[string]
@@ -92,15 +103,15 @@ $paymentIdNote = $null
 $paymentStatusNote = $null
 
 try {
+    # Корень репо (на уровень выше scripts/)
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
     if (-not $PdfPath) {
-        Write-Host "Нужно указать путь к PDF."
-        Write-Host "Пример запуска:"
-        Write-Host "  pwsh -File scripts/manual-accountant-flow.ps1 -PdfPath ""C:\path\to\invoice.pdf"""
-        exit 1
+        $PdfPath = (Join-Path $repoRoot "demo\demo-invoice.pdf")
     }
 
     if (-not (Test-Path $PdfPath)) {
-        Fail("Файл не найден: $PdfPath")
+        Fail("PDF файл не найден: $PdfPath. Укажите -PdfPath или сгенерируйте demo PDF через scripts/gen-demo-invoice-pdf.py")
     }
 
     Write-Step "Проверка доступности сервиса (/health)"
@@ -111,12 +122,11 @@ try {
     Write-Ok("/health (HTTP $healthCode)")
     $summaryDone.Add("/health") | Out-Null
 
-    $tenantId = "tenant-manual"
-    $headersTenant = @{ "X-Tenant-ID" = $tenantId }
+    $headersTenant = @{ "X-Tenant-ID" = $TenantId }
 
     Write-Step "Загрузка PDF (POST /documents/upload)"
     $uploadRespText = & curl.exe -s -X POST "http://localhost:8000/documents/upload" `
-        -H ("X-Tenant-ID: " + $tenantId) `
+        -H ("X-Tenant-ID: " + $TenantId) `
         -F ("file=@" + $PdfPath + ";type=application/pdf")
     if ($LASTEXITCODE -ne 0) {
         Fail("curl.exe upload завершился с ошибкой (exit code=$LASTEXITCODE)")
@@ -166,114 +176,92 @@ try {
     Write-Ok("Детали документа доступны")
     $summaryDone.Add("document detail") | Out-Null
 
-    # Платёжный контур (best-effort) — по OpenAPI
-    Write-Step "Платёжный контур (best-effort, по OpenAPI)"
-    $paths = Get-OpenApiPaths
-    if (-not $paths) {
-        Write-Warn("не удалось получить /openapi.json, пропускаю payment шаги")
-        $summarySkipped.Add("payment flow (openapi unavailable)") | Out-Null
-        if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
-    }
-    else {
-        # 1) create payment order
-        if (-not (Has-OpenApiPath $paths "/api/v1/payments/orders" "post")) {
-            Write-Warn("create payment order: эндпоинт /api/v1/payments/orders (POST) не найден")
-            $summarySkipped.Add("create payment order") | Out-Null
-            if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
+    # Платёжный контур (best-effort, без зависимости от OpenAPI)
+    Write-Step "Платёжный контур (best-effort)"
+    try {
+        $payloadObj = @{
+            amount = 1000
+            beneficiary_name = "Тестовый получатель"
+            beneficiary_account_iban = "KZ000000000000000000"
+            purpose = "Тестовый платеж (manual flow)"
+            created_by_role = "accountant"
+            currency = "KZT"
+        }
+        if ($caseId) { $payloadObj.case_id = $caseId }
+        $payload = $payloadObj | ConvertTo-Json
+
+        $create = Invoke-JsonWithStatus "POST" "http://localhost:8000/api/v1/payments/orders" $headersTenant $payload 25
+        if ($create.status -eq 404 -or $create.status -eq 405) {
+            Write-Warn("create payment order: endpoint недоступен (HTTP $($create.status))")
+            $summarySkipped.Add("create payment order (unavailable)") | Out-Null
+            $paymentIdNote = "PaymentId не получен: endpoint недоступен (HTTP $($create.status))"
+        }
+        elseif ($create.status -ge 200 -and $create.status -lt 300) {
+            $order = $null
+            try {
+                $order = ($create.body | ConvertFrom-Json)
+            } catch {
+                Fail("create payment order: ответ 2xx, но JSON не парсится (это поломка пилота)")
+            }
+            $orderId = $order.id
+            if (-not $orderId) {
+                Fail("create payment order: ответ 2xx, но нет поля id (это поломка пилота)")
+            }
+            $paymentId = $orderId
+            Write-Ok("PaymentOrder создан: id=$paymentId")
+            $summaryDone.Add("create payment order") | Out-Null
+
+            # submit for approval (роль бухгалтера)
+            $submit = Invoke-JsonWithStatus "POST" ("http://localhost:8000/api/v1/payments/orders/" + $paymentId + "/submit") $headersTenant $null 25
+            if ($submit.status -eq 404 -or $submit.status -eq 405) {
+                Write-Warn("submit: endpoint недоступен (HTTP $($submit.status))")
+                $summarySkipped.Add("submit for approval (unavailable)") | Out-Null
+            }
+            elseif ($submit.status -ge 200 -and $submit.status -lt 300) {
+                Write-Ok("submit: ok")
+                $summaryDone.Add("submit for approval") | Out-Null
+            }
+            elseif ($submit.status -ge 500) {
+                Fail("submit: серверная ошибка (HTTP $($submit.status)) — это поломка пилота")
+            }
+            else {
+                Fail("submit: ошибка (HTTP $($submit.status)) — проверьте контракт API. Body: $($submit.body)")
+            }
+        }
+        elseif ($create.status -ge 500) {
+            Fail("create payment order: серверная ошибка (HTTP $($create.status)) — это поломка пилота")
         }
         else {
-            try {
-                # Минимальный валидный payload (не привязываем к OCR/инвойсу).
-                $payload = @{
-                    amount = 1000
-                    beneficiary_name = "Тестовый получатель"
-                    beneficiary_account_iban = "KZ000000000000000000"
-                    purpose = "Тестовый платеж (manual flow)"
-                    created_by_role = "accountant"
-                    currency = "KZT"
-                } | ConvertTo-Json
-
-                $orderText = Invoke-Json "POST" "http://localhost:8000/api/v1/payments/orders" $headersTenant $payload
-                $order = $orderText | ConvertFrom-Json
-                $orderId = $order.id
-                if (-not $orderId) { throw "нет id в ответе create_payment_order" }
-                $paymentId = $orderId
-                Write-Ok("PaymentOrder создан: id=$orderId")
-                $summaryDone.Add("create payment order") | Out-Null
-
-                # 2) submit for approval
-                if (-not (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}/submit" "post")) {
-                    Write-Warn("submit: эндпоинт не найден")
-                    $summarySkipped.Add("submit for approval") | Out-Null
-                } else {
-                    try {
-                        $submitText = Invoke-Json "POST" ("http://localhost:8000/api/v1/payments/orders/" + $orderId + "/submit") $headersTenant
-                        $submit = $submitText | ConvertFrom-Json
-                        Write-Ok("submit: " + ($submit.message ?? "ok"))
-                        $summaryDone.Add("submit for approval") | Out-Null
-                    } catch {
-                        Write-Warn("submit: ошибка, пропускаю (" + $_.Exception.Message + ")")
-                        $summarySkipped.Add("submit for approval (failed)") | Out-Null
-                    }
-                }
-
-                # 3) approve (best-effort: роль accountant)
-                if (-not (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}/approve" "post")) {
-                    Write-Warn("approve: эндпоинт не найден")
-                    $summarySkipped.Add("approve") | Out-Null
-                } else {
-                    try {
-                        $approvePayload = @{ role = "accountant"; comment = "manual flow"; decided_by = "manual-script" } | ConvertTo-Json
-                        $approveText = Invoke-Json "POST" ("http://localhost:8000/api/v1/payments/orders/" + $orderId + "/approve") $headersTenant $approvePayload
-                        $approve = $approveText | ConvertFrom-Json
-                        Write-Ok("approve: " + ($approve.message ?? "ok"))
-                        $summaryDone.Add("approve") | Out-Null
-                    } catch {
-                        Write-Warn("approve: ошибка, пропускаю (" + $_.Exception.Message + ")")
-                        $summarySkipped.Add("approve (failed)") | Out-Null
-                    }
-                }
-
-                # 4) export (csv)
-                if (-not (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}/export" "post")) {
-                    Write-Warn("export: эндпоинт не найден")
-                    $summarySkipped.Add("export") | Out-Null
-                } else {
-                    try {
-                        $exportPayload = @{ format = "csv" } | ConvertTo-Json
-                        $exportText = Invoke-Json "POST" ("http://localhost:8000/api/v1/payments/orders/" + $orderId + "/export") $headersTenant $exportPayload
-                        $export = $exportText | ConvertFrom-Json
-                        Write-Ok("export: " + ($export.message ?? "ok"))
-                        $summaryDone.Add("export") | Out-Null
-                    } catch {
-                        Write-Warn("export: ошибка, пропускаю (" + $_.Exception.Message + ")")
-                        $summarySkipped.Add("export (failed)") | Out-Null
-                    }
-                }
-            }
-            catch {
-                Write-Warn("payment flow: не удалось выполнить (ошибка: " + $_.Exception.Message + ")")
-                $summarySkipped.Add("payment flow (failed)") | Out-Null
-                if (-not $paymentId -and -not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: не удалось создать платеж (ошибка: $($_.Exception.Message))" }
-            }
+            Fail("create payment order: ошибка (HTTP $($create.status)) — проверьте контракт API. Body: $($create.body)")
         }
     }
+    catch {
+        # Curl timeout / transport error => FAIL (это поломка пилота)
+        Fail("payment flow: ошибка выполнения (" + $_.Exception.Message + ")")
+    }
 
-    # best-effort: получить статус платежа, если доступно
-    if ($paths -and $paymentId -and (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}" "get")) {
-        try {
-            $pText = Invoke-Json "GET" ("http://localhost:8000/api/v1/payments/orders/" + $paymentId) $headersTenant
-            $p = $pText | ConvertFrom-Json
-            $paymentStatus = $p.status
-            if (-not $paymentStatus) { $paymentStatus = $p.state }
-            if (-not $paymentStatus) { $paymentStatusNote = "Статус платежа получен, но поле status отсутствует" }
-        } catch {
-            $paymentStatusNote = "Не удалось получить статус платежа: $($_.Exception.Message)"
+    # best-effort: получить статус платежа (если endpoint есть)
+    if ($paymentId) {
+        $getP = Invoke-JsonWithStatus "GET" ("http://localhost:8000/api/v1/payments/orders/" + $paymentId) $headersTenant $null 20
+        if ($getP.status -eq 404 -or $getP.status -eq 405) {
+            $paymentStatusNote = "Статус платежа не получен: endpoint недоступен (HTTP $($getP.status))"
         }
-    } elseif (-not $paymentId) {
-        if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
-    } elseif (-not $paths -or -not (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}" "get")) {
-        $paymentStatusNote = "Статус платежа не получен: эндпоинт чтения платежа отсутствует в openapi"
+        elseif ($getP.status -ge 200 -and $getP.status -lt 300) {
+            try {
+                $p = ($getP.body | ConvertFrom-Json)
+                $paymentStatus = $p.status
+                if (-not $paymentStatus) { $paymentStatus = $p.state }
+                if (-not $paymentStatus) { $paymentStatusNote = "Статус платежа получен, но поле status отсутствует" }
+            } catch {
+                Fail("get payment: ответ 2xx, но JSON не парсится (это поломка пилота)")
+            }
+        }
+        elseif ($getP.status -ge 500) {
+            Fail("get payment: серверная ошибка (HTTP $($getP.status)) — это поломка пилота")
+        }
+        else {
+            Fail("get payment: ошибка (HTTP $($getP.status)) — проверьте контракт API. Body: $($getP.body)")
+        }
     }
 
     Write-Host ""

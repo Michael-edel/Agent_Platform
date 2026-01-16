@@ -14,6 +14,9 @@ Param(
     [string]$PaymentId,
 
     [Parameter(Mandatory = $false)]
+    [string]$TenantId = "demo-tenant",
+
+    [Parameter(Mandatory = $false)]
     [ValidateSet("approve","reject")]
     [string]$Action = "approve",
 
@@ -85,8 +88,7 @@ try {
     Write-Ok("/health (HTTP $healthCode)")
     $done.Add("/health") | Out-Null
 
-    $tenantId = "tenant-manual"
-    $headersTenant = @{ "X-Tenant-ID" = $tenantId }
+    $headersTenant = @{ "X-Tenant-ID" = $TenantId }
 
     Write-Step "Проверка OpenAPI"
     $paths = Get-OpenApiPaths

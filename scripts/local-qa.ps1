@@ -7,6 +7,12 @@
 - ExitCode 0 = PASS, 1 = FAIL.
 #>
 
+[CmdletBinding()]
+Param(
+    [Parameter(Mandatory = $false)]
+    [string]$TenantId = "demo-tenant"
+)
+
 $ErrorActionPreference = "Stop"
 
 # Корректный вывод русских сообщений в консоль (Windows Terminal / PowerShell 7).
@@ -90,7 +96,7 @@ try {
         Write-Host "Нет PDF файла в tests/fixtures/*.pdf — пропускаю smoke upload."
     }
     else {
-        $tenantId = "tenant-qa"
+        $tenantId = $TenantId
         Write-Host ("Использую fixture: " + $pdfFixture.FullName)
         $respText = & curl.exe -s -X POST "http://localhost:8000/documents/upload" `
             -H ("X-Tenant-ID: " + $tenantId) `
