@@ -26,6 +26,7 @@ if METRICS_ENABLED:
         from prometheus_client import (
             Counter,
             Histogram,
+            Gauge,
             REGISTRY,
             generate_latest,
             CONTENT_TYPE_LATEST,
@@ -217,6 +218,44 @@ if _prometheus_available:
         ),
     )
 
+    # Money Ops backlog метрики
+    money_ops_queue_backlog = _get_or_create_collector(
+        "money_ops_queue_backlog",
+        lambda: Gauge(
+            "money_ops_queue_backlog",
+            "Backlog depth for money ops queues",
+            ["queue"],  # queue: onec_jobs, payment_approvals, reconciliation
+        ),
+    )
+
+    payment_orders_backlog = _get_or_create_collector(
+        "payment_orders_backlog",
+        lambda: Gauge(
+            "payment_orders_backlog",
+            "Number of payment orders in backlog",
+            ["status"],  # status: pending_approval, etc.
+        ),
+    )
+
+    reconciliation_unmatched_total = _get_or_create_collector(
+        "reconciliation_unmatched_total",
+        lambda: Gauge(
+            "reconciliation_unmatched_total",
+            "Number of unmatched reconciliation transactions",
+            [],
+        ),
+    )
+
+    # Circuit breaker метрики
+    onec_circuit_open_total = _get_or_create_collector(
+        "onec_circuit_open_total",
+        lambda: Counter(
+            "onec_circuit_open_total",
+            "Total number of times 1C circuit breaker opened",
+            [],
+        ),
+    )
+
     recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
         lambda: Histogram(
@@ -246,6 +285,10 @@ else:
     reconciliation_auto_match_rate = None
     reconciliation_latency_seconds = None
     reconciliation_failures_total = None
+    money_ops_queue_backlog = None
+    payment_orders_backlog = None
+    reconciliation_unmatched_total = None
+    onec_circuit_open_total = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:

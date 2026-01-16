@@ -41,7 +41,8 @@ class OneCClient:
         username: Optional[str] = None,
         password: Optional[str] = None,
         timeout: int = 10,
-        max_retries: int = 3
+        max_retries: int = 3,
+        circuit_breaker=None
     ):
         """
         Инициализировать клиент 1С.
@@ -62,6 +63,7 @@ class OneCClient:
         self.password = password
         self.timeout = timeout
         self.max_retries = max_retries
+        self.circuit_breaker = circuit_breaker
     
     def _headers(self, idempotency_key: Optional[str] = None, correlation_id: Optional[str] = None) -> Dict[str, str]:
         """Сформировать заголовки запроса."""
@@ -125,6 +127,26 @@ class OneCClient:
         url = f"{self.base_url}/{path.lstrip('/')}"
         headers = self._headers(idempotency_key=idempotency_key, correlation_id=correlation_id)
         
+        # Проверяем circuit breaker
+        if self.circuit_breaker:
+            try:
+                return self.circuit_breaker.call(self._do_request, method, url, headers, json_data)
+            except Exception as e:
+                if isinstance(e, Exception) and hasattr(e, 'error_code') and e.error_code == "circuit_open":
+                    raise OneCTransportError("1С недоступна (circuit breaker открыт). Повторите попытку позже.")
+                raise
+        
+        # Без circuit breaker - обычная логика
+        return self._do_request(method, url, headers, json_data)
+    
+    def _do_request(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        json_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Внутренний метод для выполнения запроса."""
         last_exception = None
         
         for attempt in range(self.max_retries + 1):
@@ -139,11 +161,18 @@ class OneCClient:
                 
                 # Успешный ответ
                 if 200 <= response.status_code < 300:
-                    return response.json() if response.content else {}
+                    result = response.json() if response.content else {}
+                    # Записываем успех в circuit breaker (если есть)
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_success()
+                    return result
                 
                 # Ошибка аутентификации
                 if response.status_code == 401:
-                    raise OneCAuthError("Ошибка аутентификации в 1С (401)")
+                    error = OneCAuthError("Ошибка аутентификации в 1С (401)")
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+                    raise error
                 
                 # Другие ошибки ответа
                 error_msg = f"1C API вернул статус {response.status_code}"
@@ -156,11 +185,15 @@ class OneCClient:
                 
                 # Если это последняя попытка, выбрасываем ошибку
                 if attempt == self.max_retries:
-                    raise OneCResponseError(
+                    error = OneCResponseError(
                         status_code=response.status_code,
                         message=error_msg,
                         response_text=response.text[:500]  # Ограничиваем длину
                     )
+                    # Записываем ошибку в circuit breaker (только для 5xx)
+                    if self.circuit_breaker and 500 <= response.status_code < 600:
+                        self.circuit_breaker.record_failure()
+                    raise error
                 
                 # Retry для 5xx ошибок
                 if 500 <= response.status_code < 600:
@@ -179,7 +212,11 @@ class OneCClient:
             except (Timeout, ConnectionError) as e:
                 last_exception = e
                 if attempt == self.max_retries:
-                    raise OneCTransportError(f"Ошибка транспорта при запросе к 1С: {str(e)}")
+                    error = OneCTransportError(f"Ошибка транспорта при запросе к 1С: {str(e)}")
+                    # Записываем транспортную ошибку в circuit breaker
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+                    raise error
                 
                 backoff = self._calculate_backoff(attempt)
                 logger.warning(f"Ошибка транспорта, retry через {backoff:.2f}s (попытка {attempt + 1}/{self.max_retries + 1}): {e}")
@@ -192,7 +229,11 @@ class OneCClient:
             except RequestException as e:
                 last_exception = e
                 if attempt == self.max_retries:
-                    raise OneCTransportError(f"Ошибка запроса к 1С: {str(e)}")
+                    error = OneCTransportError(f"Ошибка запроса к 1С: {str(e)}")
+                    # Записываем ошибку в circuit breaker
+                    if self.circuit_breaker:
+                        self.circuit_breaker.record_failure()
+                    raise error
                 
                 backoff = self._calculate_backoff(attempt)
                 logger.warning(f"Ошибка запроса, retry через {backoff:.2f}s (попытка {attempt + 1}/{self.max_retries + 1}): {e}")

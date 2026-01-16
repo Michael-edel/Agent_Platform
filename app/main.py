@@ -414,7 +414,67 @@ async def startup_event():
     finally:
         session.close()
     
-    logger.info("Приложение готово к работе (API + Worker + Agent Platform + Billing + Entitlements + Product/UI + Webhooks)")
+    # Периодическое обновление backlog метрик (каждые 30 секунд)
+    def update_backlog_metrics_periodically():
+        """Периодически обновлять backlog метрики."""
+        import time
+        from cyberplat.money_ops.backlog_metrics import update_backlog_metrics
+        
+        while not stop_event or not stop_event.is_set():
+            try:
+                update_backlog_metrics()
+            except Exception as e:
+                logger.warning(f"Ошибка при обновлении backlog метрик: {e}")
+            time.sleep(30)  # Обновляем каждые 30 секунд
+    
+    if metrics_enabled:
+        backlog_thread = threading.Thread(target=update_backlog_metrics_periodically, daemon=True)
+        backlog_thread.start()
+        logger.info("Backlog metrics updater запущен")
+    
+    # Периодический запуск stuck detectors (каждые 1 час)
+    def run_stuck_detectors_periodically():
+        """Периодически запускать stuck detectors."""
+        import time
+        from cyberplat.money_ops.stuck_detectors import detect_stuck_approvals, detect_stuck_reconciliation
+        from cyberplat.payments.payment_service import PaymentService
+        from cyberplat.reconciliation.reconciliation_service import ReconciliationService
+        from cyberplat.case_service import CaseService
+        
+        payment_service = PaymentService()
+        reconciliation_service = ReconciliationService()
+        case_service = CaseService()
+        
+        while not stop_event or not stop_event.is_set():
+            try:
+                # Проверяем застрявшие approvals
+                stuck_approvals = detect_stuck_approvals(
+                    payment_service=payment_service,
+                    case_service=case_service,
+                    threshold_hours=8
+                )
+                if stuck_approvals:
+                    logger.warning(f"Обнаружено {len(stuck_approvals)} застрявших approvals")
+                
+                # Проверяем застрявшие reconciliation
+                stuck_reconciliation = detect_stuck_reconciliation(
+                    reconciliation_service=reconciliation_service,
+                    case_service=case_service,
+                    threshold_hours=24
+                )
+                if stuck_reconciliation:
+                    logger.warning(f"Обнаружено {len(stuck_reconciliation)} застрявших reconciliation statements")
+                
+            except Exception as e:
+                logger.warning(f"Ошибка при запуске stuck detectors: {e}")
+            
+            time.sleep(3600)  # Каждый час
+    
+    stuck_detector_thread = threading.Thread(target=run_stuck_detectors_periodically, daemon=True)
+    stuck_detector_thread.start()
+    logger.info("Stuck detectors запущены")
+    
+    logger.info("Приложение готово к работе (API + Worker + Agent Platform + Billing + Entitlements + Product/UI + Webhooks + Money Ops)")
 
 
 @app.on_event("shutdown")

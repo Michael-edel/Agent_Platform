@@ -8,6 +8,7 @@ from typing import Optional
 from cyberplat.integrations.integration_job_service import IntegrationJobService
 from cyberplat.integrations.onec_settings_service import OneCSettingsService
 from cyberplat.integrations.onec_client import OneCClient, OneCAuthError, OneCTransportError, OneCResponseError
+from cyberplat.integrations.circuit_breaker import CircuitBreaker
 from cyberplat.integrations.onec_mapper import map_counterparty, map_contract, map_invoice, MappingValidationError
 from cyberplat.integrations.idempotency_service import IdempotencyService
 from cyberplat.case_service import CaseService
@@ -40,7 +41,8 @@ class IntegrationWorker:
         idempotency_service: IdempotencyService,
         case_service: Optional[CaseService] = None,
         interval_seconds: float = 5.0,
-        stop_event: Optional[threading.Event] = None
+        stop_event: Optional[threading.Event] = None,
+        circuit_breaker: Optional[CircuitBreaker] = None
     ):
         """
         Инициализировать воркер.
@@ -61,6 +63,12 @@ class IntegrationWorker:
         self.stop_event = stop_event or threading.Event()
         self.is_running = False
         self.worker_thread: Optional[threading.Thread] = None
+        self.circuit_breaker = circuit_breaker or CircuitBreaker(
+            failure_threshold=10,
+            window_seconds=60.0,
+            cooldown_seconds=120.0,
+            name="onec"
+        )
     
     def _process_onec_job(self, job: dict) -> None:
         """Обработать один job для провайдера 1С."""
@@ -93,14 +101,15 @@ class IntegrationWorker:
                 )
                 return
             
-            # Создаём клиент 1С
+            # Создаём клиент 1С с circuit breaker
             client = OneCClient(
                 base_url=settings["base_url"],
                 auth_type=settings["auth_type"],
                 token=settings.get("token"),
                 username=settings.get("username"),
                 password=settings.get("password"),
-                timeout=settings["timeout_seconds"]
+                timeout=settings["timeout_seconds"],
+                circuit_breaker=self.circuit_breaker
             )
             
             # Формируем idempotency_key
@@ -198,17 +207,36 @@ class IntegrationWorker:
                 if onec_failures_total:
                     onec_failures_total.labels(error_code="onec_auth_error").inc()
             
-        except (OneCTransportError, OneCResponseError) as e:
-            # Ошибки транспорта/ответа - retry
-            error_msg = str(e)
-            if isinstance(e, OneCResponseError):
-                error_code = f"onec_response_{e.status_code}"
-            else:
-                error_code = "onec_transport_error"
+        except OneCTransportError as e:
+            # Проверяем, не открыт ли circuit breaker
+            if self.circuit_breaker and self.circuit_breaker.get_state() == "open":
+                # Circuit открыт - не тратим попытки, reschedule позже
+                logger.warning(f"Job {job_id}: circuit breaker открыт, reschedule позже")
+                self.job_service.mark_failed(
+                    job_id,
+                    error_ru="1С недоступна (circuit breaker открыт). Повторите попытку позже.",
+                    error_code="onec_circuit_open",
+                    schedule_retry=True
+                )
+                return
             
+            # Обычная транспортная ошибка - retry
+            error_msg = str(e)
+            error_code = "onec_transport_error"
             self.job_service.mark_failed(
                 job_id,
-                error_ru=error_msg[:200],  # Ограничиваем длину
+                error_ru=error_msg[:200],
+                error_code=error_code,
+                schedule_retry=True
+            )
+            
+        except OneCResponseError as e:
+            # Ошибка ответа - retry
+            error_msg = str(e)
+            error_code = f"onec_response_{e.status_code}"
+            self.job_service.mark_failed(
+                job_id,
+                error_ru=error_msg[:200],
                 error_code=error_code,
                 schedule_retry=True
             )
