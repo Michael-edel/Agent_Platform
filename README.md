@@ -38,6 +38,19 @@ Production-grade multi-tenant SaaS платформа для обработки 
 
 Billing и usage **всегда** считаются из событий, не из прямых мутаций.
 
+## Smoke E2E (CI/local)
+
+Локально (через docker compose):
+
+```bash
+docker compose up -d --build
+docker compose exec -T app python -m pytest -q tests/smoke/test_demo_e2e.py
+```
+
+Примечания:
+- Для локального демо `docker-compose.yml` включает `DEMO_BOOTSTRAP_ENABLED=true` по умолчанию (создаётся `demo-tenant`).
+- Smoke тест запускается только если установлен `E2E_SMOKE_ENABLED=1` (в CI выставляется в workflow).
+
 ### Clean Architecture
 
 Проект следует Clean Architecture с разделением на слои:

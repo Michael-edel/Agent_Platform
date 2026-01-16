@@ -10,6 +10,10 @@
 docker compose up -d
 ```
 
+## Bootstrap demo tenant
+
+Для локального демо `docker-compose.yml` включает `DEMO_BOOTSTRAP_ENABLED=true` по умолчанию. При старте приложения автоматически создаётся **demo tenant** (`demo-tenant`) и минимальные настройки (идемпотентно).
+
 ## Запуск (PowerShell 7)
 
 Запуск “из коробки” (TenantId и PDF по умолчанию):

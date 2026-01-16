@@ -59,6 +59,9 @@ from cyberplat.stripe_webhook_handler import StripeWebhookHandler
 from cyberplat.kaspi_webhook_handler import KaspiWebhookHandler
 from cyberplat.kaspi_client import create_checkout_session as kaspi_create_checkout, charge_token as kaspi_charge_token
 
+# Demo tenant bootstrap (opt-in)
+from cyberplat.tenancy.demo import ensure_demo_tenant
+
 # Product/UI layer импорты перенесены в app/api/product.py
 
 # Настройка структурированного логирования
@@ -211,6 +214,14 @@ async def startup_event():
         event_service=event_service
     )
     agent_registry.register(payment_agent)
+
+    # Demo tenant bootstrap (safe, idempotent, opt-in)
+    demo_bootstrap_enabled = os.getenv("DEMO_BOOTSTRAP_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+    if demo_bootstrap_enabled:
+        try:
+            ensure_demo_tenant()
+        except Exception as e:
+            logger.warning("DEMO_BOOTSTRAP_ENABLED=true but bootstrap failed: %s", str(e)[:200], exc_info=True)
     
     # Инициализация S3 экспорта (опционально)
     s3_export_enabled = os.getenv("S3_EXPORT_ENABLED", "0").strip() == "1"

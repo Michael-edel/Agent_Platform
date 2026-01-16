@@ -1,0 +1,49 @@
+name: Smoke E2E (docker compose)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and start docker compose
+        run: |
+          docker compose up -d --build
+
+      - name: Wait for /health
+        run: |
+          set -e
+          for i in {1..60}; do
+            code="$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)"
+            if [ "$code" = "200" ]; then
+              echo "OK: /health is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "FAIL: /health did not become ready"
+          exit 1
+
+      - name: Run smoke test inside app container
+        run: |
+          docker compose exec -T -e E2E_SMOKE_ENABLED=1 app python -m pytest -q tests/smoke/test_demo_e2e.py
+
+      - name: Dump docker logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --no-color app
+          docker compose logs --no-color postgres
+
+      - name: Shutdown
+        if: always()
+        run: |
+          docker compose down -v
+

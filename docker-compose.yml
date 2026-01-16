@@ -39,6 +39,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      # Demo tenant bootstrap for local demo/pilot
+      - DEMO_BOOTSTRAP_ENABLED=${DEMO_BOOTSTRAP_ENABLED:-true}
     volumes:
       # Volume для данных (БД, кэш, временные файлы)
       # В production с PostgreSQL эти volumes могут не использоваться для БД
