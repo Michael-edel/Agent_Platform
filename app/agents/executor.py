@@ -137,7 +137,7 @@ def claim_next_execution(session: Session) -> Optional[AgentExecution]:
     return execution
 
 
-def def run_execution(session: Session, execution: AgentExecution) -> None:
+def run_execution(session: Session, execution: AgentExecution) -> None:
     """
     Run a single execution.
     

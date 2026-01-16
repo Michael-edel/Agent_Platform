@@ -18,22 +18,10 @@ FROM python:3.13-slim as test
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH=/home/appuser/.local/bin:$PATH
+RUN apk add --no-cache wget
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Runtime deps (from builder)
-COPY --from=builder /root/.local /home/appuser/.local
-RUN chown -R appuser:appuser /home/appuser/.local
-
-# App code + dev deps
-COPY . /app
-COPY requirements-dev.txt /app/requirements-dev.txt
-
-RUN chown -R appuser:appuser /app
-
+RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
+    
 USER appuser
 
 RUN pip install --no-cache-dir --user -r /app/requirements-dev.txt

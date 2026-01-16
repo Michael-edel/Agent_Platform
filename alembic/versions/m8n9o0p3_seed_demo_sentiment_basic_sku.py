@@ -39,7 +39,7 @@ def upgrade() -> None:
     }
 
     if bind.dialect.name == "sqlite":
-        op.execute(
+        bind.execute(
             sa.text(
                 """
                 INSERT OR IGNORE INTO agent_skus
@@ -51,7 +51,7 @@ def upgrade() -> None:
             params,
         )
     else:
-        op.execute(
+        bind.execute(
             sa.text(
                 """
                 INSERT INTO agent_skus
@@ -66,5 +66,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.sentiment_basic"})
-
+    bind = op.get_bind()
+    bind.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.sentiment_basic"})
