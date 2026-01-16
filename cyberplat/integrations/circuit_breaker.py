@@ -73,7 +73,7 @@ class CircuitBreaker:
     
     def record_success(self) -> None:
         """Записать успешный запрос."""
-        now = time.time()
+        now = time.monotonic()
         with self._lock:
             if self.state == "half_open":
                 # Успешный запрос в half_open -> закрываем
@@ -92,7 +92,7 @@ class CircuitBreaker:
     
     def record_failure(self) -> None:
         """Записать ошибку."""
-        now = time.time()
+        now = time.monotonic()
         with self._lock:
             self._failure_timestamps.append(now)
             self._last_failure_time = now
@@ -133,7 +133,7 @@ class CircuitBreaker:
         Raises:
             CircuitBreakerError: Если circuit breaker открыт
         """
-        now = time.time()
+        now = time.monotonic()
         
         with self._lock:
             # Проверяем, можно ли закрыть
@@ -164,7 +164,7 @@ class CircuitBreaker:
     
     def get_failure_count(self) -> int:
         """Получить количество ошибок в текущем окне."""
-        now = time.time()
+        now = time.monotonic()
         with self._lock:
             self._clean_old_failures(now)
             return len(self._failure_timestamps)

@@ -17,20 +17,16 @@ exclude = [
     ".mypy_cache",
 ]
 
+# Lint configuration
+[lint]
 # Select rules (E = pycodestyle errors, F = pyflakes, I = isort)
-select = [
-    "E",  # pycodestyle errors
-    "F",  # pyflakes
-    "I",  # isort (import sorting)
-]
+select = ["E", "F", "I"]
 
 # Ignore specific rules if needed
-ignore = [
-    "E501",  # line too long (handled by formatter)
-]
+ignore = ["E501"] # line too long (handled by formatter)
 
 # Per-file ignores
-[tool.ruff.per-file-ignores]
+[lint.per-file-ignores]
 "tests/*" = [
     "F401",  # unused imports (common in tests)
 ]
