@@ -1,0 +1,16 @@
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-2: (sqlite3.OperationalError) no such table: tenant_plans
+ERROR    cyberplat.product.infrastructure.plan_repositories_sqlalchemy:plan_repositories_sqlalchemy.py:129 Failed to assign plan to tenant tenant-1: (sqlite3.OperationalError) no such table: tenant_plans
+FAILED tests/test_billing_plans.py::TestTrialAssignment::test_trial_assigned_on_first_tenant_use
+FAILED tests/test_billing_plans.py::TestTrialExpiration::test_trial_expires_and_blocks_operations
+FAILED tests/test_billing_plans.py::TestUpgrade::test_upgrade_changes_plan_and_unblocks
+FAILED tests/test_billing_plans.py::TestEnforcementWithPlans::test_enforcement_uses_plan_quotas
+FAILED tests/test_billing_plans.py::TestTenantIsolation::test_tenant_isolation_plans
+FAILED tests/test_billing_plans.py::TestWebhooks::test_trial_expired_webhook_emitted
+FAILED tests/test_product_legacy_sync.py::test_documents_list_contains_uploaded_document_after_legacy_upload
+FAILED tests/test_product_legacy_sync.py::test_document_detail_exists_for_source_artifact_id_from_invoice
+FAILED tests/test_product_legacy_sync.py::test_export_returns_file_id_and_file_download_works

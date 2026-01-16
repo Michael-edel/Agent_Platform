@@ -21,8 +21,21 @@ from cyberplat.product.application.billing_enforcement_service import (
 
 
 @pytest.fixture
-def db_session():
+def db_session(monkeypatch, tmp_path):
     """Создать DB session для тестов."""
+    import os
+    # Используем изолированную БД для каждого теста
+    db_path = tmp_path / "test_billing_plans.db"
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+    from cyberplat.product.infrastructure.database import get_engine, get_sessionmaker
+    from cyberplat.product.infrastructure.models import Base
+    
+    # Создаём таблицы
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    
     SessionLocal = get_sessionmaker()
     session = SessionLocal()
     yield session

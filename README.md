@@ -199,6 +199,7 @@ pytest tests/ -v
 - API роутеры (cases, payments) подключаются на import-time, чтобы тесты с `TestClient(app)` работали без вызова `startup_event` или `lifespan` handlers.
 - В тестах используется встроенный `prometheus_client` shim (без внешней зависимости) для работы метрик.
 - Переменная окружения `CYBERPLAT_TESTING=1` (или наличие `PYTEST_CURRENT_TEST`) включает режим немедленных retry без backoff для integration jobs.
+- В тестах/SQLite billing plans schema auto-bootstrap при `CYBERPLAT_TESTING=1` или `PYTEST_CURRENT_TEST`; в production авто-создания таблиц нет.
 
 ### Тесты в Docker
 

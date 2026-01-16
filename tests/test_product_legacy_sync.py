@@ -14,7 +14,18 @@ def _fake_pdf_bytes() -> bytes:
     return b"%PDF-1.4\n%EOF\n"
 
 
-def test_documents_list_contains_uploaded_document_after_legacy_upload() -> None:
+def test_documents_list_contains_uploaded_document_after_legacy_upload(tmp_path, monkeypatch) -> None:
+    # Используем изолированную SQLite БД для теста
+    db_path = tmp_path / "test_legacy_sync.db"
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+    # Сбрасываем кэш engine, чтобы он пересоздался с новыми env
+    import cyberplat.product.infrastructure.database as db_module
+    db_module._engine = None
+    db_module._engine_url = None
+    db_module._SessionLocal = None
+    
     from fastapi.testclient import TestClient
 
     # Импортируем app только внутри теста, чтобы autouse фикстура успела выставить env.
@@ -39,7 +50,18 @@ def test_documents_list_contains_uploaded_document_after_legacy_upload() -> None
         assert any(i.get("id") == doc_id for i in items), "Документ из legacy upload не появился в Product списке"
 
 
-def test_document_detail_exists_for_source_artifact_id_from_invoice() -> None:
+def test_document_detail_exists_for_source_artifact_id_from_invoice(tmp_path, monkeypatch) -> None:
+    # Используем изолированную SQLite БД для теста
+    db_path = tmp_path / "test_legacy_sync.db"
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+    # Сбрасываем кэш engine
+    import cyberplat.product.infrastructure.database as db_module
+    db_module._engine = None
+    db_module._engine_url = None
+    db_module._SessionLocal = None
+    
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -91,7 +113,18 @@ def test_document_detail_exists_for_source_artifact_id_from_invoice() -> None:
         assert r_doc.status_code == 200, r_doc.text
 
 
-def test_export_returns_file_id_and_file_download_works() -> None:
+def test_export_returns_file_id_and_file_download_works(tmp_path, monkeypatch) -> None:
+    # Используем изолированную SQLite БД для теста
+    db_path = tmp_path / "test_legacy_sync.db"
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+    # Сбрасываем кэш engine
+    import cyberplat.product.infrastructure.database as db_module
+    db_module._engine = None
+    db_module._engine_url = None
+    db_module._SessionLocal = None
+    
     from fastapi.testclient import TestClient
 
     from app.main import app
