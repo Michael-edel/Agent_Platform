@@ -1,12 +1,14 @@
+# utils/config.py - ПОЛНЫЙ КОД
+
 import os
 from dataclasses import dataclass
 from typing import Optional
-
 from dotenv import load_dotenv
 
 @dataclass
 class Settings:
     openai_api_key: str
+    openai_base_url: Optional[str] = None  # НОВОЕ: поддержка Ollama
     onec_base_url: Optional[str] = None
     onec_token: Optional[str] = None
     telegram_bot_token: Optional[str] = None
@@ -14,17 +16,26 @@ class Settings:
     openai_model: str = "gpt-4o-mini"
     max_workers: int = 3
     max_openai_concurrency: int = 2
-    price_per_1k_in: float = 0.15  # Цена за 1K входных токенов в USD
-    price_per_1k_out: float = 0.60  # Цена за 1K выходных токенов в USD
-    openai_min_interval_sec: float = 0.7  # Минимальный интервал между запросами (троттлинг)
-    openai_max_retries: int = 5  # Максимальное количество повторов при 429 ошибке
+    price_per_1k_in: float = 0.15
+    price_per_1k_out: float = 0.60
+    openai_min_interval_sec: float = 0.7
+    openai_max_retries: int = 5
 
 def load_settings(env_path: str = ".env") -> Settings:
     """Загрузка настроек из .env и переменных окружения."""
     load_dotenv(env_path)
-
+    
+    # Для Ollama: если не указан API ключ, используем заглушку
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
+    
+    # Если указан Ollama base_url, но нет ключа - используем заглушку
+    if base_url and not api_key:
+        api_key = "ollama"
+    
     return Settings(
-        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+        openai_api_key=api_key,
+        openai_base_url=base_url,  # НОВОЕ
         onec_base_url=os.getenv("ONEC_BASE_URL", "").strip() or None,
         onec_token=os.getenv("ONEC_TOKEN", "").strip() or None,
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or None,

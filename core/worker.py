@@ -32,7 +32,7 @@ class DocumentWorker:
             model=settings.openai_model,
             max_concurrency=settings.max_openai_concurrency,
             min_interval_sec=settings.openai_min_interval_sec,
-            max_retries=settings.openai_max_retries
+            max_retries=settings.openai_max_retries,
         )
         self.db = Database(settings.db_path)
         self.processor = DocumentProcessor(ai=self.ai_client, db=self.db)
