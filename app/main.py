@@ -282,6 +282,26 @@ async def startup_event():
     event_service.subscribe(artifact_state_subscriber)
     logger.info("Product/UI layer event subscriber зарегистрирован")
     
+    # Регистрация 1С integration hook (auto jobs from artifacts)
+    from cyberplat.integrations.onec_artifact_hook import create_onec_artifact_hook
+    from cyberplat.integrations.onec_settings_service import OneCSettingsService
+    from cyberplat.integrations.integration_job_service import IntegrationJobService
+    from cyberplat.integrations.idempotency_service import IdempotencyService
+    
+    onec_settings_service = OneCSettingsService()
+    integration_job_service = IntegrationJobService()
+    idempotency_service = IdempotencyService()
+    
+    onec_hook = create_onec_artifact_hook(
+        settings_service=onec_settings_service,
+        job_service=integration_job_service,
+        idempotency_service=idempotency_service,
+        artifact_service=artifact_service,
+        case_service=None  # Можно передать case_service если нужно
+    )
+    event_service.subscribe(onec_hook)
+    logger.info("1С integration artifact hook зарегистрирован")
+    
     # Подключение Product/UI router
     from app.api.product import router as product_router
     app.include_router(product_router, prefix="/api/v1", tags=["product"])

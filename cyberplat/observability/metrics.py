@@ -122,6 +122,33 @@ if _prometheus_available:
         ),
     )
 
+    onec_auto_jobs_total = _get_or_create_collector(
+        "onec_auto_jobs_total",
+        lambda: Counter(
+            "onec_auto_jobs_total",
+            "Total number of auto-created 1C jobs from artifacts",
+            ["object_type"],
+        ),
+    )
+
+    onec_manual_jobs_total = _get_or_create_collector(
+        "onec_manual_jobs_total",
+        lambda: Counter(
+            "onec_manual_jobs_total",
+            "Total number of manually created 1C jobs",
+            ["object_type"],
+        ),
+    )
+
+    onec_artifact_hook_errors_total = _get_or_create_collector(
+        "onec_artifact_hook_errors_total",
+        lambda: Counter(
+            "onec_artifact_hook_errors_total",
+            "Total number of errors in 1C artifact hook",
+            ["error_code"],
+        ),
+    )
+
     recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
         lambda: Histogram(
@@ -141,6 +168,9 @@ else:
     onec_job_outcomes_total = None
     onec_job_latency_seconds = None
     onec_failures_total = None
+    onec_auto_jobs_total = None
+    onec_manual_jobs_total = None
+    onec_artifact_hook_errors_total = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:
