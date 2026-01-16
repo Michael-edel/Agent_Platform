@@ -93,6 +93,35 @@ if _prometheus_available:
         ),
     )
 
+    # Integration метрики
+    onec_job_outcomes_total = _get_or_create_collector(
+        "onec_job_outcomes_total",
+        lambda: Counter(
+            "onec_job_outcomes_total",
+            "Total number of 1C integration job outcomes",
+            ["status", "job_type"],  # status: succeeded, failed, retried
+        ),
+    )
+
+    onec_job_latency_seconds = _get_or_create_collector(
+        "onec_job_latency_seconds",
+        lambda: Histogram(
+            "onec_job_latency_seconds",
+            "1C integration job processing latency in seconds",
+            ["job_type"],
+            buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+        ),
+    )
+
+    onec_failures_total = _get_or_create_collector(
+        "onec_failures_total",
+        lambda: Counter(
+            "onec_failures_total",
+            "Total number of 1C integration failures",
+            ["error_code"],
+        ),
+    )
+
     recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
         lambda: Histogram(
@@ -109,6 +138,9 @@ else:
     billing_webhook_events_total = None
     recurring_runs_total = None
     recurring_duration_seconds = None
+    onec_job_outcomes_total = None
+    onec_job_latency_seconds = None
+    onec_failures_total = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:
