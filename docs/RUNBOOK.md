@@ -445,6 +445,11 @@ Low-traffic guard is applied via `billing:sli_time_to_paid_total_rate*` threshol
 - Billing jobs failure rate ≤ 1%
 - Нет ручных правок БД
 
+## Коммерческие документы / договорные приложения
+
+**SLA и целевые показатели:**
+- [SLA.md](SLA.md) — Соглашение об уровне сервиса (доступность, SLO, инциденты, реагирование)
+
 ## Tenant onboarding via Admin (v1)
 
 Операционный onboarding делается через SQLAdmin (без отдельного фронта).

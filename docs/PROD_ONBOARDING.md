@@ -51,6 +51,8 @@
   - Client: контакт для billing вопросов
   - Internal: platform_admin для tenant
 
+**SLA и целевые показатели:** см. [SLA.md](SLA.md)
+
 ## 3. Billing cutover (ключевой раздел)
 
 ### Пошагово
@@ -235,5 +237,6 @@ curl -X POST "https://staging.example.com/api/v1/tenant/billing/usage-invoices/2
 
 - [RUNBOOK.md](RUNBOOK.md) — общая эксплуатация
 - [SECURITY_POSTURE.md](SECURITY_POSTURE.md) — безопасность
+- [SLA.md](SLA.md) — SLA и целевые показатели
 - Grafana Dashboard v2.1: `observability/grafana/dashboards/billing_sla_dashboard_v2.json`
 - Prometheus Rules: `docs/alerts/prometheus_billing_sla_rules_v2.yml`

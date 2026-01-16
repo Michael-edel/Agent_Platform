@@ -107,6 +107,8 @@
 
 ## 4. Метрики успеха (Success criteria)
 
+**SLA/SLO:** см. [SLA.md](SLA.md)
+
 ### Обязательные критерии
 
 - [ ] **% paid invoices ≥ 99%**
