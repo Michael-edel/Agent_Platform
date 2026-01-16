@@ -65,10 +65,76 @@ def test_create_payment_order_api(services):
         
         assert response.status_code == 201
         data = response.json()
-        assert data["id"] is not None
-        assert data["amount"] == 100000.0
-        assert data["status"] == "draft"
+        assert data["payment_id"] is not None
+        assert data["status"] in {"created", "skipped"}
+        assert data["reason"] is None
+        assert data["case_id"] is None
+
+        # Платёж должен быть создан в storage
+        order = payment_service.get_payment_order(data["payment_id"], tenant_id="tenant-123")
+        assert order is not None
+        assert order["amount"] == 100000.0
+        assert order["status"] == "draft"
         
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_payment_order_api_export_failure_still_returns_payment_id(services, monkeypatch):
+    """Тест: даже при сбое пост-интеграции API возвращает payment_id и payment остаётся создан."""
+    payment_service, case_service = services
+
+    from app.api.payments import get_payment_service, get_case_service
+
+    app.dependency_overrides[get_payment_service] = lambda: payment_service
+    app.dependency_overrides[get_case_service] = lambda: case_service
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("export endpoint unavailable")
+
+    monkeypatch.setattr(payment_service, "run_post_create_integrations", _boom)
+
+    try:
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/v1/payments/orders",
+            headers={"X-Tenant-ID": "tenant-123"},
+            json={
+                "amount": 100000.0,
+                "beneficiary_name": "ООО Получатель",
+                "beneficiary_account_iban": "KZ123456789012345678",
+                "purpose": "Оплата по договору",
+                "created_by_role": "accountant",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["payment_id"] is not None
+        assert data["status"] == "created"
+        assert data["reason"] is not None
+
+        # Платёж должен существовать, несмотря на сбой
+        order = payment_service.get_payment_order(data["payment_id"], tenant_id="tenant-123")
+        assert order is not None
+
+        # И должен быть записан event payment.export_failed
+        import sqlite3
+
+        conn = sqlite3.connect(payment_service.db_path)
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT event_type, payload_json FROM payment_events WHERE payment_order_id = ?",
+                (data["payment_id"],),
+            )
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+        assert any(r[0] == "payment.export_failed" for r in rows)
+
     finally:
         app.dependency_overrides.clear()
 

@@ -217,6 +217,35 @@ class PaymentService:
         
         logger.info(f"Создано платёжное поручение: {order_id} (tenant={tenant_id}, amount={amount}, currency={currency})")
         return order_id
+
+    def run_post_create_integrations(self, *, payment_id: str, tenant_id: str) -> None:
+        """
+        Выполнить дополнительные шаги после создания платежа (best-effort).
+
+        Важно: этот метод не должен удалять/откатывать созданный payment_order.
+        По умолчанию — no-op. Используется как "крючок" для пилотных интеграций.
+        """
+        return None
+
+    def record_payment_export_failed(self, *, payment_id: str, tenant_id: str, reason: str) -> None:
+        """Зафиксировать сбой интеграции/экспорта, не откатывая payment."""
+        conn = self._get_connection()
+        try:
+            self._log_event(conn, tenant_id, payment_id, "payment.export_failed", {"reason": reason})
+            conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        # Метрики
+        try:
+            from cyberplat.observability.metrics import payments_export_fail_total, METRICS_ENABLED
+            if METRICS_ENABLED and payments_export_fail_total:
+                payments_export_fail_total.labels(reason="post_create_integration_failed").inc()
+        except Exception:
+            pass
     
     def get_payment_order(self, order_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Получить платёжное поручение по ID."""

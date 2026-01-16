@@ -209,6 +209,15 @@ if _prometheus_available:
         ),
     )
 
+    payments_export_fail_total = _get_or_create_collector(
+        "payments_export_fail_total",
+        lambda: Counter(
+            "payments_export_fail_total",
+            "Total number of payment export/integration failures",
+            ["reason"],
+        ),
+    )
+
     # Reconciliation метрики
     reconciliation_transactions_total = _get_or_create_collector(
         "reconciliation_transactions_total",

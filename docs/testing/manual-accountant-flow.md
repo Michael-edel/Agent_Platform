@@ -43,8 +43,10 @@ pwsh -File .\scripts\manual-accountant-flow.ps1 -TenantId "tenant-123" -PdfPath 
 ## Передать на согласование директору
 
 После создания `PaymentOrder` бухгалтеру нужно передать директору:
-- `PaymentId` (это `id` платёжного поручения в ответе create payment order).
+- `PaymentId` (это `payment_id` в ответе `POST /api/v1/payments/orders`).
 - Скопируйте `PaymentId` и передайте согласующему.
+
+Примечание: если в ответе создания есть `reason`, скрипт печатает это как `PaymentCreateNote: ...` (платёж создан, но есть диагностическое сообщение).
 
 Пример запуска скрипта согласующего:
 

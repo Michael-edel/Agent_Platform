@@ -27,6 +27,13 @@ class CreatePaymentOrderRequest(BaseModel):
     beneficiary_bank_bic: Optional[str] = None
 
 
+class CreatePaymentOrderContractResponse(BaseModel):
+    payment_id: str
+    status: str  # created | skipped
+    reason: Optional[str] = None
+    case_id: Optional[str] = None
+
+
 class PaymentOrderResponse(BaseModel):
     id: str
     tenant_id: str
@@ -116,7 +123,7 @@ def get_case_service() -> CaseService:
     return CaseService()
 
 
-@router.post("/payments/orders", response_model=PaymentOrderResponse, status_code=201)
+@router.post("/payments/orders", response_model=CreatePaymentOrderContractResponse, status_code=201)
 async def create_payment_order(
     request: CreatePaymentOrderRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
@@ -138,7 +145,7 @@ async def create_payment_order(
             if not case:
                 raise HTTPException(status_code=404, detail="Кейс не найден")
         
-        order_id = payment_service.create_payment_order(
+        payment_id = payment_service.create_payment_order(
             tenant_id=x_tenant_id,
             amount=request.amount,
             beneficiary_name=request.beneficiary_name,
@@ -152,11 +159,28 @@ async def create_payment_order(
             beneficiary_bank_bic=request.beneficiary_bank_bic
         )
         
-        order = payment_service.get_payment_order(order_id, tenant_id=x_tenant_id)
-        if not order:
-            raise HTTPException(status_code=500, detail="Ошибка при создании платёжного поручения")
-        
-        return PaymentOrderResponse(**order)
+        reason: Optional[str] = None
+        try:
+            # Важно: payment_id уже создан. Любые сбои интеграций не должны откатывать создание.
+            payment_service.run_post_create_integrations(payment_id=payment_id, tenant_id=x_tenant_id)
+        except Exception as e:
+            reason = f"post-create integration failed: {str(e)[:200]}"
+            try:
+                payment_service.record_payment_export_failed(
+                    payment_id=payment_id,
+                    tenant_id=x_tenant_id,
+                    reason=reason,
+                )
+            except Exception:
+                pass
+            logger.warning("Post-create integrations failed for payment_id=%s: %s", payment_id, reason)
+
+        return CreatePaymentOrderContractResponse(
+            payment_id=payment_id,
+            status="created",
+            reason=reason,
+            case_id=request.case_id,
+        )
     except HTTPException:
         raise
     except Exception as e:

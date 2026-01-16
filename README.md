@@ -894,6 +894,11 @@ curl -X POST http://localhost:8000/api/v1/payments/orders \
   }'
 ```
 
+**Ответ (контракт):**
+```json
+{"payment_id":"<uuid>","status":"created","reason":null,"case_id":"case-uuid"}
+```
+
 **2. Настроить политику согласования:**
 ```bash
 curl -X PUT "http://localhost:8000/api/v1/payments/policy?tenant_id=tenant-123" \

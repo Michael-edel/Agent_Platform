@@ -206,12 +206,16 @@ try {
             } catch {
                 Fail("create payment order: ответ 2xx, но JSON не парсится (это поломка пилота)")
             }
-            $orderId = $order.id
-            if (-not $orderId) {
-                Fail("create payment order: ответ 2xx, но нет поля id (это поломка пилота)")
+            $paymentIdFromResponse = $order.payment_id
+            if (-not $paymentIdFromResponse) { $paymentIdFromResponse = $order.id }
+            if (-not $paymentIdFromResponse) {
+                Fail("create payment order: ответ 2xx, но нет поля payment_id/id (это поломка пилота)")
             }
-            $paymentId = $orderId
+            $paymentId = $paymentIdFromResponse
             Write-Ok("PaymentOrder создан: id=$paymentId")
+            if ($order.reason) {
+                Write-Host ("PaymentCreateNote: " + $order.reason)
+            }
             $summaryDone.Add("create payment order") | Out-Null
 
             # submit for approval (роль бухгалтера)
