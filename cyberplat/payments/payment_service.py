@@ -293,9 +293,17 @@ class PaymentService:
                 "amount": row["amount"],
                 "currency": row["currency"],
                 "beneficiary_name": row["beneficiary_name"],
+                "beneficiary_iin_bin": row["beneficiary_iin_bin"],
+                "beneficiary_bank_bic": row["beneficiary_bank_bic"],
+                "beneficiary_account_iban": row["beneficiary_account_iban"],
+                "purpose": row["purpose"],
                 "status": row["status"],
+                "created_by_role": row["created_by_role"],
                 "created_at": row["created_at"],
-                "updated_at": row["updated_at"]
+                "updated_at": row["updated_at"],
+                "approved_at": row["approved_at"],
+                "rejected_at": row["rejected_at"],
+                "exported_at": row["exported_at"]
             }
             for row in rows
         ]
@@ -417,6 +425,48 @@ class PaymentService:
             self._log_event(conn, tenant_id, order_id, "payment_order.submitted", {
                 "steps_count": len(steps)
             })
+            
+            # Интеграция с Case: создаём задачу и событие, если есть case_id
+            if order.get("case_id") and steps:
+                case_id = order["case_id"]
+                try:
+                    # Используем то же соединение для записи в case_tasks и case_events
+                    # Проверяем, что кейс существует
+                    cur.execute("SELECT * FROM cases WHERE id = ? AND tenant_id = ?", (case_id, tenant_id))
+                    case = cur.fetchone()
+                    if case:
+                        # Определяем роль для задачи (первый required_role из steps)
+                        required_role = steps[0]["required_role"]
+                        task_id = str(uuid.uuid4())
+                        step_key = case["current_step"] if case["current_step"] else "approval"
+                        
+                        # Создаём задачу
+                        cur.execute(
+                            """
+                            INSERT INTO case_tasks
+                            (id, case_id, step_key, title, assignee_role, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                            """,
+                            (task_id, case_id, step_key, "Согласовать платеж", required_role, now)
+                        )
+                        
+                        # Логируем событие
+                        event_id = str(uuid.uuid4())
+                        event_payload = json.dumps({
+                            "payment_order_id": order_id,
+                            "amount": order["amount"],
+                            "currency": order["currency"]
+                        }, ensure_ascii=False)
+                        cur.execute(
+                            """
+                            INSERT INTO case_events
+                            (id, case_id, event_type, payload_json, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (event_id, case_id, "payment_submitted", event_payload, now)
+                        )
+                except Exception as e:
+                    logger.warning(f"Ошибка при создании задачи в кейсе: {e}")
         
         conn.commit()
         conn.close()
@@ -516,6 +566,43 @@ class PaymentService:
                 "role": role
             })
             
+            # Интеграция с Case: создаём задачу на экспорт и событие, если есть case_id
+            if order.get("case_id"):
+                case_id = order["case_id"]
+                try:
+                    # Используем то же соединение для записи в case_tasks и case_events
+                    cur.execute("SELECT * FROM cases WHERE id = ? AND tenant_id = ?", (case_id, tenant_id))
+                    case = cur.fetchone()
+                    if case:
+                        # Создаём задачу на экспорт
+                        task_id = str(uuid.uuid4())
+                        step_key = case["current_step"] if case["current_step"] else "export"
+                        cur.execute(
+                            """
+                            INSERT INTO case_tasks
+                            (id, case_id, step_key, title, assignee_role, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                            """,
+                            (task_id, case_id, step_key, "Выгрузить платеж", "accountant", now)
+                        )
+                        
+                        # Логируем событие
+                        event_id = str(uuid.uuid4())
+                        event_payload = json.dumps({
+                            "payment_order_id": order_id,
+                            "amount": order["amount"]
+                        }, ensure_ascii=False)
+                        cur.execute(
+                            """
+                            INSERT INTO case_events
+                            (id, case_id, event_type, payload_json, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (event_id, case_id, "payment_approved", event_payload, now)
+                        )
+                except Exception as e:
+                    logger.warning(f"Ошибка при создании задачи экспорта в кейсе: {e}")
+            
             # Метрики
             try:
                 import time
@@ -597,6 +684,31 @@ class PaymentService:
             "role": role,
             "comment": comment
         })
+        
+        # Интеграция с Case: логируем событие, если есть case_id
+        if order.get("case_id"):
+            case_id = order["case_id"]
+            try:
+                # Используем то же соединение для записи в case_events
+                cur.execute("SELECT * FROM cases WHERE id = ? AND tenant_id = ?", (case_id, tenant_id))
+                case = cur.fetchone()
+                if case:
+                    event_id = str(uuid.uuid4())
+                    event_payload = json.dumps({
+                        "payment_order_id": order_id,
+                        "role": role,
+                        "comment": comment
+                    }, ensure_ascii=False)
+                    cur.execute(
+                        """
+                        INSERT INTO case_events
+                        (id, case_id, event_type, payload_json, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (event_id, case_id, "payment_rejected", event_payload, now)
+                    )
+            except Exception as e:
+                logger.warning(f"Ошибка при записи события в кейс: {e}")
         
         # Метрики
         try:

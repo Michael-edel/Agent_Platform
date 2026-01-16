@@ -128,6 +128,13 @@ if metrics_enabled:
     
     app.add_middleware(MetricsMiddleware)
 
+# Подключение API роутеров на import-time (для тестов с TestClient)
+# Роутеры подключаются здесь, чтобы быть доступными без startup_event
+from app.api.cases import router as cases_router
+from app.api.payments import router as payments_router
+app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
+app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
+
 # Глобальные объекты (инициализируются при старте)
 settings: Optional[Settings] = None
 db: Optional[Database] = None
@@ -342,9 +349,11 @@ async def startup_event():
     app.include_router(executions_router, tags=["executions"])
     logger.info("Executions router подключен")
     
-    # Подключение Cases router
-    from app.api.cases import router as cases_router
-    app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
+    # Подключение Cases router (уже подключён на import-time, но логируем)
+    # Проверяем, не подключён ли уже (для избежания дублирования)
+    if not any(r.path.startswith("/api/v1/cases") for r in app.routes):
+        from app.api.cases import router as cases_router
+        app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
     logger.info("Cases router подключен")
     
     # Подключение Integrations router
@@ -352,9 +361,10 @@ async def startup_event():
     app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
     logger.info("Integrations router подключен")
     
-    # Подключение Payments router
-    from app.api.payments import router as payments_router
-    app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
+    # Подключение Payments router (уже подключён на import-time, но логируем)
+    if not any(r.path.startswith("/api/v1/payments") for r in app.routes):
+        from app.api.payments import router as payments_router
+        app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
     logger.info("Payments router подключен")
     
     # Подключение Reconciliation router

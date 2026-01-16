@@ -258,14 +258,14 @@ class OneCClient:
             logger.warning(f"1C ping failed: {e}")
             return False
     
-    def create_counterparty(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+    def create_counterparty(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """Создать контрагента в 1С."""
-        return self.request("POST", "/counterparties", json_data=payload, idempotency_key=idempotency_key)
+        return self.request("POST", "/counterparties", json_data=payload, idempotency_key=idempotency_key, correlation_id=correlation_id)
     
-    def create_contract(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+    def create_contract(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """Создать договор в 1С."""
-        return self.request("POST", "/contracts", json_data=payload, idempotency_key=idempotency_key)
+        return self.request("POST", "/contracts", json_data=payload, idempotency_key=idempotency_key, correlation_id=correlation_id)
     
-    def create_invoice(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+    def create_invoice(self, payload: Dict[str, Any], idempotency_key: Optional[str] = None, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """Создать счёт в 1С."""
-        return self.request("POST", "/invoices", json_data=payload, idempotency_key=idempotency_key)
+        return self.request("POST", "/invoices", json_data=payload, idempotency_key=idempotency_key, correlation_id=correlation_id)

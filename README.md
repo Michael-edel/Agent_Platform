@@ -195,6 +195,8 @@ python -m pytest -q
 pytest tests/ -v
 ```
 
+**Примечание:** API роутеры (cases, payments) подключаются на import-time, чтобы тесты с `TestClient(app)` работали без вызова `startup_event` или `lifespan` handlers.
+
 ### Тесты в Docker
 
 Быстрый запуск тестов в контейнере (PostgreSQL поднимется как зависимость):

@@ -30,22 +30,22 @@ class CreatePaymentOrderRequest(BaseModel):
 class PaymentOrderResponse(BaseModel):
     id: str
     tenant_id: str
-    case_id: Optional[str]
-    source_invoice_id: Optional[str]
+    case_id: Optional[str] = None
+    source_invoice_id: Optional[str] = None
     amount: float
     currency: str
     beneficiary_name: str
-    beneficiary_iin_bin: Optional[str]
-    beneficiary_bank_bic: Optional[str]
+    beneficiary_iin_bin: Optional[str] = None
+    beneficiary_bank_bic: Optional[str] = None
     beneficiary_account_iban: str
     purpose: str
     status: str
     created_by_role: str
     created_at: str
     updated_at: str
-    approved_at: Optional[str]
-    rejected_at: Optional[str]
-    exported_at: Optional[str]
+    approved_at: Optional[str] = None
+    rejected_at: Optional[str] = None
+    exported_at: Optional[str] = None
 
 
 class PaymentOrdersListResponse(BaseModel):

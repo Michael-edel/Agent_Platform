@@ -96,7 +96,7 @@ def test_manual_sync_success(services):
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert "отправлена в очередь 1С" in data["message"].lower() or "queued" in data["message"].lower()
+        assert "отправлена" in data["message"].lower() or "queued" in data["message"].lower()
         assert data["job_id"] is not None
         
         # Проверяем, что job создан
