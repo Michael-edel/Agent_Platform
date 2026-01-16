@@ -195,7 +195,9 @@ python -m pytest -q
 pytest tests/ -v
 ```
 
-**Примечание:** API роутеры (cases, payments) подключаются на import-time, чтобы тесты с `TestClient(app)` работали без вызова `startup_event` или `lifespan` handlers.
+**Примечания:**
+- API роутеры (cases, payments) подключаются на import-time, чтобы тесты с `TestClient(app)` работали без вызова `startup_event` или `lifespan` handlers.
+- В тестах используется встроенный `prometheus_client` shim (без внешней зависимости) для работы метрик.
 
 ### Тесты в Docker
 

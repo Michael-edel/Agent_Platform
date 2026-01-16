@@ -25,9 +25,25 @@ def _ensure_metrics():
         return
     try:
         from prometheus_client import Counter, REGISTRY  # noqa: WPS433
-    except Exception:
-        _prom_available = False
-        return
+    except ImportError:
+        # Используем встроенный shim, если внешний недоступен
+        try:
+            import importlib.util
+            import sys
+            from pathlib import Path
+            
+            shim_path = Path(__file__).parent.parent.parent / "prometheus_client" / "__init__.py"
+            if shim_path.exists() and 'prometheus_client' not in sys.modules:
+                spec = importlib.util.spec_from_file_location("prometheus_client", shim_path)
+                prometheus_module = importlib.util.module_from_spec(spec)
+                prometheus_module._is_shim = True
+                sys.modules["prometheus_client"] = prometheus_module
+                spec.loader.exec_module(prometheus_module)
+            
+            from prometheus_client import Counter, REGISTRY  # noqa: WPS433
+        except Exception:
+            _prom_available = False
+            return
 
     def get_or_create_counter(name: str, doc: str, labelnames: list[str]):
         try:

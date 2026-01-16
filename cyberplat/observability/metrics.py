@@ -21,6 +21,8 @@ def _metrics_enabled_env() -> bool:
 METRICS_ENABLED = _metrics_enabled_env()
 
 # Conditional import of prometheus_client
+# Сначала пытаемся импортировать внешний prometheus_client,
+# если не получается - используем встроенный shim из prometheus_client/
 if METRICS_ENABLED:
     try:
         from prometheus_client import (
@@ -33,8 +35,36 @@ if METRICS_ENABLED:
         )
         _prometheus_available = True
     except ImportError:
-        _prometheus_available = False
-        METRICS_ENABLED = False
+        # Используем встроенный shim
+        try:
+            import importlib.util
+            import sys
+            from pathlib import Path
+            
+            # Путь к нашему shim-модулю
+            shim_path = Path(__file__).parent.parent.parent / "prometheus_client" / "__init__.py"
+            if shim_path.exists():
+                spec = importlib.util.spec_from_file_location("prometheus_client", shim_path)
+                prometheus_module = importlib.util.module_from_spec(spec)
+                prometheus_module._is_shim = True  # Маркер, что это shim
+                sys.modules["prometheus_client"] = prometheus_module
+                spec.loader.exec_module(prometheus_module)
+                
+                from prometheus_client import (
+                    Counter,
+                    Histogram,
+                    Gauge,
+                    REGISTRY,
+                    generate_latest,
+                    CONTENT_TYPE_LATEST,
+                )
+                _prometheus_available = True
+            else:
+                _prometheus_available = False
+                METRICS_ENABLED = False
+        except Exception:
+            _prometheus_available = False
+            METRICS_ENABLED = False
 else:
     _prometheus_available = False
 
