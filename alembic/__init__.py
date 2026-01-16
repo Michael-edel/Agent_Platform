@@ -35,10 +35,22 @@ def _find_installed_alembic_package_dir() -> Optional[str]:
             if p:
                 candidates.append(p)
     except Exception:
-        # Best-effort fallback: scan sys.path for site-packages
-        for p in sys.path:
-            if p and ("site-packages" in p or "dist-packages" in p):
-                candidates.append(p)
+        pass
+
+    # Also consider user site-packages (pip install --user), common in Docker non-root setups.
+    try:
+        import site
+
+        usp = site.getusersitepackages()
+        if usp:
+            candidates.append(usp)
+    except Exception:
+        pass
+
+    # Best-effort fallback: scan sys.path for site-packages
+    for p in sys.path:
+        if p and ("site-packages" in p or "dist-packages" in p):
+            candidates.append(p)
 
     for base in candidates:
         pkg_dir = os.path.join(base, "alembic")

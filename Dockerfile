@@ -26,15 +26,17 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Runtime deps (from builder)
 COPY --from=builder /root/.local /home/appuser/.local
+RUN chown -R appuser:appuser /home/appuser/.local
 
 # App code + dev deps
 COPY . /app
 COPY requirements-dev.txt /app/requirements-dev.txt
 
-RUN pip install --no-cache-dir --user -r /app/requirements-dev.txt \
-    && chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app
 
 USER appuser
+
+RUN pip install --no-cache-dir --user -r /app/requirements-dev.txt
 
 CMD ["python", "-m", "pytest", "-q"]
 
@@ -53,6 +55,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Копируем установленные пакеты из builder stage
 COPY --from=builder /root/.local /home/appuser/.local
+RUN chown -R appuser:appuser /home/appuser/.local
 
 # Копируем код приложения
 COPY . /app
