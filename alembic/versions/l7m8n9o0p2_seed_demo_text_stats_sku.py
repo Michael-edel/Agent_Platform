@@ -1,7 +1,7 @@
 """Seed demo.sentiment_basic AgentSKU (paid subscription add-on)
 
-Revision ID: m8n9o0p3
-Revises: l7m8n9o0p2
+Revision ID: l7m8n9o0p2
+Revises: k6l7m8n9o0p1
 Create Date: 2026-01-15
 
 """
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "m8n9o0p3"
-down_revision: Union[str, None] = "l7m8n9o0p2"
+revision: str = "l7m8n9o0p2"
+down_revision: Union[str, None] = "k6l7m8n9o0p1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
