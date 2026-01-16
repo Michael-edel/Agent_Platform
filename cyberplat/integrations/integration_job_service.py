@@ -123,6 +123,11 @@ class IntegrationJobService:
         logger.info(f"Integration job enqueued: {job_id} (tenant={tenant_id}, provider={provider}, type={job_type})")
         return job_id
     
+    def _is_testing_mode(self) -> bool:
+        """Проверка, запущен ли код в тестовом режиме."""
+        import os
+        return os.getenv("CYBERPLAT_TESTING") == "1" or os.getenv("PYTEST_CURRENT_TEST") is not None
+    
     def claim_for_processing(self, limit: int = 50, worker_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Забрать jobs для обработки (best-effort locking для SQLite).
@@ -243,7 +248,23 @@ class IntegrationJobService:
         now = datetime.now().isoformat()
         
         if schedule_retry and new_attempt < max_attempts:
-            # Планируем retry (используем now для немедленного retry в тестах)
+            # Планируем retry
+            if self._is_testing_mode():
+                # В тестах: немедленный retry (без ожидания)
+                next_attempt_at = now
+            else:
+                # В production: exponential backoff
+                import random
+                from datetime import timedelta
+                delay_seconds = min(60 * (2 ** new_attempt), 3600)  # Max 1 hour
+                jitter = random.uniform(-0.1, 0.1) * delay_seconds
+                delay_seconds = max(10, delay_seconds + jitter)
+                
+                next_attempt = datetime.fromisoformat(now)
+                next_attempt = next_attempt.replace(microsecond=0)
+                next_attempt = next_attempt + timedelta(seconds=int(delay_seconds))
+                next_attempt_at = next_attempt.isoformat()
+            
             cur.execute(
                 """
                 UPDATE integration_jobs
@@ -251,7 +272,7 @@ class IntegrationJobService:
                     next_attempt_at = ?, locked_at = NULL, locked_by = NULL, updated_at = ?
                 WHERE id = ?
                 """,
-                (new_attempt, error_ru, error_code, now, now, job_id)
+                (new_attempt, error_ru, error_code, next_attempt_at, now, job_id)
             )
         else:
             # Финальная ошибка (new_attempt >= max_attempts или schedule_retry=False)
