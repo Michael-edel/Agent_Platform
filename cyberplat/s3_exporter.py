@@ -49,7 +49,8 @@ class S3Exporter:
             prefix: Префикс для ключей (например, "prod")
             s3_client: Опциональный boto3 S3 клиент (для тестов с моками)
         """
-        if not BOTO3_AVAILABLE:
+        # Если передан s3_client, не проверяем BOTO3_AVAILABLE (для тестов с моками)
+        if s3_client is None and not BOTO3_AVAILABLE:
             raise ImportError(
                 "boto3 не установлен. Установите его через: pip install boto3"
             )

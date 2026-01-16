@@ -504,10 +504,10 @@ class CaseService:
         cur = conn.cursor()
         now = datetime.now().isoformat()
         
-        # Обновляем статус кейса
+        # Обновляем статус кейса и сбрасываем current_step
         cur.execute(
-            "UPDATE cases SET status = ?, updated_at = ? WHERE id = ?",
-            ("closed", now, case_id)
+            "UPDATE cases SET status = ?, current_step = ?, updated_at = ? WHERE id = ?",
+            ("closed", None, now, case_id)
         )
         
         # Завершаем текущий шаг, если он был

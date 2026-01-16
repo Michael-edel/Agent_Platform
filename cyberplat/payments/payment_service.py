@@ -660,6 +660,10 @@ class PaymentService:
                 return  # Идемпотентно
             raise InvalidApprovalError("Платёжное поручение уже экспортировано, нельзя отклонить")
         
+        # Проверяем approved отдельно, чтобы можно было отклонить до экспорта
+        if order["status"] == "approved":
+            raise InvalidApprovalError("Платёжное поручение уже одобрено, нельзя отклонить")
+        
         conn = self._get_connection()
         cur = conn.cursor()
         now = datetime.now().isoformat()

@@ -8,6 +8,12 @@ import pytest
 
 
 def test_agent_metrics_exposed_via_metrics_endpoint(tmp_path, monkeypatch):
+    # Проверяем, установлен ли prometheus_client
+    try:
+        import prometheus_client
+    except ImportError:
+        pytest.skip("prometheus_client не установлен")
+    
     # Ensure metrics modules see enabled env on import.
     monkeypatch.setenv("METRICS_ENABLED", "true")
 
@@ -82,10 +88,18 @@ def test_agent_metrics_exposed_via_metrics_endpoint(tmp_path, monkeypatch):
         session.commit()
 
     # Minimal app: execution API + /metrics.
+    # Перезагружаем модуль metrics после установки METRICS_ENABLED
+    import cyberplat.observability.metrics as metrics_module
+    importlib.reload(metrics_module)
+    # Вызываем setup_metrics после reload, чтобы метрики были включены
+    metrics_module.setup_metrics(enabled=True)
+    
     from fastapi import FastAPI
     from starlette.testclient import TestClient
     from app.api.agents import router as agents_router
-    from cyberplat.observability.metrics import metrics_endpoint
+    # Импортируем metrics_endpoint после reload
+    importlib.reload(metrics_module)
+    metrics_endpoint = metrics_module.metrics_endpoint
 
     app = FastAPI()
     app.include_router(agents_router)

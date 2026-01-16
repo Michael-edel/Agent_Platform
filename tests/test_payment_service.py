@@ -223,6 +223,13 @@ def test_reject(payment_service_memory):
 
 def test_reject_idempotent(payment_service_memory):
     """Тест: повторное reject не падает."""
+    # Создаём политику, чтобы не было auto-approve
+    payment_service_memory.upsert_payment_policy(
+        tenant_id="tenant-123",
+        enabled=True,
+        thresholds=[{"max": 1000000, "roles": ["accountant"]}]
+    )
+    
     order_id = payment_service_memory.create_payment_order(
         tenant_id="tenant-123",
         amount=50000.0,
@@ -231,12 +238,12 @@ def test_reject_idempotent(payment_service_memory):
         purpose="Тест",
         created_by_role="accountant"
     )
-    
+
     payment_service_memory.submit_for_approval(order_id, "tenant-123")
-    
+
     # Первое отклонение
     payment_service_memory.reject(order_id, "tenant-123", "accountant")
-    
+
     # Второе отклонение (идемпотентно)
     payment_service_memory.reject(order_id, "tenant-123", "accountant")
     
@@ -262,7 +269,7 @@ def test_reject_after_approved_fails(payment_service_memory):
     with pytest.raises(InvalidApprovalError) as exc_info:
         payment_service_memory.reject(order_id, "tenant-123", "accountant")
     
-    assert "экспортировано" in str(exc_info.value).lower() or "exported" in str(exc_info.value).lower()
+    assert "одобрено" in str(exc_info.value).lower() or "approved" in str(exc_info.value).lower() or "экспортировано" in str(exc_info.value).lower() or "exported" in str(exc_info.value).lower()
 
 
 def test_export_csv(payment_service_memory):

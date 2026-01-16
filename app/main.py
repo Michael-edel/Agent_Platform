@@ -351,7 +351,12 @@ async def startup_event():
     
     # Подключение Cases router (уже подключён на import-time, но логируем)
     # Проверяем, не подключён ли уже (для избежания дублирования)
-    if not any(r.path.startswith("/api/v1/cases") for r in app.routes):
+    # Проверяем по наличию маршрута в app.routes (более надёжный способ)
+    cases_router_included = any(
+        hasattr(r, "path") and "/api/v1/cases" in str(r.path) 
+        for r in app.routes
+    )
+    if not cases_router_included:
         from app.api.cases import router as cases_router
         app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
     logger.info("Cases router подключен")
@@ -362,7 +367,11 @@ async def startup_event():
     logger.info("Integrations router подключен")
     
     # Подключение Payments router (уже подключён на import-time, но логируем)
-    if not any(r.path.startswith("/api/v1/payments") for r in app.routes):
+    payments_router_included = any(
+        hasattr(r, "path") and "/api/v1/payments" in str(r.path)
+        for r in app.routes
+    )
+    if not payments_router_included:
         from app.api.payments import router as payments_router
         app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
     logger.info("Payments router подключен")

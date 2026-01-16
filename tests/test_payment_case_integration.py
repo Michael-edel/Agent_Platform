@@ -161,6 +161,13 @@ def test_reject_logs_case_event(services):
         title="Test case"
     )
     
+    # Создаём политику, чтобы не было auto-approve
+    payment_service.upsert_payment_policy(
+        tenant_id="tenant-123",
+        enabled=True,
+        thresholds=[{"max": 1000000, "roles": ["accountant"]}]
+    )
+    
     # Создаём платёжное поручение
     order_id = payment_service.create_payment_order(
         tenant_id="tenant-123",

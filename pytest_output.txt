@@ -1,0 +1,1431 @@
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+.....................................................F.................. [ 32%]
+..................................................................FF.... [ 42%]
+......F................................................................. [ 53%]
+............................F.............F.F...F....................... [ 64%]
+..........................................F............................. [ 74%]
+..F............FFFFF................F................................... [ 85%]
+.........FEEEEE.EEE..................................................... [ 96%]
+..........................                                               [100%]
+=================================== ERRORS ====================================
+________________ ERROR at setup of test_s3_exporter_build_key _________________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F267B0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+________________ ERROR at setup of test_s3_exporter_put_bytes _________________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F11B70>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+_________________ ERROR at setup of test_s3_exporter_put_json _________________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F127B0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+_________________ ERROR at setup of test_s3_exporter_put_file _________________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F814ADD0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+_________________ ERROR at setup of test_s3_exporter_enabled __________________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F11B70>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+________ ERROR at setup of test_s3_export_subscriber_artifact_created _________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F12F90>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:26,670", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\pytest-of-User\\pytest-64\\agent_platform_test_db0\\test.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,670", "level": "INFO", "logger": "cyberplat.storage_service", "message": "StorageService шэшЎшрышчшЁютрэ: out\\jobs", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\pytest-of-User\pytest-64\agent_platform_test_db0\test.db
+INFO     cyberplat.storage_service:storage_service.py:16 StorageService шэшЎшрышчшЁютрэ: out\jobs
+_______ ERROR at setup of test_s3_export_subscriber_document_extracted ________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F5F13D90>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:26,752", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\pytest-of-User\\pytest-64\\agent_platform_test_db0\\test.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,752", "level": "INFO", "logger": "cyberplat.storage_service", "message": "StorageService шэшЎшрышчшЁютрэ: out\\jobs", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\pytest-of-User\pytest-64\agent_platform_test_db0\test.db
+INFO     cyberplat.storage_service:storage_service.py:16 StorageService шэшЎшрышчшЁютрэ: out\jobs
+__________ ERROR at setup of test_s3_export_subscriber_payment_ready __________
+
+    @pytest.fixture
+    def mock_s3_client():
+        """╤ючфрЄ№ mock S3 ъышхэЄ."""
+>       with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_s3_exporter.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000241F6288AD0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'cyberplat.s3_exporter' from 'C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\s3_exporter.py'> does not have the attribute 'boto3'
+
+C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py:1467: AttributeError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:26,840", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\pytest-of-User\\pytest-64\\agent_platform_test_db0\\test.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,840", "level": "INFO", "logger": "cyberplat.storage_service", "message": "StorageService шэшЎшрышчшЁютрэ: out\\jobs", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\pytest-of-User\pytest-64\agent_platform_test_db0\test.db
+INFO     cyberplat.storage_service:storage_service.py:16 StorageService шэшЎшрышчшЁютрэ: out\jobs
+================================== FAILURES ===================================
+_______________ test_agent_metrics_exposed_via_metrics_endpoint _______________
+
+tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-64/test_agent_metrics_exposed_via0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241F0F9B700>
+
+    def test_agent_metrics_exposed_via_metrics_endpoint(tmp_path, monkeypatch):
+        # Ensure metrics modules see enabled env on import.
+        monkeypatch.setenv("METRICS_ENABLED", "true")
+    
+        # Isolated DB per test.
+        db_path = tmp_path / "metrics_exec.db"
+        monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+        # Reload agent metrics module to ensure clean lazy state for this test.
+        import app.agents.metrics as agent_metrics
+        importlib.reload(agent_metrics)
+    
+        from cyberplat.product.infrastructure.database import get_engine
+        from cyberplat.product.infrastructure.models import Base, AgentSKU, TenantAgent
+        from sqlalchemy.orm import Session
+    
+        engine = get_engine()
+        Base.metadata.create_all(engine)
+    
+        tenant_id = "tenant-metrics"
+        now = datetime.now(timezone.utc).isoformat()
+    
+        with Session(engine) as session:
+            # Successful agent.
+            sku_ok = AgentSKU(
+                id=str(uuid.uuid4()),
+                code="demo.text_stats",
+                name="Demo: Text Stats",
+                description="Counts chars/words/lines and top words",
+                status="active",
+                pricing_model="free",
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(sku_ok)
+            session.add(
+                TenantAgent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_ok.id,
+                    status="enabled",
+                    activated_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+    
+            # Runner-not-found agent (SKU exists, enabled, but no runner registered).
+            sku_missing = AgentSKU(
+                id=str(uuid.uuid4()),
+                code="demo.missing",
+                name="Demo: Missing Runner",
+                description="Should fail with runner_not_found",
+                status="active",
+                pricing_model="free",
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(sku_missing)
+            session.add(
+                TenantAgent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_missing.id,
+                    status="enabled",
+                    activated_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+    
+            session.commit()
+    
+        # Minimal app: execution API + /metrics.
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        from app.api.agents import router as agents_router
+        from cyberplat.observability.metrics import metrics_endpoint
+    
+        app = FastAPI()
+        app.include_router(agents_router)
+    
+        @app.get("/metrics")
+        def metrics():
+            return metrics_endpoint()
+    
+        client = TestClient(app)
+    
+        # Create one successful execution.
+        resp_ok = client.post(
+            "/api/v1/agents/demo.text_stats/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "Hi"}, "idempotency_key": "m-ok-1"},
+        )
+        assert resp_ok.status_code == 200
+    
+        # Create one runner_not_found execution.
+        resp_fail = client.post(
+            "/api/v1/agents/demo.missing/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "Hi"}, "idempotency_key": "m-f-1"},
+        )
+        assert resp_fail.status_code == 200
+    
+        # Process both via built-in executor tick (claim -> run).
+        from app.agents.executor import claim_next_execution, run_execution
+        from sqlalchemy.orm import Session as OrmSession
+    
+        with OrmSession(engine) as session:
+            ex1 = claim_next_execution(session)
+            assert ex1 is not None
+            run_execution(session, ex1)
+    
+        with OrmSession(engine) as session:
+            ex2 = claim_next_execution(session)
+            assert ex2 is not None
+            run_execution(session, ex2)
+    
+        metrics_text = client.get("/metrics").text
+    
+>       assert 'agent_execution_completed_total{agent_code="demo.text_stats"}' in metrics_text
+E       assert 'agent_execution_completed_total{agent_code="demo.text_stats"}' in '# Metrics disabled\n'
+
+tests\test_agent_metrics.py:131: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:55:39,579", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "Disposed previous SQLAlchemy engine due to URL change", "taskName": null}
+{"timestamp": "2026-01-16 15:55:39,579", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "SQLAlchemy engine created: sqlite://localhost/...", "taskName": null}
+{"timestamp": "2026-01-16 15:55:41,787", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.text_stats/execute \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:55:41,819", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.missing/execute \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:55:41,916", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/metrics \"HTTP/1.1 200 OK\"", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.product.infrastructure.database:database.py:43 Disposed previous SQLAlchemy engine due to URL change
+INFO     cyberplat.product.infrastructure.database:database.py:58 SQLAlchemy engine created: sqlite://localhost/...
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.text_stats/execute "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.missing/execute "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/metrics "HTTP/1.1 200 OK"
+__________ test_billing_sla_metrics_exist_and_time_to_paid_observed ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241F7CA2270>
+tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-64/test_billing_sla_metrics_exist0')
+
+    def test_billing_sla_metrics_exist_and_time_to_paid_observed(monkeypatch, tmp_path):
+        db_path = tmp_path / "sla_metrics.db"
+        monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+>       from prometheus_client import REGISTRY, generate_latest
+E       ModuleNotFoundError: No module named 'prometheus_client'
+
+tests\test_billing_sla_metrics.py:14: ModuleNotFoundError
+________________ test_billing_metrics_module_import_and_names _________________
+
+    def test_billing_metrics_module_import_and_names():
+>       from prometheus_client import REGISTRY, generate_latest
+E       ModuleNotFoundError: No module named 'prometheus_client'
+
+tests\test_billing_worker_metrics.py:5: ModuleNotFoundError
+_______________________ test_close_case_changes_status ________________________
+
+case_service_memory = <cyberplat.case_service.CaseService object at 0x00000241F7E18A50>
+
+    def test_close_case_changes_status(case_service_memory):
+        """╥хёЄ: close_case ьхэ хЄ status эр closed."""
+        tenant_id = "tenant-123"
+        case_id = case_service_memory.create_case(
+            tenant_id=tenant_id,
+            case_type="support",
+            title="╩хщё",
+            initial_step="step1"
+        )
+    
+        case = case_service_memory.get_case(case_id)
+        assert case["status"] == "open"
+    
+        # ╟ръЁ√трхь ъхщё
+        case_service_memory.close_case(case_id)
+    
+        case = case_service_memory.get_case(case_id)
+        assert case["status"] == "closed"
+>       assert case["current_step"] is None  # ╪ру фюыцхэ с√Є№ чртхЁ°╕э
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'step1' is None
+
+tests\test_case_service.py:249: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:56:06,390", "level": "INFO", "logger": "cyberplat.case_service", "message": "┴рчр ъхщёют шэшЎшрышчшЁютрэр: :memory:", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.case_service:case_service.py:126 ┴рчр ъхщёют шэшЎшрышчшЁютрэр: :memory:
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:56:06,392", "level": "INFO", "logger": "cyberplat.case_service", "message": "╤ючфрэ ъхщё: 3d72bd84-cd6a-461d-885a-35d267cb47e0 (tenant_id=tenant-123, case_type=support, title=╩хщё)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:06,393", "level": "INFO", "logger": "cyberplat.case_service", "message": "╩хщё 3d72bd84-cd6a-461d-885a-35d267cb47e0 чръЁ√Є", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.case_service:case_service.py:191 ╤ючфрэ ъхщё: 3d72bd84-cd6a-461d-885a-35d267cb47e0 (tenant_id=tenant-123, case_type=support, title=╩хщё)
+INFO     cyberplat.case_service:case_service.py:530 ╩хщё 3d72bd84-cd6a-461d-885a-35d267cb47e0 чръЁ√Є
+___________ test_cancel_accepted_is_idempotent_and_counts_as_failed ___________
+
+tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-64/test_cancel_accepted_is_idempo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241F35DFE00>
+
+    def test_cancel_accepted_is_idempotent_and_counts_as_failed(tmp_path, monkeypatch):
+        monkeypatch.setenv("METRICS_ENABLED", "true")
+    
+        import app.agents.metrics as agent_metrics
+        importlib.reload(agent_metrics)
+    
+        db_path = tmp_path / "cancel.db"
+        monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+        from cyberplat.product.infrastructure.database import get_engine
+        from cyberplat.product.infrastructure.models import Base, AgentSKU, TenantAgent
+        from sqlalchemy.orm import Session
+    
+        engine = get_engine()
+        Base.metadata.create_all(engine)
+    
+        tenant_id = "tenant-cancel"
+        now = datetime.now(timezone.utc).isoformat()
+        sku_id = str(uuid.uuid4())
+    
+        with Session(engine) as session:
+            session.add(
+                AgentSKU(
+                    id=sku_id,
+                    code="demo.text_stats",
+                    name="Demo: Text Stats",
+                    description="free agent",
+                    status="active",
+                    pricing_model="free",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                TenantAgent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_id,
+                    status="enabled",
+                    activated_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+    
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        from app.api.agents import router as agents_router
+        from app.api.executions import router as executions_router
+        from cyberplat.observability.metrics import metrics_endpoint
+    
+        app = FastAPI()
+        app.include_router(agents_router)
+        app.include_router(executions_router)
+    
+        @app.get("/metrics")
+        def metrics():
+            return metrics_endpoint()
+    
+        client = TestClient(app)
+    
+        # Create accepted execution (do not run executor).
+        resp = client.post(
+            "/api/v1/agents/demo.text_stats/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "hi"}, "idempotency_key": "c-1"},
+        )
+        assert resp.status_code == 200
+        execution_id = resp.json()["execution_id"]
+        assert resp.json()["status"] == "accepted"
+    
+        # Cancel once -> rejected/cancelled
+        r1 = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        assert r1.status_code == 200
+        assert r1.json()["status"] == "rejected"
+        assert r1.json()["error_code"] == "cancelled"
+    
+        # Cancel again -> idempotent 200, same state
+        r2 = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        assert r2.status_code == 200
+        assert r2.json()["status"] == "rejected"
+        assert r2.json()["error_code"] == "cancelled"
+    
+        metrics_text = client.get("/metrics").text
+>       assert 'agent_execution_failed_total{agent_code="demo.text_stats",error_code="cancelled"}' in metrics_text
+E       assert 'agent_execution_failed_total{agent_code="demo.text_stats",error_code="cancelled"}' in '# Metrics disabled\n'
+
+tests\test_execution_timeout_and_cancel.py:209: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:56:13,370", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "Disposed previous SQLAlchemy engine due to URL change", "taskName": null}
+{"timestamp": "2026-01-16 15:56:13,370", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "SQLAlchemy engine created: sqlite://localhost/...", "taskName": null}
+{"timestamp": "2026-01-16 15:56:15,583", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.text_stats/execute \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:56:15,611", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/executions/32481992-76d3-436e-b329-69b689497d5c/cancel \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:56:15,617", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/executions/32481992-76d3-436e-b329-69b689497d5c/cancel \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:56:15,621", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/metrics \"HTTP/1.1 200 OK\"", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.product.infrastructure.database:database.py:43 Disposed previous SQLAlchemy engine due to URL change
+INFO     cyberplat.product.infrastructure.database:database.py:58 SQLAlchemy engine created: sqlite://localhost/...
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.text_stats/execute "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/executions/32481992-76d3-436e-b329-69b689497d5c/cancel "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/executions/32481992-76d3-436e-b329-69b689497d5c/cancel "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/metrics "HTTP/1.1 200 OK"
+_________________________ test_mark_failed_with_retry _________________________
+
+job_service_memory = <cyberplat.integrations.integration_job_service.IntegrationJobService object at 0x00000241F6CA1A70>
+
+    def test_mark_failed_with_retry(job_service_memory):
+        """╥хёЄ: mark_failed ё schedule_retry яырэшЁєхЄ яютЄюЁ."""
+        job_id = job_service_memory.enqueue("tenant-123", "onec", "upsert_counterparty", {"artifact_id": "art-123"})
+    
+        jobs = job_service_memory.claim_for_processing()
+        assert len(jobs) == 1
+    
+        # ╬Єьхўрхь ю°шсъє ё retry
+        job_service_memory.mark_failed(
+            job_id,
+            error_ru="┬Ёхьхээр  ю°шсър",
+            error_code="temporary_error",
+            schedule_retry=True
+        )
+    
+        job = job_service_memory.get_job(job_id)
+        assert job["status"] == "pending_retry"
+        assert job["attempt"] == 1
+        assert job["last_error_ru"] == "┬Ёхьхээр  ю°шсър"
+        assert job["last_error_code"] == "temporary_error"
+>       assert job["next_attempt_at"] is not None
+               ^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'next_attempt_at'
+
+tests\test_integration_job_service.py:128: KeyError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:56:16,200", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: :memory:", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:80 ┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: :memory:
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:56:16,201", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job enqueued: c86d8c56-ef12-4b59-94e1-1a8c228d4349 (tenant=tenant-123, provider=onec, type=upsert_counterparty)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:16,203", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job failed: c86d8c56-ef12-4b59-94e1-1a8c228d4349 (attempt=1/5, error_code=temporary_error)", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:123 Integration job enqueued: c86d8c56-ef12-4b59-94e1-1a8c228d4349 (tenant=tenant-123, provider=onec, type=upsert_counterparty)
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:281 Integration job failed: c86d8c56-ef12-4b59-94e1-1a8c228d4349 (attempt=1/5, error_code=temporary_error)
+________________________ test_mark_failed_max_attempts ________________________
+
+job_service_memory = <cyberplat.integrations.integration_job_service.IntegrationJobService object at 0x00000241F62809E0>
+
+    def test_mark_failed_max_attempts(job_service_memory):
+        """╥хёЄ: mark_failed яюёых max_attempts юЄьхўрхЄ ъръ failed."""
+        job_id = job_service_memory.enqueue(
+            "tenant-123",
+            "onec",
+            "upsert_counterparty",
+            {"artifact_id": "art-123"},
+            max_attempts=2
+        )
+    
+        # ╤шьєышЁєхь эхёъюы№ъю яюя√Єюъ
+        for _ in range(2):
+            jobs = job_service_memory.claim_for_processing()
+            if jobs:
+                job_service_memory.mark_failed(
+                    job_id,
+                    error_ru="╬°шсър",
+                    error_code="error",
+                    schedule_retry=True
+                )
+    
+        job = job_service_memory.get_job(job_id)
+>       assert job["status"] == "failed"
+E       AssertionError: assert 'pending_retry' == 'failed'
+E         
+E         - failed
+E         + pending_retry
+
+tests\test_integration_job_service.py:173: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:56:16,254", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: :memory:", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:80 ┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: :memory:
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:56:16,258", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job enqueued: 07e0d420-e6e1-4a99-99a8-64c8658d7e6a (tenant=tenant-123, provider=onec, type=upsert_counterparty)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:16,260", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job failed: 07e0d420-e6e1-4a99-99a8-64c8658d7e6a (attempt=1/2, error_code=error)", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:123 Integration job enqueued: 07e0d420-e6e1-4a99-99a8-64c8658d7e6a (tenant=tenant-123, provider=onec, type=upsert_counterparty)
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:281 Integration job failed: 07e0d420-e6e1-4a99-99a8-64c8658d7e6a (attempt=1/2, error_code=error)
+_______________ test_worker_creates_case_task_on_final_failure ________________
+
+services = (<cyberplat.integrations.integration_job_service.IntegrationJobService object at 0x00000241F5940230>, <cyberplat.integ...ce.IdempotencyService object at 0x00000241F62819D0>, <cyberplat.case_service.CaseService object at 0x00000241F6AFAE60>)
+
+    def test_worker_creates_case_task_on_final_failure(services):
+        """╥хёЄ: worker ёючфр╕Є чрфрўє т ъхщёх яЁш Їшэры№эющ ю°шсъх."""
+        job_service, settings_service, idempotency_service, case_service = services
+    
+        # ╤ючфр╕ь ъхщё
+        case_id = case_service.create_case(
+            tenant_id="tenant-123",
+            case_type="support",
+            title="Test case"
+        )
+    
+        # ═рёЄЁрштрхь шэЄхуЁрЎш■
+        settings_service.upsert_settings(
+            tenant_id="tenant-123",
+            enabled=True,
+            base_url="https://1c.example.com/api",
+            token="test-token"
+        )
+    
+        # ╤ючфр╕ь job ё case_id
+        job_id = job_service.enqueue(
+            tenant_id="tenant-123",
+            provider="onec",
+            job_type="upsert_counterparty",
+            payload={"artifact_id": "art-123", "artifact": {"data": {}}},  # ═хЄ name - ю°шсър трышфрЎшш
+            case_id=case_id
+        )
+    
+        worker = IntegrationWorker(
+            job_service=job_service,
+            settings_service=settings_service,
+            idempotency_service=idempotency_service,
+            case_service=case_service
+        )
+    
+        jobs = job_service.claim_for_processing()
+        assert len(jobs) == 1
+    
+        worker._process_onec_job(jobs[0])
+    
+        # ╧ЁютхЁ хь, ўЄю job failed
+        job = job_service.get_job(job_id)
+        assert job["status"] == "failed"
+    
+        # ╧ЁютхЁ хь, ўЄю ёючфрэр чрфрўр т ъхщёх
+        conn = case_service._get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM case_tasks WHERE case_id = ?", (case_id,))
+        task = cur.fetchone()
+        conn.close()
+    
+        assert task is not None
+>       assert "шэЄхуЁрЎшш 1╤" in task["title"].lower() or "1c" in task["title"].lower()
+E       assert ('шэЄхуЁрЎшш 1╤' in "шёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1ё: юЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'" or '1c' in "шёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1ё: юЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'")
+E        +  where "шёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1ё: юЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'" = <built-in method lower of str object at 0x00000241F7D09370>()
+E        +    where <built-in method lower of str object at 0x00000241F7D09370> = "╚ёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1╤: ╬ЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'".lower
+E        +  and   "шёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1ё: юЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'" = <built-in method lower of str object at 0x00000241F7D09370>()
+E        +    where <built-in method lower of str object at 0x00000241F7D09370> = "╚ёяЁртшЄ№ ю°шсъє шэЄхуЁрЎшш 1╤: ╬ЄёєЄёЄтєхЄ юс чрЄхы№эюх яюых 'name' шыш 'эрчтрэшх'".lower
+
+tests\test_integration_worker.py:199: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:56:17,230", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp17vubr2w.db", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,249", "level": "INFO", "logger": "cyberplat.integrations.onec_settings_service", "message": "┴рчр эрёЄЁюхъ 1╤ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp17vubr2w.db", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,299", "level": "INFO", "logger": "cyberplat.integrations.idempotency_service", "message": "┴рчр шфхьяюЄхэЄэюёЄш шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp17vubr2w.db", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,462", "level": "INFO", "logger": "cyberplat.case_service", "message": "┴рчр ъхщёют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp17vubr2w.db", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:80 ┴рчр jobs шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp17vubr2w.db
+INFO     cyberplat.integrations.onec_settings_service:onec_settings_service.py:67 ┴рчр эрёЄЁюхъ 1╤ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp17vubr2w.db
+INFO     cyberplat.integrations.idempotency_service:idempotency_service.py:70 ┴рчр шфхьяюЄхэЄэюёЄш шэЄхуЁрЎшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp17vubr2w.db
+INFO     cyberplat.case_service:case_service.py:126 ┴рчр ъхщёют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp17vubr2w.db
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:56:17,478", "level": "INFO", "logger": "cyberplat.case_service", "message": "╤ючфрэ ъхщё: aeec73b6-166b-4ae0-8a55-137ba1a585f0 (tenant_id=tenant-123, case_type=support, title=Test case)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,498", "level": "INFO", "logger": "cyberplat.integrations.onec_settings_service", "message": "═рёЄЁющъш 1╤ юсэютыхэ√ фы  tenant: tenant-123 (enabled=True)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,515", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job enqueued: d6aab264-9f22-4a16-8890-ffbf3fe26b5e (tenant=tenant-123, provider=onec, type=upsert_counterparty)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,551", "level": "INFO", "logger": "cyberplat.integrations.integration_job_service", "message": "Integration job failed: d6aab264-9f22-4a16-8890-ffbf3fe26b5e (attempt=1/5, error_code=missing_required_field)", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,566", "level": "INFO", "logger": "cyberplat.case_service", "message": "─юсртыхэр чрфрўр: 1da438f7-0768-45d4-8e58-08e16c2ddfcd ъ ъхщёє aeec73b6-166b-4ae0-8a55-137ba1a585f0", "taskName": null}
+{"timestamp": "2026-01-16 15:56:17,582", "level": "INFO", "logger": "cyberplat.integrations.integration_worker", "message": "╤ючфрэр чрфрўр т ъхщёх aeec73b6-166b-4ae0-8a55-137ba1a585f0 фы  ю°шсъш шэЄхуЁрЎшш 1╤", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.case_service:case_service.py:191 ╤ючфрэ ъхщё: aeec73b6-166b-4ae0-8a55-137ba1a585f0 (tenant_id=tenant-123, case_type=support, title=Test case)
+INFO     cyberplat.integrations.onec_settings_service:onec_settings_service.py:160 ═рёЄЁющъш 1╤ юсэютыхэ√ фы  tenant: tenant-123 (enabled=True)
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:123 Integration job enqueued: d6aab264-9f22-4a16-8890-ffbf3fe26b5e (tenant=tenant-123, provider=onec, type=upsert_counterparty)
+INFO     cyberplat.integrations.integration_job_service:integration_job_service.py:281 Integration job failed: d6aab264-9f22-4a16-8890-ffbf3fe26b5e (attempt=1/5, error_code=missing_required_field)
+INFO     cyberplat.case_service:case_service.py:335 ─юсртыхэр чрфрўр: 1da438f7-0768-45d4-8e58-08e16c2ddfcd ъ ъхщёє aeec73b6-166b-4ae0-8a55-137ba1a585f0
+INFO     cyberplat.integrations.integration_worker:integration_worker.py:307 ╤ючфрэр чрфрўр т ъхщёх aeec73b6-166b-4ae0-8a55-137ba1a585f0 фы  ю°шсъш шэЄхуЁрЎшш 1╤
+_________________ test_circuit_breaker_record_success_closes __________________
+
+    def test_circuit_breaker_record_success_closes():
+        """╥хёЄ: єёях°э√щ чряЁюё чръЁ√трхЄ circuit т half_open."""
+        cb = CircuitBreaker(
+            failure_threshold=2,
+            window_seconds=60.0,
+            cooldown_seconds=0.5,
+            name="test"
+        )
+    
+        # ╬ЄъЁ√трхь circuit
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.get_state() == "open"
+    
+        # ╞ф╕ь cooldown
+        time.sleep(0.6)
+    
+        # ╙ёях°э√щ чряЁюё фюыцхэ чръЁ√Є№ circuit
+        cb.record_success()
+>       assert cb.get_state() == "closed"
+E       AssertionError: assert 'half_open' == 'closed'
+E         
+E         - closed
+E         + half_open
+
+tests\test_onec_circuit_breaker.py:124: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:57:03,485", "level": "WARNING", "logger": "cyberplat.integrations.circuit_breaker", "message": "Circuit breaker 'test' opened (2 failures in 60.0s)", "taskName": null}
+{"timestamp": "2026-01-16 15:57:04,086", "level": "INFO", "logger": "cyberplat.integrations.circuit_breaker", "message": "Circuit breaker 'test' half-open (testing)", "taskName": null}
+------------------------------ Captured log call ------------------------------
+WARNING  cyberplat.integrations.circuit_breaker:circuit_breaker.py:98 Circuit breaker 'test' opened (2 failures in 60.0s)
+INFO     cyberplat.integrations.circuit_breaker:circuit_breaker.py:85 Circuit breaker 'test' half-open (testing)
+_________________ test_paid_agent_enforcement_and_happy_path __________________
+
+tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-64/test_paid_agent_enforcement_an0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241F4147A10>
+
+    def test_paid_agent_enforcement_and_happy_path(tmp_path, monkeypatch):
+        monkeypatch.setenv("METRICS_ENABLED", "true")
+    
+        # Reload agent metrics module to ensure clean lazy state for this test.
+        import app.agents.metrics as agent_metrics
+    
+        importlib.reload(agent_metrics)
+    
+        db_path = tmp_path / "paid_agent.db"
+        monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+        from cyberplat.product.infrastructure.database import get_engine
+        from cyberplat.product.infrastructure.models import (
+            Base,
+            AgentSKU,
+            TenantAgent,
+            TenantAgentSubscription,
+            AgentExecution,
+        )
+        from sqlalchemy.orm import Session
+        from sqlalchemy import select
+    
+        engine = get_engine()
+        Base.metadata.create_all(engine)
+    
+        tenant_id = "tenant-paid"
+        now = datetime.now(timezone.utc).isoformat()
+        sku_id = str(uuid.uuid4())
+    
+        with Session(engine) as session:
+            session.add(
+                AgentSKU(
+                    id=sku_id,
+                    code="demo.sentiment_basic",
+                    name="Demo: Sentiment Basic",
+                    description="Paid demo agent",
+                    status="active",
+                    pricing_model="subscription",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                TenantAgent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_id,
+                    status="enabled",
+                    activated_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+    
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        from app.api.agents import router as agents_router
+        from cyberplat.observability.metrics import metrics_endpoint
+    
+        app = FastAPI()
+        app.include_router(agents_router)
+    
+        @app.get("/metrics")
+        def metrics():
+            return metrics_endpoint()
+    
+        client = TestClient(app)
+    
+        # No subscription -> 402
+        resp_402 = client.post(
+            "/api/v1/agents/demo.sentiment_basic/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "good excellent"}, "idempotency_key": "paid-1"},
+        )
+        assert resp_402.status_code == 402
+        data_402 = resp_402.json()
+        assert data_402["error"] == "agent_addon_inactive"
+    
+        # Activate subscription
+        with Session(engine) as session:
+            session.add(
+                TenantAgentSubscription(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_id,
+                    status="active",
+                    starts_at=now,
+                    ends_at=None,
+                    cancel_at_period_end=0,
+                    source="admin",
+                    external_ref=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+    
+        # With subscription -> accepted
+        resp_ok = client.post(
+            "/api/v1/agents/demo.sentiment_basic/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "good excellent"}, "idempotency_key": "paid-2"},
+        )
+        assert resp_ok.status_code == 200
+        accepted = resp_ok.json()
+        assert accepted["status"] == "accepted"
+        execution_id = accepted["execution_id"]
+    
+        # Run executor (claim -> run)
+        from app.agents.executor import claim_next_execution, run_execution
+    
+        with Session(engine) as session:
+            claimed = claim_next_execution(session)
+            assert claimed is not None
+            assert claimed.id == execution_id
+            assert claimed.status == "running"
+    
+        with Session(engine) as session:
+            execution = session.execute(
+                select(AgentExecution).where(AgentExecution.id == execution_id)
+            ).scalar_one()
+            run_execution(session, execution)
+    
+        # Completed with label/score + meta.duration_ms
+        resp_done = client.get(
+            f"/api/v1/agents/executions/{execution_id}",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        assert resp_done.status_code == 200
+        done = resp_done.json()
+        assert done["status"] == "completed"
+        assert done["result"]["label"] in {"positive", "neutral", "negative"}
+        assert isinstance(done["result"]["score"], float)
+        assert done["result"]["meta"]["duration_ms"] >= 0
+    
+        # Metrics should include completed for this agent_code.
+        metrics_text = client.get("/metrics").text
+>       assert 'agent_execution_completed_total{agent_code="demo.sentiment_basic"}' in metrics_text
+E       assert 'agent_execution_completed_total{agent_code="demo.sentiment_basic"}' in '# Metrics disabled\n'
+
+tests\test_paid_agent_enforcement_e2e.py:149: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:57:04,243", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "Disposed previous SQLAlchemy engine due to URL change", "taskName": null}
+{"timestamp": "2026-01-16 15:57:04,245", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "SQLAlchemy engine created: sqlite://localhost/...", "taskName": null}
+{"timestamp": "2026-01-16 15:57:06,222", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.sentiment_basic/execute \"HTTP/1.1 402 Payment Required\"", "taskName": null}
+{"timestamp": "2026-01-16 15:57:06,265", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.sentiment_basic/execute \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:57:06,316", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/agents/executions/e5a0eaee-920c-42fd-8cfc-b1367e93a6ca \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:57:06,323", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/metrics \"HTTP/1.1 200 OK\"", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.product.infrastructure.database:database.py:43 Disposed previous SQLAlchemy engine due to URL change
+INFO     cyberplat.product.infrastructure.database:database.py:58 SQLAlchemy engine created: sqlite://localhost/...
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.sentiment_basic/execute "HTTP/1.1 402 Payment Required"
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.sentiment_basic/execute "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/api/v1/agents/executions/e5a0eaee-920c-42fd-8cfc-b1367e93a6ca "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/metrics "HTTP/1.1 200 OK"
+_________________________ test_payment_agent_kz_ready _________________________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:08,151", "level": "INFO", "logger": "cyberplat.event_service", "message": "┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpfre3ts5k.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,220", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpfre3ts5k.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,221", "level": "INFO", "logger": "cyberplat.base_agent", "message": "╚эшЎшрышчшЁютрэ рухэЄ: payment_agent", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.event_service:event_service.py:75 ┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpfre3ts5k.db
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpfre3ts5k.db
+INFO     cyberplat.base_agent:base_agent.py:26 ╚эшЎшрышчшЁютрэ рухэЄ: payment_agent
+___________________ test_payment_agent_kz_without_bic_ready ___________________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:08,305", "level": "INFO", "logger": "cyberplat.event_service", "message": "┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpspr5r2gy.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,375", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpspr5r2gy.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,376", "level": "INFO", "logger": "cyberplat.base_agent", "message": "╚эшЎшрышчшЁютрэ рухэЄ: payment_agent", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.event_service:event_service.py:75 ┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpspr5r2gy.db
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpspr5r2gy.db
+INFO     cyberplat.base_agent:base_agent.py:26 ╚эшЎшрышчшЁютрэ рухэЄ: payment_agent
+_________________________ test_payment_agent_ru_ready _________________________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:08,463", "level": "INFO", "logger": "cyberplat.event_service", "message": "┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpuzx6l9je.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,545", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpuzx6l9je.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,545", "level": "INFO", "logger": "cyberplat.base_agent", "message": "╚эшЎшрышчшЁютрэ рухэЄ: payment_agent", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.event_service:event_service.py:75 ┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpuzx6l9je.db
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpuzx6l9je.db
+INFO     cyberplat.base_agent:base_agent.py:26 ╚эшЎшрышчшЁютрэ рухэЄ: payment_agent
+__________________ test_payment_agent_country_hint_priority ___________________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:08,626", "level": "INFO", "logger": "cyberplat.event_service", "message": "┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpswqhajhy.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,694", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmpswqhajhy.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,694", "level": "INFO", "logger": "cyberplat.base_agent", "message": "╚эшЎшрышчшЁютрэ рухэЄ: payment_agent", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.event_service:event_service.py:75 ┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpswqhajhy.db
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmpswqhajhy.db
+INFO     cyberplat.base_agent:base_agent.py:26 ╚эшЎшрышчшЁютрэ рухэЄ: payment_agent
+_____________________ test_payment_agent_country_hint_kz ______________________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:08,774", "level": "INFO", "logger": "cyberplat.event_service", "message": "┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp7bipgfmj.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,846", "level": "INFO", "logger": "cyberplat.artifact_service", "message": "┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\\Users\\User\\AppData\\Local\\Temp\\tmp7bipgfmj.db", "taskName": null}
+{"timestamp": "2026-01-16 15:57:08,847", "level": "INFO", "logger": "cyberplat.base_agent", "message": "╚эшЎшрышчшЁютрэ рухэЄ: payment_agent", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.event_service:event_service.py:75 ┴рчр ёюс√Єшщ шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp7bipgfmj.db
+INFO     cyberplat.artifact_service:artifact_service.py:70 ┴рчр рЁЄхЇръЄют шэшЎшрышчшЁютрэр: C:\Users\User\AppData\Local\Temp\tmp7bipgfmj.db
+INFO     cyberplat.base_agent:base_agent.py:26 ╚эшЎшрышчшЁютрэ рухэЄ: payment_agent
+______________________ test_reject_after_approved_fails _______________________
+
+payment_service_memory = <cyberplat.payments.payment_service.PaymentService object at 0x00000241F7EAC910>
+
+    def test_reject_after_approved_fails(payment_service_memory):
+        """╥хёЄ: reject яюёых approved т√сЁрё√трхЄ ю°шсъє."""
+        order_id = payment_service_memory.create_payment_order(
+            tenant_id="tenant-123",
+            amount=50000.0,
+            beneficiary_name="╬╬╬ ╥хёЄ",
+            beneficiary_account_iban="KZ123456789012345678",
+            purpose="╥хёЄ",
+            created_by_role="accountant"
+        )
+    
+        payment_service_memory.submit_for_approval(order_id, "tenant-123")
+        # Auto-approve (эхЄ яюышЄшъш)
+    
+        # ╧√Єрхьё  юЄъыюэшЄ№ яюёых юфюсЁхэш 
+>       with pytest.raises(InvalidApprovalError) as exc_info:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'cyberplat.payments.payment_service.InvalidApprovalError'>
+
+tests\test_payment_service.py:262: Failed
+---------------------------- Captured stdout setup ----------------------------
+{"timestamp": "2026-01-16 15:57:09,947", "level": "INFO", "logger": "cyberplat.payments.payment_service", "message": "┴рчр яырЄ╕цэ√ї яюЁєўхэшщ шэшЎшрышчшЁютрэр: :memory:", "taskName": null}
+----------------------------- Captured log setup ------------------------------
+INFO     cyberplat.payments.payment_service:payment_service.py:136 ┴рчр яырЄ╕цэ√ї яюЁєўхэшщ шэшЎшрышчшЁютрэр: :memory:
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:57:09,948", "level": "INFO", "logger": "cyberplat.payments.payment_service", "message": "╤ючфрэю яырЄ╕цэюх яюЁєўхэшх: 4748cd75-0466-43a5-8ae1-4575ffdeadfd (tenant=tenant-123, amount=50000.0, currency=KZT)", "taskName": null}
+{"timestamp": "2026-01-16 15:57:09,950", "level": "INFO", "logger": "cyberplat.payments.payment_service", "message": "╧ырЄ╕цэюх яюЁєўхэшх 4748cd75-0466-43a5-8ae1-4575ffdeadfd юЄяЁртыхэю эр ёюуырёютрэшх (0 °руют)", "taskName": null}
+{"timestamp": "2026-01-16 15:57:09,950", "level": "INFO", "logger": "cyberplat.payments.payment_service", "message": "╧ырЄ╕цэюх яюЁєўхэшх 4748cd75-0466-43a5-8ae1-4575ffdeadfd юЄъыюэхэю (role=accountant)", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.payments.payment_service:payment_service.py:218 ╤ючфрэю яырЄ╕цэюх яюЁєўхэшх: 4748cd75-0466-43a5-8ae1-4575ffdeadfd (tenant=tenant-123, amount=50000.0, currency=KZT)
+INFO     cyberplat.payments.payment_service:payment_service.py:474 ╧ырЄ╕цэюх яюЁєўхэшх 4748cd75-0466-43a5-8ae1-4575ffdeadfd юЄяЁртыхэю эр ёюуырёютрэшх (0 °руют)
+INFO     cyberplat.payments.payment_service:payment_service.py:724 ╧ырЄ╕цэюх яюЁєўхэшх 4748cd75-0466-43a5-8ae1-4575ffdeadfd юЄъыюэхэю (role=accountant)
+_______________________ test_running_cancel_cooperative _______________________
+
+tmp_path = WindowsPath('C:/Users/User/AppData/Local/Temp/pytest-of-User/pytest-64/test_running_cancel_cooperativ0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241F41AEAC0>
+
+    def test_running_cancel_cooperative(tmp_path, monkeypatch):
+        monkeypatch.setenv("METRICS_ENABLED", "true")
+        # Avoid default timeout.
+        monkeypatch.delenv("AGENT_DEFAULT_TIMEOUT_SECONDS", raising=False)
+    
+        # Reload agent metrics module to ensure clean lazy state for this test.
+        import app.agents.metrics as agent_metrics
+        importlib.reload(agent_metrics)
+    
+        db_path = tmp_path / "running_cancel.db"
+        monkeypatch.setenv("PLATFORM_DB_PATH", str(db_path))
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+    
+        from cyberplat.product.infrastructure.database import get_engine
+        from cyberplat.product.infrastructure.models import Base, AgentSKU, TenantAgent, AgentExecution
+        from sqlalchemy.orm import Session
+        from sqlalchemy import select
+    
+        engine = get_engine()
+        Base.metadata.create_all(engine)
+    
+        tenant_id = "tenant-run-cancel"
+        now = datetime.now(timezone.utc).isoformat()
+        sku_id = str(uuid.uuid4())
+        agent_code = "demo.slow_coop"
+    
+        with Session(engine) as session:
+            session.add(
+                AgentSKU(
+                    id=sku_id,
+                    code=agent_code,
+                    name="Demo: Slow Coop",
+                    description="Slow cooperative runner",
+                    status="active",
+                    pricing_model="free",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                TenantAgent(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    agent_sku_id=sku_id,
+                    status="enabled",
+                    activated_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+    
+        # Register slow cooperative runner.
+        import cyberplat.agents.registry as reg
+    
+        class SlowCoopRunner:
+            def run(self, payload: dict, *, tenant_id: str, execution_id, ctx=None):
+                # Loop and cooperatively check cancel flag.
+                for _ in range(50):
+                    if ctx is not None:
+                        ctx.check_cancelled()
+                    time.sleep(0.01)
+                return {"ok": True}
+    
+        monkeypatch.setitem(reg.AGENT_RUNNERS, agent_code, SlowCoopRunner())
+        # Ensure no per-agent timeout.
+        if agent_code in reg.AGENT_TIMEOUT_SECONDS:
+            d = dict(reg.AGENT_TIMEOUT_SECONDS)
+            d.pop(agent_code, None)
+            monkeypatch.setattr(reg, "AGENT_TIMEOUT_SECONDS", d)
+    
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        from app.api.agents import router as agents_router
+        from app.api.executions import router as executions_router
+        from cyberplat.observability.metrics import metrics_endpoint
+    
+        app = FastAPI()
+        app.include_router(agents_router)
+        app.include_router(executions_router)
+    
+        @app.get("/metrics")
+        def metrics():
+            return metrics_endpoint()
+    
+        client = TestClient(app)
+    
+        # Create accepted execution.
+        resp = client.post(
+            f"/api/v1/agents/{agent_code}/execute",
+            headers={"X-Tenant-ID": tenant_id},
+            json={"input": {"text": "x"}, "idempotency_key": "rc-1"},
+        )
+        assert resp.status_code == 200
+        execution_id = resp.json()["execution_id"]
+    
+        from app.agents.executor import claim_next_execution, run_execution
+    
+        # Claim to running and start execution in background thread.
+        with Session(engine) as session:
+            claimed = claim_next_execution(session)
+            assert claimed is not None
+            assert claimed.id == execution_id
+    
+        def _run():
+            with Session(engine) as session:
+                ex = session.execute(select(AgentExecution).where(AgentExecution.id == execution_id)).scalar_one()
+                run_execution(session, ex)
+    
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+    
+        # Request cancellation while running.
+        cancel_resp = client.post(
+            f"/api/v1/executions/{execution_id}/cancel",
+            headers={"X-Tenant-ID": tenant_id},
+        )
+        assert cancel_resp.status_code == 200
+        assert cancel_resp.json()["status"] == "running"
+        assert cancel_resp.json()["cancel_requested"] is True
+    
+        t.join(timeout=5.0)
+        assert not t.is_alive()
+    
+        with Session(engine) as session:
+            ex = session.execute(select(AgentExecution).where(AgentExecution.id == execution_id)).scalar_one()
+            assert ex.status == "failed"
+            assert ex.error_code == "cancelled"
+    
+        metrics_text = client.get("/metrics").text
+>       assert f'agent_execution_failed_total{{agent_code="{agent_code}",error_code="cancelled"}}' in metrics_text
+E       assert 'agent_execution_failed_total{agent_code="demo.slow_coop",error_code="cancelled"}' in '# Metrics disabled\n'
+
+tests\test_running_cancel_cooperative.py:140: AssertionError
+---------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-01-16 15:57:24,001", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "Disposed previous SQLAlchemy engine due to URL change", "taskName": null}
+{"timestamp": "2026-01-16 15:57:24,002", "level": "INFO", "logger": "cyberplat.product.infrastructure.database", "message": "SQLAlchemy engine created: sqlite://localhost/...", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,152", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/agents/demo.slow_coop/execute \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,199", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/executions/e81bb324-21b8-4011-ba62-ab8bef681901/cancel \"HTTP/1.1 200 OK\"", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,224", "level": "ERROR", "logger": "app.agents.executor", "message": "Execution e81bb324-21b8-4011-ba62-ab8bef681901 failed: cancelled", "exception": "Traceback (most recent call last):\n  File \"C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\app\\agents\\executor.py\", line 216, in run_execution\n    result = _run()\n  File \"C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\app\\agents\\executor.py\", line 212, in _run\n    return runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid, ctx=ctx)\n           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\tests\\test_running_cancel_cooperative.py\", line 70, in run\n    ctx.check_cancelled()\n    ~~~~~~~~~~~~~~~~~~~^^\n  File \"C:\\Projects\\Agent_Platform\\CyberPlat-main\\Agent_Platform\\cyberplat\\agents\\context.py\", line 49, in check_cancelled\n    raise ExecutionCancelled(cancelled(details={\"cancel_requested_at\": now_iso()}))\ncyberplat.agents.context.ExecutionCancelled: cancelled", "taskName": null}
+{"timestamp": "2026-01-16 15:57:26,235", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/metrics \"HTTP/1.1 200 OK\"", "taskName": null}
+------------------------------ Captured log call ------------------------------
+INFO     cyberplat.product.infrastructure.database:database.py:43 Disposed previous SQLAlchemy engine due to URL change
+INFO     cyberplat.product.infrastructure.database:database.py:58 SQLAlchemy engine created: sqlite://localhost/...
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/agents/demo.slow_coop/execute "HTTP/1.1 200 OK"
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/executions/e81bb324-21b8-4011-ba62-ab8bef681901/cancel "HTTP/1.1 200 OK"
+ERROR    app.agents.executor:executor.py:354 Execution e81bb324-21b8-4011-ba62-ab8bef681901 failed: cancelled
+Traceback (most recent call last):
+  File "C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\app\agents\executor.py", line 216, in run_execution
+    result = _run()
+  File "C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\app\agents\executor.py", line 212, in _run
+    return runner.run(payload, tenant_id=execution.tenant_id, execution_id=exec_uuid, ctx=ctx)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_running_cancel_cooperative.py", line 70, in run
+    ctx.check_cancelled()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\cyberplat\agents\context.py", line 49, in check_cancelled
+    raise ExecutionCancelled(cancelled(details={"cancel_requested_at": now_iso()}))
+cyberplat.agents.context.ExecutionCancelled: cancelled
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/metrics "HTTP/1.1 200 OK"
+============================== warnings summary ===============================
+..\..\..\..\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\_pytest\config\__init__.py:1428
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\_pytest\config\__init__.py:1428: PytestConfigWarning: Unknown config option: asyncio_mode
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+cyberplat\product\infrastructure\models.py:11
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\cyberplat\product\infrastructure\models.py:11: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app\main.py:158: 1 warning
+tests/test_admin_actions.py: 3 warnings
+tests/test_admin_detail_routes_integration.py: 5 warnings
+tests/test_billing_job_retry_policy.py: 1 warning
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\app\main.py:158: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\..\..\..\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4580: 2 warnings
+tests/test_admin_actions.py: 6 warnings
+tests/test_admin_detail_routes_integration.py: 10 warnings
+tests/test_billing_job_retry_policy.py: 2 warnings
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4580: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:490: 1 warning
+tests/test_admin_actions.py: 3 warnings
+tests/test_admin_detail_routes_integration.py: 5 warnings
+tests/test_billing_job_retry_policy.py: 1 warning
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\app\main.py:490: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+tests\test_payment_agent.py:159
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_payment_agent.py:159: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_payment_agent.py:210
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_payment_agent.py:210: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_payment_agent.py:261
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_payment_agent.py:261: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_payment_agent.py:312
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_payment_agent.py:312: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_payment_agent.py:360
+  C:\Projects\Agent_Platform\CyberPlat-main\Agent_Platform\tests\test_payment_agent.py:360: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests/test_kaspi_recurring_and_downgrade.py: 6 warnings
+tests/test_kaspi_upgrade_flow.py: 5 warnings
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\httpx\_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+tests/test_plan_limit_enforcement_integration.py: 2 warnings
+tests/test_tenant_portal_web.py: 9 warnings
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\templating.py:162: DeprecationWarning: The `name` is not the first parameter anymore. The first parameter should be the `Request` instance.
+  Replace `TemplateResponse(name, {"request": request})` by `TemplateResponse(request, name)`.
+    warnings.warn(
+
+tests/test_product_legacy_sync.py::test_documents_list_contains_uploaded_document_after_legacy_upload
+tests/test_product_legacy_sync.py::test_documents_list_contains_uploaded_document_after_legacy_upload
+tests/test_product_legacy_sync.py::test_documents_list_contains_uploaded_document_after_legacy_upload
+  C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\pydantic\_internal\_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_agent_metrics.py::test_agent_metrics_exposed_via_metrics_endpoint
+FAILED tests/test_billing_sla_metrics.py::test_billing_sla_metrics_exist_and_time_to_paid_observed
+FAILED tests/test_billing_worker_metrics.py::test_billing_metrics_module_import_and_names
+FAILED tests/test_case_service.py::test_close_case_changes_status - Assertion...
+FAILED tests/test_execution_timeout_and_cancel.py::test_cancel_accepted_is_idempotent_and_counts_as_failed
+FAILED tests/test_integration_job_service.py::test_mark_failed_with_retry - K...
+FAILED tests/test_integration_job_service.py::test_mark_failed_max_attempts
+FAILED tests/test_integration_worker.py::test_worker_creates_case_task_on_final_failure
+FAILED tests/test_onec_circuit_breaker.py::test_circuit_breaker_record_success_closes
+FAILED tests/test_paid_agent_enforcement_e2e.py::test_paid_agent_enforcement_and_happy_path
+FAILED tests/test_payment_agent.py::test_payment_agent_kz_ready - Failed: asy...
+FAILED tests/test_payment_agent.py::test_payment_agent_kz_without_bic_ready
+FAILED tests/test_payment_agent.py::test_payment_agent_ru_ready - Failed: asy...
+FAILED tests/test_payment_agent.py::test_payment_agent_country_hint_priority
+FAILED tests/test_payment_agent.py::test_payment_agent_country_hint_kz - Fail...
+FAILED tests/test_payment_service.py::test_reject_after_approved_fails - Fail...
+FAILED tests/test_running_cancel_cooperative.py::test_running_cancel_cooperative
+ERROR tests/test_s3_exporter.py::test_s3_exporter_build_key - AttributeError:...
+ERROR tests/test_s3_exporter.py::test_s3_exporter_put_bytes - AttributeError:...
+ERROR tests/test_s3_exporter.py::test_s3_exporter_put_json - AttributeError: ...
+ERROR tests/test_s3_exporter.py::test_s3_exporter_put_file - AttributeError: ...
+ERROR tests/test_s3_exporter.py::test_s3_exporter_enabled - AttributeError: <...
+ERROR tests/test_s3_exporter.py::test_s3_export_subscriber_artifact_created
+ERROR tests/test_s3_exporter.py::test_s3_export_subscriber_document_extracted
+ERROR tests/test_s3_exporter.py::test_s3_export_subscriber_payment_ready - At...
+17 failed, 649 passed, 72 warnings, 8 errors in 142.71s (0:02:22)

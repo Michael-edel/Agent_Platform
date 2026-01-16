@@ -15,7 +15,8 @@ from cyberplat.storage_service import StorageService
 @pytest.fixture
 def mock_s3_client():
     """Создать mock S3 клиент."""
-    with patch("cyberplat.s3_exporter.boto3") as mock_boto3:
+    # Патчим boto3 с create=True, так как он может быть не импортирован
+    with patch("cyberplat.s3_exporter.boto3", create=True) as mock_boto3:
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
         yield mock_client

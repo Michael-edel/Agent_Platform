@@ -73,16 +73,22 @@ class CircuitBreaker:
     
     def record_success(self) -> None:
         """Записать успешный запрос."""
+        now = time.time()
         with self._lock:
             if self.state == "half_open":
                 # Успешный запрос в half_open -> закрываем
                 self.state = "closed"
                 self._opened_at = None
+                self._failure_timestamps.clear()
                 logger.info(f"Circuit breaker '{self.name}' closed after successful request")
             elif self.state == "open":
-                # Переходим в half_open для тестирования
-                self.state = "half_open"
-                logger.info(f"Circuit breaker '{self.name}' half-open (testing)")
+                # Если cooldown прошёл, переходим в closed (успешный вызов после cooldown)
+                if self._should_close(now):
+                    self.state = "closed"
+                    self._opened_at = None
+                    self._failure_timestamps.clear()
+                    logger.info(f"Circuit breaker '{self.name}' closed after cooldown and successful request")
+                # Если cooldown ещё не прошёл, игнорируем успешный вызов
     
     def record_failure(self) -> None:
         """Записать ошибку."""
