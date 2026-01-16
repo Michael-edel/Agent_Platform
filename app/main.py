@@ -352,6 +352,11 @@ async def startup_event():
     app.include_router(integrations_router, prefix="/api/v1", tags=["integrations"])
     logger.info("Integrations router подключен")
     
+    # Подключение Payments router
+    from app.api.payments import router as payments_router
+    app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
+    logger.info("Payments router подключен")
+    
     # Start Agent Executor (if enabled)
     from app.agents.executor import start_executor
     from cyberplat.product.infrastructure.database import get_engine

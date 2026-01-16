@@ -149,6 +149,35 @@ if _prometheus_available:
         ),
     )
 
+    # Payment метрики
+    payment_orders_total = _get_or_create_collector(
+        "payment_orders_total",
+        lambda: Counter(
+            "payment_orders_total",
+            "Total number of payment orders",
+            ["status"],
+        ),
+    )
+
+    payment_approval_latency_seconds = _get_or_create_collector(
+        "payment_approval_latency_seconds",
+        lambda: Histogram(
+            "payment_approval_latency_seconds",
+            "Payment approval latency in seconds",
+            [],
+            buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 3600.0),
+        ),
+    )
+
+    payment_export_total = _get_or_create_collector(
+        "payment_export_total",
+        lambda: Counter(
+            "payment_export_total",
+            "Total number of payment exports",
+            ["format", "status"],  # status: succeeded, failed
+        ),
+    )
+
     recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
         lambda: Histogram(
@@ -171,6 +200,9 @@ else:
     onec_auto_jobs_total = None
     onec_manual_jobs_total = None
     onec_artifact_hook_errors_total = None
+    payment_orders_total = None
+    payment_approval_latency_seconds = None
+    payment_export_total = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:
