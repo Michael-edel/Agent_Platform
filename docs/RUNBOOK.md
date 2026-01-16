@@ -761,6 +761,67 @@ HTTP код: `429 Too Many Requests`
 - `platform_admin` видит все записи выбранного tenant
 - `tenant_admin` видит только свой tenant (scoping применяется серверно)
 
+## Cases / Workflow (MVP)
+
+API для работы с кейсами и workflow процессами.
+
+### Хранение
+
+- **Storage**: SQLite через `PLATFORM_DB_PATH` или `platform.db` (dev/tests)
+- **Таблицы**: `cases`, `case_steps`, `case_tasks`, `case_events` (audit trail)
+- **Архитектура**: повторяет стиль `ArtifactService` (shared in-memory для тестов)
+
+### Endpoints
+
+- `POST /api/v1/cases` — создать кейс
+- `GET /api/v1/cases/{id}` — получить кейс
+- `GET /api/v1/cases?tenant_id=` — список кейсов
+- `POST /api/v1/cases/{id}/tasks` — добавить задачу
+- `POST /api/v1/cases/{id}/tasks/{task_id}/complete` — завершить задачу
+- `POST /api/v1/cases/{id}/transition` — перевести на новый шаг
+- `POST /api/v1/cases/{id}/close` — закрыть кейс
+
+### Логи
+
+Логи операций с кейсами выводятся в стандартный лог приложения:
+- Создание кейса: `logger.info("Создан кейс: {case_id}...")`
+- Переход шага: `logger.info("Кейс {case_id} переведён на шаг: {step}")`
+- Закрытие: `logger.info("Кейс {case_id} закрыт")`
+
+### Smoke test
+
+```bash
+# Создать кейс
+CASE_ID=$(curl -s -X POST http://localhost:8000/api/v1/cases \
+  -H "X-Tenant-ID: tenant-test" \
+  -H "Content-Type: application/json" \
+  -d '{"case_type":"support","title":"Test case"}' | jq -r '.id')
+
+echo "Case ID: $CASE_ID"
+
+# Получить кейс
+curl http://localhost:8000/api/v1/cases/$CASE_ID \
+  -H "X-Tenant-ID: tenant-test"
+
+# Добавить задачу
+TASK_ID=$(curl -s -X POST http://localhost:8000/api/v1/cases/$CASE_ID/tasks \
+  -H "X-Tenant-ID: tenant-test" \
+  -H "Content-Type: application/json" \
+  -d '{"step_key":"step1","title":"Test task"}' | jq -r '.id')
+
+echo "Task ID: $TASK_ID"
+
+# Завершить задачу
+curl -X POST http://localhost:8000/api/v1/cases/$CASE_ID/tasks/$TASK_ID/complete \
+  -H "X-Tenant-ID: tenant-test"
+
+# Закрыть кейс
+curl -X POST http://localhost:8000/api/v1/cases/$CASE_ID/close \
+  -H "X-Tenant-ID: tenant-test"
+```
+
+Или используйте скрипт: `scripts/smoke_cases.sh`
+
 ### Dashboard
 
 Страница `/admin/` (первый пункт меню) показывает key metrics:

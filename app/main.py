@@ -322,6 +322,11 @@ async def startup_event():
     app.include_router(executions_router, tags=["executions"])
     logger.info("Executions router подключен")
     
+    # Подключение Cases router
+    from app.api.cases import router as cases_router
+    app.include_router(cases_router, prefix="/api/v1", tags=["cases"])
+    logger.info("Cases router подключен")
+    
     # Start Agent Executor (if enabled)
     from app.agents.executor import start_executor
     from cyberplat.product.infrastructure.database import get_engine

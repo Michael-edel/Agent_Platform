@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Case/Workflow MVP** (`cyberplat/case_service.py`, `app/api/cases.py`):
+  - Cases API для работы с кейсами и workflow процессами
+  - SQLite storage через `PLATFORM_DB_PATH` или `platform.db`
+  - Audit trail через `case_events` таблицу
+  - Endpoints: create case, get case, list cases, add task, complete task, transition step, close case
+  - Тесты: `tests/test_case_service.py` (pytest, SQLite in-memory)
+  - Smoke test: `scripts/smoke_cases.sh` и `make smoke-cases`
+
 - **DATABASE_URL normalization for psycopg v3** (`utils/db_url.py`):
   - `normalize_sqlalchemy_database_url()` — normalizes `postgresql://` and `postgres://` to `postgresql+psycopg://`
   - `get_original_database_url()` — returns raw DATABASE_URL from environment

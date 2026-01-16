@@ -86,3 +86,6 @@ db-check: ## Проверить, что revision == head (для CI/staging)
 
 doctor: ## Запустить диагностику БД и конфигурации
 	@PYTHONPATH=. python scripts/doctor.py
+
+smoke-cases: ## Запустить smoke test для Cases API
+	@bash scripts/smoke_cases.sh

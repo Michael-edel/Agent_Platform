@@ -687,6 +687,85 @@ curl http://localhost:8000/files/{file_id} \
   -o exported_invoice.xlsx
 ```
 
+## Cases API (MVP)
+
+API для работы с кейсами (cases) и workflow. Хранение в SQLite через `PLATFORM_DB_PATH` или `platform.db`.
+
+### Endpoints
+
+- `POST /api/v1/cases` — создать кейс
+- `GET /api/v1/cases/{id}` — получить кейс по ID
+- `GET /api/v1/cases?tenant_id=` — список кейсов (с фильтрацией по status, case_type)
+- `POST /api/v1/cases/{id}/tasks` — добавить задачу к кейсу
+- `POST /api/v1/cases/{id}/tasks/{task_id}/complete` — завершить задачу
+- `POST /api/v1/cases/{id}/transition` — перевести кейс на новый шаг
+- `POST /api/v1/cases/{id}/close` — закрыть кейс
+
+**Заголовки:**
+- `X-Tenant-ID` — обязательный заголовок для всех endpoints
+
+### Примеры использования
+
+**1. Создать кейс:**
+```bash
+curl -X POST http://localhost:8000/api/v1/cases \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "case_type": "support",
+    "title": "Проблема с оплатой",
+    "initial_step": "step1"
+  }'
+```
+
+**2. Получить кейс:**
+```bash
+curl http://localhost:8000/api/v1/cases/{case_id} \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**3. Список кейсов:**
+```bash
+curl "http://localhost:8000/api/v1/cases?tenant_id=tenant-123&status=open" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**4. Добавить задачу:**
+```bash
+curl -X POST http://localhost:8000/api/v1/cases/{case_id}/tasks \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "step_key": "step1",
+    "title": "Проверить платёжные данные",
+    "assignee_role": "support",
+    "due_at": "2025-01-20T12:00:00"
+  }'
+```
+
+**5. Завершить задачу:**
+```bash
+curl -X POST http://localhost:8000/api/v1/cases/{case_id}/tasks/{task_id}/complete \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**6. Перевести на новый шаг:**
+```bash
+curl -X POST http://localhost:8000/api/v1/cases/{case_id}/transition \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "new_step": "step2",
+    "from_step": "step1"
+  }'
+```
+
+**7. Закрыть кейс:**
+```bash
+curl -X POST http://localhost:8000/api/v1/cases/{case_id}/close \
+  -H "X-Tenant-ID: tenant-123"
+```
+
 ### Полный сценарий (PowerShell)
 
 ```powershell
