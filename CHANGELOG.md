@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **1С интеграция (MVP)** (`cyberplat/integrations/`):
+  - Tenant settings для 1С (per-tenant настройки: base_url, auth, enabled)
+  - OneC client с retry/backoff, idempotency headers, timeout
+  - Mapping layer: Artifact → 1C payload (counterparty, contract, invoice)
+  - Idempotency service для предотвращения дубликатов
+  - Integration jobs pipeline с retry/backoff
+  - Integration worker для обработки jobs
+  - Error queue → Case tasks (при финальных ошибках)
+  - Метрики: `onec_job_outcomes_total`, `onec_job_latency_seconds`, `onec_failures_total`
+  - API endpoints: settings, test-connection, jobs list
+  - Тесты: settings, client, mapper, idempotency, job service, worker
+
 - **Case/Workflow MVP** (`cyberplat/case_service.py`, `app/api/cases.py`):
   - Cases API для работы с кейсами и workflow процессами
   - SQLite storage через `PLATFORM_DB_PATH` или `platform.db`

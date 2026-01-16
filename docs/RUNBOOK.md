@@ -822,6 +822,77 @@ curl -X POST http://localhost:8000/api/v1/cases/$CASE_ID/close \
 
 Или используйте скрипт: `scripts/smoke_cases.sh`
 
+## 1С интеграция (MVP)
+
+Интеграция с 1С для автоматического создания объектов из распознанных документов.
+
+### Хранение
+
+- **SQLite**: настройки и jobs хранятся в SQLite через `PLATFORM_DB_PATH` или `platform.db`
+- **Таблицы**: `tenant_integrations_1c`, `integration_jobs`, `integration_idempotency`
+
+### Диагностика ошибок
+
+**1. Проверить настройки tenant:**
+```bash
+curl http://localhost:8000/api/v1/integrations/onec/settings?tenant_id=tenant-123 \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**2. Проверить jobs:**
+```bash
+curl "http://localhost:8000/api/v1/integrations/jobs?tenant_id=tenant-123&provider=onec&status=failed" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**3. Проверить логи:**
+```bash
+# Docker
+docker-compose logs -f app | grep "Integration job"
+
+# Локально
+tail -f logs/app.log | grep "Integration job"
+```
+
+**4. Проверить метрики:**
+```bash
+curl http://localhost:8000/metrics | grep onec_
+```
+
+### Где смотреть метрики
+
+**Prometheus:**
+- `onec_job_outcomes_total{status,job_type}` — результаты обработки jobs
+- `onec_job_latency_seconds{job_type}` — задержка обработки
+- `onec_failures_total{error_code}` — ошибки по кодам
+
+**Grafana:** (если настроен)
+- Dashboard для integration jobs (можно создать на основе метрик)
+
+### Типичные ошибки
+
+| Код ошибки | Причина | Решение |
+|------------|---------|---------|
+| `integration_not_configured` | Настройки не найдены | Настроить через API |
+| `integration_disabled` | Интеграция отключена | Включить через API |
+| `onec_auth_error` | Ошибка аутентификации | Проверить token/credentials |
+| `onec_transport_error` | Ошибка сети/таймаут | Проверить доступность 1С |
+| `missing_required_field` | Недостаточно данных в артефакте | Проверить маппинг |
+
+### Retry policy
+
+- **Max attempts**: 5 (по умолчанию)
+- **Backoff**: exponential (1m, 2m, 4m, 8m, 16m) с jitter ±10%
+- **No retry**: ошибки валидации, аутентификации
+- **Retry**: ошибки транспорта, временные ошибки 1С (5xx)
+
+### Error queue → Case tasks
+
+Если job окончательно failed и указан `case_id`:
+- Создаётся задача в кейсе: "Исправить ошибку интеграции 1С"
+- `assignee_role = tenant_admin`
+- Событие `integration_error` в `case_events`
+
 ### Dashboard
 
 Страница `/admin/` (первый пункт меню) показывает key metrics:

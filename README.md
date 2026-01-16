@@ -766,6 +766,64 @@ curl -X POST http://localhost:8000/api/v1/cases/{case_id}/close \
   -H "X-Tenant-ID: tenant-123"
 ```
 
+## 1С интеграция (MVP)
+
+API для интеграции с 1С: создание контрагентов, договоров и счетов из распознанных документов.
+
+### Хранение
+
+- **Storage**: SQLite через `PLATFORM_DB_PATH` или `platform.db` (dev/tests)
+- **Настройки**: per-tenant в таблице `tenant_integrations_1c`
+- **Jobs**: очередь в таблице `integration_jobs` с retry/backoff
+- **Idempotency**: предотвращение дубликатов через `integration_idempotency`
+
+### Endpoints
+
+- `GET /api/v1/integrations/onec/settings?tenant_id=` — получить настройки
+- `PUT /api/v1/integrations/onec/settings` — создать/обновить настройки
+- `POST /api/v1/integrations/onec/test-connection` — проверить соединение
+- `GET /api/v1/integrations/jobs?tenant_id=&provider=onec` — список jobs
+
+### Настройка
+
+**1. Включить интеграцию для tenant:**
+```bash
+curl -X PUT http://localhost:8000/api/v1/integrations/onec/settings?tenant_id=tenant-123 \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "base_url": "https://1c.example.com/api",
+    "auth_type": "token",
+    "token": "your-1c-token",
+    "timeout_seconds": 10
+  }'
+```
+
+**2. Проверить соединение:**
+```bash
+curl -X POST http://localhost:8000/api/v1/integrations/onec/test-connection?tenant_id=tenant-123 \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+### Создаваемые сущности
+
+- **Контрагент** (`upsert_counterparty`) — из артефакта с полями: name, inn, kpp, address, phone, email
+- **Договор** (`upsert_contract`) — из артефакта с полями: counterparty_id, number, date, amount, currency
+- **Счёт** (`upsert_invoice`) — из артефакта с полями: counterparty_id, contract_id, number, amount, date, currency, items
+
+### Worker
+
+Интеграционный worker обрабатывает jobs из очереди:
+- Автоматические retry с exponential backoff
+- Idempotency (не создаёт дубликаты)
+- При финальной ошибке создаёт задачу в кейсе (если указан case_id)
+- Метрики: `onec_job_outcomes_total`, `onec_job_latency_seconds`, `onec_failures_total`
+
+### Переменные окружения
+
+- `PLATFORM_DB_PATH` — путь к SQLite БД (по умолчанию `platform.db`)
+
 ### Полный сценарий (PowerShell)
 
 ```powershell
