@@ -76,6 +76,18 @@ def get_engine():
         parsed = urlparse(database_url)
         safe_url = f"{parsed.scheme}://{parsed.hostname or 'localhost'}/..."
         logger.info(f"SQLAlchemy engine created: {safe_url}")
+
+        # В тестовом режиме для SQLite автоматически создаём schema product layer (artifact_states и др.).
+        # В production поведение не меняем (никакого auto-create).
+        if _is_testing_mode() and database_url.startswith("sqlite"):
+            try:
+                # Import inside to avoid circular imports
+                from cyberplat.product.infrastructure.models import Base
+
+                Base.metadata.create_all(bind=_engine)
+                logger.info("В тестовом режиме схема product layer для SQLite создана автоматически (create_all).")
+            except Exception:
+                logger.warning("Не удалось автоматически создать schema product layer для SQLite в тестовом режиме")
     return _engine
 
 
