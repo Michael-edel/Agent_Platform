@@ -67,6 +67,7 @@ platform.db
 
 # Allow checked-in Grafana dashboards
 !observability/grafana/dashboards/*.json
+!monitoring/grafana/dashboards/*.json
 
 # =========================
 # Environment secrets
