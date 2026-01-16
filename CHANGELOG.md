@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Платежи и согласование (MVP)** (`cyberplat/payments/`, `app/api/payments.py`):
+  - Payment orders (платёжные поручения) с согласованием
+  - Approval engine на основе политик (thresholds по сумме)
+  - Экспорт в CSV и 1С
+  - Интеграция с Case/Workflow (автоматические задачи при submit/approve)
+  - Метрики: `payment_orders_total`, `payment_approval_latency_seconds`, `payment_export_total`
+  - API endpoints: create, get, list, submit, approve, reject, export, policy
+  - Тесты: payment_service, payment_policy, payments_api, payment_case_integration
+
 - **1С интеграция (MVP)** (`cyberplat/integrations/`):
   - Автосинхронизация артефактов с 1С (artifact hook для `artifact.created`)
   - Ручной fallback: `POST /api/v1/cases/{case_id}/sync/onec`

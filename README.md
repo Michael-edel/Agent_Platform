@@ -847,6 +847,110 @@ curl -X POST "http://localhost:8000/api/v1/cases/{case_id}/sync/onec" \
 - `success: true, message: "Задача уже в очереди 1С", job_id: "..."` — job уже существует
 - `success: true, message: "Артефакт уже синхронизирован с 1С", remote_id: "..."` — уже синхронизирован
 
+## Платежи и согласование (MVP)
+
+API для создания платёжных поручений, согласования и экспорта.
+
+### Хранение
+
+- **Storage**: SQLite через `PLATFORM_DB_PATH` или `platform.db` (dev/tests)
+- **Таблицы**: `payment_orders`, `payment_approvals`, `tenant_payment_policies`, `payment_events`
+
+### Endpoints
+
+- `POST /api/v1/payments/orders` — создать платёжное поручение
+- `GET /api/v1/payments/orders/{id}` — получить поручение
+- `GET /api/v1/payments/orders?tenant_id=&status=&case_id=` — список поручений
+- `POST /api/v1/payments/orders/{id}/submit` — отправить на согласование
+- `POST /api/v1/payments/orders/{id}/approve` — одобрить шаг согласования
+- `POST /api/v1/payments/orders/{id}/reject` — отклонить поручение
+- `POST /api/v1/payments/orders/{id}/export` — экспортировать (CSV или 1С)
+- `GET /api/v1/payments/policy?tenant_id=` — получить политику согласования
+- `PUT /api/v1/payments/policy?tenant_id=` — создать/обновить политику
+
+### Примеры использования
+
+**1. Создать платёжное поручение:**
+```bash
+curl -X POST http://localhost:8000/api/v1/payments/orders \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100000.0,
+    "beneficiary_name": "ООО Получатель",
+    "beneficiary_account_iban": "KZ123456789012345678",
+    "purpose": "Оплата по договору №123",
+    "created_by_role": "accountant",
+    "beneficiary_bank_bic": "KZ123456",
+    "case_id": "case-uuid"
+  }'
+```
+
+**2. Настроить политику согласования:**
+```bash
+curl -X PUT "http://localhost:8000/api/v1/payments/policy?tenant_id=tenant-123" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "thresholds": [
+      {"max": 100000, "roles": ["accountant"]},
+      {"max": 1000000, "roles": ["accountant", "director"]}
+    ]
+  }'
+```
+
+**3. Отправить на согласование:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/payments/orders/{order_id}/submit" \
+  -H "X-Tenant-ID: tenant-123"
+```
+
+**4. Одобрить шаг:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/payments/orders/{order_id}/approve" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "accountant",
+    "comment": "Одобрено"
+  }'
+```
+
+**5. Экспортировать в CSV:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/payments/orders/{order_id}/export" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "format": "csv"
+  }'
+```
+
+**6. Экспортировать в 1С:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/payments/orders/{order_id}/export" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "format": "onec"
+  }'
+```
+
+### Интеграция с кейсами
+
+При создании платёжного поручения с `case_id`:
+- При `submit_for_approval` → создаётся задача "Согласовать платеж" (role = первый required_role)
+- При `approve` (все шаги) → создаётся задача "Выгрузить платеж" (role = accountant)
+- Все действия логируются в `case_events`
+
+### Политика согласования
+
+Политика определяет шаги согласования на основе суммы:
+- Выбирается первый threshold, где `amount <= max`
+- `roles` → шаги согласования (по порядку)
+- Если политика отключена → auto-approve
+
 ### Переменные окружения
 
 - `PLATFORM_DB_PATH` — путь к SQLite БД (по умолчанию `platform.db`)
