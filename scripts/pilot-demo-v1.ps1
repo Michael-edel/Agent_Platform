@@ -29,6 +29,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "_demo-common.ps1")
+
 try {
     $utf8 = [System.Text.UTF8Encoding]::new($false)
     [Console]::OutputEncoding = $utf8
@@ -67,10 +69,11 @@ $accountantSkipped = $null
 $approverStatus = $null
 
 try {
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $repoRoot = Get-RepoRoot
     if (-not $PdfPath) {
-        $PdfPath = (Join-Path $repoRoot "demo\demo-invoice.pdf")
+        $PdfPath = Get-DefaultDemoPdfPath
     }
+    if (-not $TenantId) { $TenantId = Get-DefaultTenantId }
 
     if (-not (Test-Path $PdfPath)) {
         Fail("PDF файл не найден: $PdfPath. Укажите -PdfPath или сгенерируйте demo PDF через scripts/gen-demo-invoice-pdf.py")
@@ -82,7 +85,7 @@ try {
     Write-Ok("/health (HTTP $healthCode)")
     $stepsOk.Add("/health") | Out-Null
 
-    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $repoRoot = Get-RepoRoot
     $logsDir = Join-Path $repoRoot "logs"
     if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir | Out-Null }
     $logFile = Join-Path $logsDir ("pilot_demo_" + (Now-Stamp) + ".log")
@@ -106,16 +109,10 @@ try {
     $accountantSkipped = Try-Parse $accountantOut "^\- Пропущено:\s*(.+)$"
 
     Write-Step "Извлечение PaymentId из вывода бухгалтера"
-    $paymentId = Try-Parse $accountantOut "^PaymentId:\s*([^\s]+)\s*$"
+    $paymentId = Try-Parse $accountantOut "PaymentId:\s*(\S+)"
     if (-not $paymentId) {
-        $noPaymentReason = Try-Parse $accountantOut "^(PaymentId не получен:.*)$"
-        if ($noPaymentReason) {
-            Write-Warn($noPaymentReason)
-            $stepsSkipped.Add("director $DirectorAction (нет PaymentId)") | Out-Null
-            $finalStatus = $null
-        } else {
-            Fail("PaymentId не найден в выводе бухгалтерского скрипта. Проверьте лог: $logFile")
-        }
+        $noPaymentReason = Try-Parse $accountantOut "^(PaymentId не получен:.*endpoint недоступен.*)$"
+        if ($noPaymentReason) { Write-Warn($noPaymentReason) }
     } else {
         Write-Ok("PaymentId найден: $paymentId")
         $stepsOk.Add("extract PaymentId") | Out-Null
@@ -138,6 +135,32 @@ try {
         # best-effort: финальный статус из вывода согласующего
         $approverStatus = Try-Parse $approverOut "статус платежа:\s*([^\s]+)\s*$"
         if ($approverStatus) { $finalStatus = $approverStatus }
+    } else {
+        # Resilient mode: если payment endpoint недоступен (404/405), не падаем — это норм для демо
+        if ($noPaymentReason) {
+            $stepsSkipped.Add("director $DirectorAction (payment api недоступен)") | Out-Null
+
+            Write-Host ""
+            Write-Host "=============================="
+            Write-Host "ИТОГ ПИЛОТА (PARTIAL SUCCESS)" -ForegroundColor Yellow
+            Write-Host "=============================="
+            Write-Host ("- PDF: " + $PdfPath)
+            Write-Host ("- TenantId: " + $TenantId)
+            Write-Host ("- Лог бухгалтера: " + $logFile)
+            Write-Host "- PaymentId: (не получен — payment API отсутствует/недоступен)"
+            Write-Host "- Директор: шаг пропущен (нет PaymentId)"
+            if ($accountantDone) { Write-Host ("- Бухгалтер (выполнено): " + $accountantDone) }
+            if ($accountantSkipped) { Write-Host ("- Бухгалтер (пропущено): " + $accountantSkipped) }
+            Write-Host ("- Шаги (OK): " + ($stepsOk -join ", "))
+            Write-Host ("- Шаги (пропущено): " + ($stepsSkipped -join ", "))
+            Write-Host "=============================="
+            Write-Host ""
+            Write-Host "PASS: демо завершено в режиме PARTIAL SUCCESS (payment API недоступен)." -ForegroundColor Yellow
+            exit 0
+        }
+
+        # Реальная ошибка сценария: PaymentId не найден и нет явного маркера недоступности endpoint
+        Fail("PaymentId не найден в выводе бухгалтерского скрипта. Проверьте лог: $logFile")
     }
 
     Write-Host ""

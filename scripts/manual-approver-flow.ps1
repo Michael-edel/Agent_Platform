@@ -26,6 +26,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "_demo-common.ps1")
+
 try {
     $utf8 = [System.Text.UTF8Encoding]::new($false)
     [Console]::OutputEncoding = $utf8
@@ -81,6 +83,7 @@ try {
         Write-Host "  pwsh -File scripts/manual-approver-flow.ps1 -PaymentId ""<order_id>"" -Action reject -Reason ""Недостаточно оснований"""
         exit 1
     }
+    if (-not $TenantId) { $TenantId = Get-DefaultTenantId }
 
     Write-Step "Проверка доступности сервиса (/health)"
     $healthCode = Get-HttpStatus "http://localhost:8000/health"

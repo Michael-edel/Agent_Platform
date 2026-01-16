@@ -15,6 +15,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "_demo-common.ps1")
+
 # Корректный вывод русских сообщений в консоль (Windows Terminal / PowerShell 7).
 try {
     $utf8 = [System.Text.UTF8Encoding]::new($false)
@@ -49,7 +51,7 @@ function Get-HttpStatus([string]$Url) {
 
 try {
     # cd в корень репо (относительно location скрипта)
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $repoRoot = Get-RepoRoot
     Set-Location $repoRoot
 
     Write-Host "Локальный QA: CyberPlat"

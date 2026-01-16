@@ -18,6 +18,8 @@ Param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "_demo-common.ps1")
+
 try {
     $utf8 = [System.Text.UTF8Encoding]::new($false)
     [Console]::OutputEncoding = $utf8
@@ -104,11 +106,12 @@ $paymentStatusNote = $null
 
 try {
     # Корень репо (на уровень выше scripts/)
-    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $repoRoot = Get-RepoRoot
 
     if (-not $PdfPath) {
-        $PdfPath = (Join-Path $repoRoot "demo\demo-invoice.pdf")
+        $PdfPath = Get-DefaultDemoPdfPath
     }
+    if (-not $TenantId) { $TenantId = Get-DefaultTenantId }
 
     if (-not (Test-Path $PdfPath)) {
         Fail("PDF файл не найден: $PdfPath. Укажите -PdfPath или сгенерируйте demo PDF через scripts/gen-demo-invoice-pdf.py")

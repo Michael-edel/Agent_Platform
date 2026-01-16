@@ -43,6 +43,15 @@ pwsh -File .\scripts\pilot-demo-v1.ps1 -DirectorAction reject -Reason "Откл�
 - Если endpoint недоступен (404/405) — в логе будет строка `PaymentId не получен: endpoint недоступен ...`, а шаг директора будет пропущен.
 - Если backend вернул 5xx/таймаут/битый JSON на create payment — demo **падает** (это честная поломка пилота).
 
+## Partial success mode
+
+Если payment API отсутствует/недоступен (HTTP 404/405), `scripts/pilot-demo-v1.ps1`:
+- **не падает**
+- печатает итог **PARTIAL SUCCESS** (жёлтый)
+- завершает выполнение с **exit code 0**
+
+Если есть 5xx/таймаут/битый JSON на create payment — demo падает с **exit code 1**.
+
 ## Где смотреть результат
 
 - Swagger UI: `http://localhost:8000/docs`
