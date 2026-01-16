@@ -4,10 +4,13 @@
 """
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING
 import logging
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 def pdf_to_pages(pdf_path: Path, dpi: int = 200) -> List[Tuple[bytes, "Image.Image", str]]:

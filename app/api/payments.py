@@ -320,6 +320,7 @@ async def approve_payment_order(
             # Все шаги одобрены - создаём задачу на экспорт
             try:
                 case_id = order["case_id"]
+                case = case_service.get_case(case_id=case_id, tenant_id=x_tenant_id) or {}
                 case_service.add_task(
                     case_id=case_id,
                     step_key=case.get("current_step") or "export",

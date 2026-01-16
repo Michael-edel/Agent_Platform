@@ -122,6 +122,7 @@ class AIClient:
 
     async def analyze_document_async(self, image_bytes: bytes) -> DocumentData:
         try:
+            extra_text = ""
             base64_image = self.encode_image(image_bytes)
             response = await self.async_client.chat.completions.create(
                 model=self.model,

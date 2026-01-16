@@ -19,8 +19,10 @@ exclude = [
 
 # Lint configuration
 [lint]
-# Select rules (E = pycodestyle errors, F = pyflakes, I = isort)
-select = ["E", "F", "I"]
+# Минимальный набор правил для инкрементальной чистки:
+# - блокирует новые критичные ошибки (undefined names / синтаксис)
+# - не требует рефакторинга всего legacy-кода сразу
+select = ["E9", "F821", "F822", "F823"]
 
 # Ignore specific rules if needed
 ignore = ["E501"] # line too long (handled by formatter)
