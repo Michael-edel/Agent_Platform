@@ -426,6 +426,25 @@ Low-traffic guard is applied via `billing:sli_time_to_paid_total_rate*` threshol
 
 **Grafana dashboard:** `Billing SLA / Invoices v2` (v2.1) — `observability/grafana/dashboards/billing_sla_dashboard_v2.json`
 
+## Pilot rollout (первые 30 дней)
+
+Для первого production-клиента используется структурированный 30-дневный пилот.
+
+**Документация:**
+- [PILOT_ROLLOUT_PLAN.md](PILOT_ROLLOUT_PLAN.md) — детальный план (scope, таймлайн, метрики успеха, exit criteria)
+
+**Ключевые этапы:**
+1. **День 0 (Go-Live):** billing cutover, webhooks подтверждены, first invoice paid
+2. **Дни 1-7 (Stabilization):** ежедневный мониторинг, проверка первых оплат, SLA dashboard
+3. **Дни 8-21 (Normal operation):** еженедельные проверки, анализ usage growth, SLO compliance
+4. **Дни 22-30 (Review & decision):** итоговая оценка, решение go-forward/pause/exit
+
+**Метрики успеха:**
+- % paid invoices ≥ 99%
+- Time-to-paid p95 ≤ 5 минут
+- Billing jobs failure rate ≤ 1%
+- Нет ручных правок БД
+
 ## Tenant onboarding via Admin (v1)
 
 Операционный onboarding делается через SQLAdmin (без отдельного фронта).
