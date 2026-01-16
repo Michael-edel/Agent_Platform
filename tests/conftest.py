@@ -1,73 +1,55 @@
-"""Общие pytest фикстуры для тестового контура.
+"""
+Pytest конфигурация и плагины для тестов.
 
-Цели:
-- Все тесты работают с изолированной БД (без platform.db в корне репозитория).
-- SQLAlchemy product-layer таблицы создаются один раз на сессию (Base.metadata.create_all),
-  чтобы тесты не падали с "no such table: tenant_plans / plans / ...".
+Включает простой asyncio plugin для выполнения async тестов без внешних зависимостей.
 """
 
-from __future__ import annotations
-
-import os
-from pathlib import Path
-
+import asyncio
+import inspect
 import pytest
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _test_db_env(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """
-    Настроить изолированную SQLite БД для всего тест-рана.
+def pytest_configure(config):
+    """Регистрируем маркер asyncio."""
+    config.addinivalue_line(
+        "markers",
+        "asyncio: mark test as an asyncio coroutine (deselect with '-m \"not asyncio\"')"
+    )
 
-    В production используется PostgreSQL + Alembic,
-    но для unit-тестов нам достаточно SQLite и create_all().
-    """
-    db_dir = tmp_path_factory.mktemp("agent_platform_test_db")
-    db_path = db_dir / "test.db"
 
-    os.environ["PLATFORM_DB_PATH"] = str(db_path)
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-
-    # Сбросить глобальный engine/sessionmaker product слоя и создать schema
-    from cyberplat.product.infrastructure import database as product_db
-
-    product_db._engine = None
-    product_db._SessionLocal = None
-
-    engine = product_db.get_engine()
-
-    from cyberplat.product.infrastructure.models import Base, Plan
-
-    Base.metadata.create_all(bind=engine)
-
-    # Seed базовых планов (trial/pro/enterprise) для тестов, которые полагаются на plans.
-    SessionLocal = product_db.get_sessionmaker()
-    session = SessionLocal()
+def pytest_pyfunc_call(pyfuncitem):
+    """Выполняем async тесты через asyncio.run()."""
+    # Проверяем, помечен ли тест маркером asyncio
+    if not pyfuncitem.get_closest_marker("asyncio"):
+        return None  # Не async тест, пропускаем
+    
+    # Получаем функцию теста
+    testfunction = pyfuncitem.obj
+    
+    # Проверяем, является ли она coroutine function
+    if not inspect.iscoroutinefunction(testfunction):
+        return None  # Не coroutine, пропускаем
+    
+    # Выполняем async тест
+    # Получаем аргументы для функции
+    funcargs = pyfuncitem.funcargs
+    
+    # Собираем аргументы в правильном порядке
+    argnames = pyfuncitem._fixtureinfo.argnames
+    args = [funcargs[name] for name in argnames]
+    
+    # Выполняем coroutine через asyncio.run()
+    # Если loop уже запущен, создаём новый
     try:
-        import json
-        from datetime import datetime
-
-        now = datetime.now().isoformat()
-        defaults = [
-            ("trial", "Trial", None, None, {"document_upload": 20, "invoice_extracted": 10, "page_processed": 50}),
-            ("pro", "Pro", 2900, "USD", {"document_upload": 100, "invoice_extracted": 50, "page_processed": 500}),
-            ("enterprise", "Enterprise", 9900, "USD", {"document_upload": None, "invoice_extracted": None, "page_processed": None}),
-        ]
-        for pid, name, price, cur, quotas in defaults:
-            if not session.query(Plan).filter(Plan.id == pid).first():
-                session.add(
-                    Plan(
-                        id=pid,
-                        name=name,
-                        description=f"{name} plan",
-                        quotas=json.dumps(quotas, ensure_ascii=False),
-                        price_minor=price,
-                        currency=cur,
-                        active=True,
-                        created_at=now,
-                    )
-                )
-        session.commit()
-    finally:
-        session.close()
-
+        loop = asyncio.get_running_loop()
+        # Loop уже запущен - это не должно происходить в обычном pytest,
+        # но на всякий случай создаём новый loop в отдельном потоке
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, testfunction(*args))
+            future.result()
+    except RuntimeError:
+        # Loop не запущен - нормальный случай
+        asyncio.run(testfunction(*args))
+    
+    return True  # Указываем, что мы обработали вызов
