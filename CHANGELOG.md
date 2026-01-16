@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **1С интеграция (MVP)** (`cyberplat/integrations/`):
+  - Автосинхронизация артефактов с 1С (artifact hook для `artifact.created`)
+  - Ручной fallback: `POST /api/v1/cases/{case_id}/sync/onec`
+  - Метрики: `onec_auto_jobs_total`, `onec_manual_jobs_total`, `onec_artifact_hook_errors_total`
+  - Тесты: `test_onec_artifact_hook.py`, `test_manual_onec_sync_api.py`
   - Tenant settings для 1С (per-tenant настройки: base_url, auth, enabled)
   - OneC client с retry/backoff, idempotency headers, timeout
   - Mapping layer: Artifact → 1C payload (counterparty, contract, invoice)

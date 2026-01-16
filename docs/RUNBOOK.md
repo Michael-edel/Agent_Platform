@@ -893,6 +893,56 @@ curl http://localhost:8000/metrics | grep onec_
 - `assignee_role = tenant_admin`
 - Событие `integration_error` в `case_events`
 
+### Автосинхронизация артефактов
+
+Система автоматически ставит jobs в очередь 1С при создании артефактов:
+- **Триггер**: событие `artifact.created` с `kind` в `counterparty`, `contract`, `invoice`
+- **Условия**: интеграция 1С включена для tenant
+- **Idempotency**: повторные события не создают дубликаты
+
+**Артефакт не ушёл в 1С — что проверить:**
+
+1. **Настройки tenant:**
+   ```bash
+   curl "http://localhost:8000/api/v1/integrations/onec/settings?tenant_id=tenant-123" \
+     -H "X-Tenant-ID: tenant-123"
+   ```
+   - Проверить: `enabled = true`
+   - Проверить: `base_url` и credentials корректны
+
+2. **Тип артефакта:**
+   - Поддерживаются только: `counterparty`, `contract`, `invoice`
+   - Другие типы (`document`, `payment`) пропускаются
+
+3. **Jobs в очереди:**
+   ```bash
+   curl "http://localhost:8000/api/v1/integrations/jobs?tenant_id=tenant-123&provider=onec&status=pending" \
+     -H "X-Tenant-ID: tenant-123"
+   ```
+
+4. **Логи:**
+   ```bash
+   docker-compose logs -f app | grep "1С\|onec\|integration"
+   ```
+
+**Когда использовать ручной sync:**
+
+- Автопоток отключён (integration disabled)
+- Ошибка в автопотоке (проверить jobs → failed)
+- Нужно переотправить после исправления данных артефакта
+- Тестирование интеграции
+
+**Ручной sync:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/cases/{case_id}/sync/onec" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "counterparty",
+    "artifact_id": "artifact-uuid"
+  }'
+```
+
 ### Dashboard
 
 Страница `/admin/` (первый пункт меню) показывает key metrics:

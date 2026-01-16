@@ -820,6 +820,33 @@ curl -X POST http://localhost:8000/api/v1/integrations/onec/test-connection?tena
 - При финальной ошибке создаёт задачу в кейсе (если указан case_id)
 - Метрики: `onec_job_outcomes_total`, `onec_job_latency_seconds`, `onec_failures_total`
 
+### Автосинхронизация артефактов с 1С
+
+При создании артефактов типов `counterparty`, `contract`, `invoice` система автоматически ставит jobs в очередь 1С (если интеграция включена для tenant).
+
+**Триггеры:**
+- Событие `artifact.created` с `kind` в `counterparty`, `contract`, `invoice`
+- Проверка настроек tenant (enabled)
+- Idempotency: повторные события не создают дубликаты
+
+**Ручной fallback:**
+Если автопоток отключён или дал ошибку, можно вручную синхронизировать артефакт из кейса:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/cases/{case_id}/sync/onec" \
+  -H "X-Tenant-ID: tenant-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_type": "counterparty",
+    "artifact_id": "artifact-uuid"
+  }'
+```
+
+**Ответ:**
+- `success: true, message: "Задача отправлена в очередь 1С", job_id: "..."` — job создан
+- `success: true, message: "Задача уже в очереди 1С", job_id: "..."` — job уже существует
+- `success: true, message: "Артефакт уже синхронизирован с 1С", remote_id: "..."` — уже синхронизирован
+
 ### Переменные окружения
 
 - `PLATFORM_DB_PATH` — путь к SQLite БД (по умолчанию `platform.db`)
