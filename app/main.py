@@ -357,6 +357,11 @@ async def startup_event():
     app.include_router(payments_router, prefix="/api/v1", tags=["payments"])
     logger.info("Payments router подключен")
     
+    # Подключение Reconciliation router
+    from app.api.reconciliation import router as reconciliation_router
+    app.include_router(reconciliation_router, prefix="/api/v1", tags=["reconciliation"])
+    logger.info("Reconciliation router подключен")
+    
     # Start Agent Executor (if enabled)
     from app.agents.executor import start_executor
     from cyberplat.product.infrastructure.database import get_engine

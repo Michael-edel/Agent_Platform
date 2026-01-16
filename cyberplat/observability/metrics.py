@@ -178,6 +178,45 @@ if _prometheus_available:
         ),
     )
 
+    # Reconciliation метрики
+    reconciliation_transactions_total = _get_or_create_collector(
+        "reconciliation_transactions_total",
+        lambda: Counter(
+            "reconciliation_transactions_total",
+            "Total number of bank transactions",
+            ["matched"],  # matched: true, false
+        ),
+    )
+
+    reconciliation_auto_match_rate = _get_or_create_collector(
+        "reconciliation_auto_match_rate",
+        lambda: Histogram(
+            "reconciliation_auto_match_rate",
+            "Auto match rate (0..1)",
+            [],
+            buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+        ),
+    )
+
+    reconciliation_latency_seconds = _get_or_create_collector(
+        "reconciliation_latency_seconds",
+        lambda: Histogram(
+            "reconciliation_latency_seconds",
+            "Reconciliation processing latency in seconds",
+            [],
+            buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0),
+        ),
+    )
+
+    reconciliation_failures_total = _get_or_create_collector(
+        "reconciliation_failures_total",
+        lambda: Counter(
+            "reconciliation_failures_total",
+            "Total number of reconciliation failures",
+            ["error_code"],
+        ),
+    )
+
     recurring_duration_seconds = _get_or_create_collector(
         "recurring_duration_seconds",
         lambda: Histogram(
@@ -203,6 +242,10 @@ else:
     payment_orders_total = None
     payment_approval_latency_seconds = None
     payment_export_total = None
+    reconciliation_transactions_total = None
+    reconciliation_auto_match_rate = None
+    reconciliation_latency_seconds = None
+    reconciliation_failures_total = None
 
 
 def setup_metrics(enabled: bool = True) -> bool:
