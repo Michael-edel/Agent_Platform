@@ -82,6 +82,15 @@ function Has-OpenApiPath($paths, [string]$Path, [string]$Method) {
 $summaryDone = New-Object System.Collections.Generic.List[string]
 $summarySkipped = New-Object System.Collections.Generic.List[string]
 
+# Стабильные итоговые значения (best-effort)
+$artifactId = $null
+$documentId = $null
+$caseId = $null
+$paymentId = $null
+$paymentStatus = $null
+$paymentIdNote = $null
+$paymentStatusNote = $null
+
 try {
     if (-not $PdfPath) {
         Write-Host "Нужно указать путь к PDF."
@@ -120,8 +129,10 @@ try {
         Fail("Не удалось распарсить JSON ответа upload")
     }
 
-    $docId = $uploadResp.artifact_id
-    if (-not $docId) { $docId = $uploadResp.document_id }
+    $artifactId = $uploadResp.artifact_id
+    $documentId = $uploadResp.document_id
+    $docId = $artifactId
+    if (-not $docId) { $docId = $documentId }
     if (-not $docId) { $docId = $uploadResp.id }
     if (-not $docId) {
         Fail("В ответе upload нет artifact_id/document_id")
@@ -148,6 +159,10 @@ try {
     if ($detail.id -ne $docId) {
         Fail("Детали документа не совпали с ожидаемым id")
     }
+    # best-effort: кейс/запись может присутствовать в ответе
+    $caseId = $detail.case_id
+    if (-not $caseId) { $caseId = $detail.caseId }
+    if (-not $caseId -and $detail.case) { $caseId = $detail.case.id }
     Write-Ok("Детали документа доступны")
     $summaryDone.Add("document detail") | Out-Null
 
@@ -157,12 +172,14 @@ try {
     if (-not $paths) {
         Write-Warn("не удалось получить /openapi.json, пропускаю payment шаги")
         $summarySkipped.Add("payment flow (openapi unavailable)") | Out-Null
+        if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
     }
     else {
         # 1) create payment order
         if (-not (Has-OpenApiPath $paths "/api/v1/payments/orders" "post")) {
             Write-Warn("create payment order: эндпоинт /api/v1/payments/orders (POST) не найден")
             $summarySkipped.Add("create payment order") | Out-Null
+            if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
         }
         else {
             try {
@@ -180,6 +197,7 @@ try {
                 $order = $orderText | ConvertFrom-Json
                 $orderId = $order.id
                 if (-not $orderId) { throw "нет id в ответе create_payment_order" }
+                $paymentId = $orderId
                 Write-Ok("PaymentOrder создан: id=$orderId")
                 $summaryDone.Add("create payment order") | Out-Null
 
@@ -236,8 +254,26 @@ try {
             catch {
                 Write-Warn("payment flow: не удалось выполнить (ошибка: " + $_.Exception.Message + ")")
                 $summarySkipped.Add("payment flow (failed)") | Out-Null
+                if (-not $paymentId -and -not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: не удалось создать платеж (ошибка: $($_.Exception.Message))" }
             }
         }
+    }
+
+    # best-effort: получить статус платежа, если доступно
+    if ($paths -and $paymentId -and (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}" "get")) {
+        try {
+            $pText = Invoke-Json "GET" ("http://localhost:8000/api/v1/payments/orders/" + $paymentId) $headersTenant
+            $p = $pText | ConvertFrom-Json
+            $paymentStatus = $p.status
+            if (-not $paymentStatus) { $paymentStatus = $p.state }
+            if (-not $paymentStatus) { $paymentStatusNote = "Статус платежа получен, но поле status отсутствует" }
+        } catch {
+            $paymentStatusNote = "Не удалось получить статус платежа: $($_.Exception.Message)"
+        }
+    } elseif (-not $paymentId) {
+        if (-not $paymentIdNote) { $paymentIdNote = "PaymentId не получен: эндпоинт создания/поиска платежа отсутствует в openapi" }
+    } elseif (-not $paths -or -not (Has-OpenApiPath $paths "/api/v1/payments/orders/{order_id}" "get")) {
+        $paymentStatusNote = "Статус платежа не получен: эндпоинт чтения платежа отсутствует в openapi"
     }
 
     Write-Host ""
@@ -249,6 +285,30 @@ try {
         Write-Host "- Пропущено: нет"
     }
 
+    Write-Host ""
+    Write-Host "-----"
+    Write-Host "СТАБИЛЬНЫЙ ВЫВОД:"
+    Write-Host ("ArtifactId: " + ($(if ($artifactId) { $artifactId } else { "(нет)" })))
+    Write-Host ("DocumentId: " + ($(if ($documentId) { $documentId } else { "(нет)" })))
+    Write-Host ("CaseId: " + ($(if ($caseId) { $caseId } else { "(нет)" })))
+    if ($paymentId) {
+        Write-Host ("PaymentId: " + $paymentId)
+    } else {
+        Write-Host ($paymentIdNote ?? "PaymentId не получен")
+    }
+    if ($paymentStatus) {
+        Write-Host ("Статус платежа: " + $paymentStatus)
+    } else {
+        Write-Host ("Статус платежа: " + ($paymentStatusNote ?? "неизвестно"))
+    }
+    Write-Host "-----"
+    Write-Host "ИТОГ ДЛЯ ПЕРЕДАЧИ ДИРЕКТОРУ:"
+    if ($paymentId) {
+        Write-Host ("PaymentId: " + $paymentId)
+    } else {
+        Write-Host ($paymentIdNote ?? "PaymentId не получен")
+    }
+    Write-Host "-----"
     Write-Host ""
     Write-Host "PASS: ручной бухгалтерский прогон завершён."
     exit 0

@@ -36,6 +36,7 @@ pwsh -File .\scripts\manual-accountant-flow.ps1 -PdfPath "C:\path\to\invoice.pdf
 
 После создания `PaymentOrder` бухгалтеру нужно передать директору:
 - `PaymentId` (это `id` платёжного поручения в ответе create payment order).
+- Скопируйте `PaymentId` и передайте согласующему.
 
 Пример запуска скрипта согласующего:
 
