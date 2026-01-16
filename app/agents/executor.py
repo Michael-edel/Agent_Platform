@@ -137,7 +137,7 @@ def claim_next_execution(session: Session) -> Optional[AgentExecution]:
     return execution
 
 
-def run_execution(session: Session, execution: AgentExecution) -> None:
+def def run_execution(session: Session, execution: AgentExecution) -> None:
     """
     Run a single execution.
     
@@ -148,20 +148,47 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
     execution_id = execution.id
     if getattr(execution, "status", None) in {"completed", "failed", "rejected"}:
         return
-
     started_monotonic = getattr(execution, "_started_monotonic", None)
     if not isinstance(started_monotonic, (int, float)):
         started_monotonic = time.monotonic()
     
+    # Cache agent_code early for error handling (avoids race condition)
+    agent_code = "unknown"
     try:
         # Load agent_code from SKU
         sku = session.execute(
             select(AgentSKU).where(AgentSKU.id == execution.agent_sku_id)
         ).scalar_one_or_none()
-        agent_code = sku.code if sku else None
-        if not agent_code:
-            raise RuntimeError("agent_code not found for execution")
-
+        
+        if not sku or not sku.code:
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000)
+            err = AgentExecutionError(
+                code=AgentErrorCode.RUNNER_NOT_FOUND,
+                message=f"agent_code not found for execution {execution_id}",
+                details={"agent_sku_id": str(execution.agent_sku_id)}
+            )
+            err_dict = err.to_dict()
+            err_dict["meta"] = {"duration_ms": duration_ms}
+            now = now_iso()
+            res = session.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == execution_id)
+                .where(AgentExecution.status == "running")
+                .values(
+                    status="failed",
+                    result_json=json.dumps(err_dict),
+                    error_code=err.code.value,
+                    error_message=err.message[:500],
+                    finished_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+            if getattr(res, "rowcount", 0) and getattr(res, "rowcount", 0) > 0:
+                inc_failed("unknown", err.code.value)
+            return
+        
+        agent_code = sku.code
         runner = get_runner(agent_code)
         if not runner:
             duration_ms = int((time.monotonic() - started_monotonic) * 1000)
@@ -199,7 +226,6 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
             exec_uuid = UUID(int=0)
 
         timeout_seconds = get_timeout_seconds(agent_code)
-
         ctx = ExecutionContext(
             tenant_id=execution.tenant_id,
             execution_id=exec_uuid,
@@ -259,7 +285,6 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
 
         # Ensure JSON-serializable (after adding meta)
         result_json = json.dumps(result)
-
         now = now_iso()
         res = session.execute(
             update(AgentExecution)
@@ -298,11 +323,9 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
             except Exception:
                 # Billing aggregation should not break execution completion.
                 logger.warning("Failed to record usage-based billing aggregate", exc_info=True)
-
             inc_completed(agent_code)
-
         logger.debug(f"Execution {execution_id} completed (agent_code={agent_code})")
-        
+
     except Exception as e:
         duration_ms = int((time.monotonic() - started_monotonic) * 1000)
         # Normalize error taxonomy (no raw traceback stored).
@@ -320,18 +343,10 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
             )
         err_dict = err.to_dict()
         err_dict["meta"] = {"duration_ms": duration_ms}
-        
+
         try:
             now = now_iso()
-            agent_code = "unknown"
-            try:
-                sku = session.execute(
-                    select(AgentSKU).where(AgentSKU.id == execution.agent_sku_id)
-                ).scalar_one_or_none()
-                agent_code = sku.code if sku else "unknown"
-            except Exception:
-                agent_code = "unknown"
-
+            # agent_code already cached at function start, no need to re-query
             res = session.execute(
                 update(AgentExecution)
                 .where(AgentExecution.id == execution_id)
@@ -350,8 +365,9 @@ def run_execution(session: Session, execution: AgentExecution) -> None:
                 inc_failed(agent_code, err.code.value)
         except Exception as e2:
             logger.exception(f"Failed to mark execution {execution_id} as failed: {e2}")
-        
+
         logger.exception(f"Execution {execution_id} failed: {e}")
+
 
 
 def process_pending_executions(engine, max_per_tick: int = 10) -> int:

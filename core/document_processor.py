@@ -17,6 +17,10 @@ from storage.database import Database
 from core.inventory_manager import InventoryManager
 
 logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+# Версия OCR для кэширования (увеличивай при изменении промпта)
+OCR_VERSION = "v1.0"
 
 PathLike = Union[str, Path]
 
@@ -61,8 +65,8 @@ class DocumentProcessor:
         return self.cache_dir / f"{file_hash}.json"
 
     def _get_page_cache_path(self, file_hash: str, page_num: int) -> Path:
-        """Получить путь к файлу кэша страницы."""
-        return self.cache_pages_dir / f"{file_hash}_p{page_num}.json"
+        """Получить путь к файлу кэша страницы (с версией OCR)."""
+        return self.cache_pages_dir / f"{file_hash}_p{page_num}_{OCR_VERSION}.json"
 
     def _load_from_cache(self, cache_path: Path) -> Optional[Dict[str, Any]]:
         """Загрузить результат из кэша."""
@@ -147,17 +151,18 @@ class DocumentProcessor:
                     doc = self.ai.analyze_document_sync(img_bytes, extra_text=page_text)
                     
                     # Проверяем на ошибку rate limit
-                    if doc.error and "RATE_LIMIT" in doc.error:
-                        # Если rate limit, возвращаем ошибку в структуре страницы
-                        page_dict = {
-                            "page_number": idx,
-                            "total_pages_processed": len(pages),
-                            "error": doc.error,
-                            "document_type": "error"
-                        }
-                        docs.append(page_dict)
-                        # Не сохраняем в кэш при ошибке
-                        continue
+                                    # Проверяем на ошибку rate limit
+                if doc.error and "RATE_LIMIT" in doc.error:
+                    # Прерываем обработку всего документа при rate limit
+                    logger.warning(f"Rate limit на странице {idx}/{len(pages)}, прерываю обработку документа")
+                    return {
+                        "error": doc.error,
+                        "document_type": "error",
+                        "pages_processed": idx - 1,
+                        "total_pages": len(pages),
+                        "message": f"Rate limit достигнут на странице {idx}, обработано {idx-1} страниц"
+                    }
+
                     
                     doc.page_number = idx
                     doc.total_pages_processed = len(pages)
