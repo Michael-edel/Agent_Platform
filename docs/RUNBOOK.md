@@ -410,6 +410,22 @@ Low-traffic guard is applied via `billing:sli_time_to_paid_total_rate*` threshol
 - If business allows: **temporarily switch default provider** via `BILLING_DEFAULT_PROVIDER` (or per-tenant override).
 - For isolation in **staging only**: enable `BILLING_DRY_RUN=true` to validate pipeline without real payments.
 
+## Onboarding нового production-tenant
+
+Для B2B/Enterprise клиентов используется полный production onboarding процесс.
+
+**Документация:**
+- [PROD_ONBOARDING.md](PROD_ONBOARDING.md) — детальный playbook (prerequisites, billing cutover, go-live, rollback)
+- [SECURITY_POSTURE.md](SECURITY_POSTURE.md) — безопасность (data isolation, webhooks, audit log)
+
+**Ключевые шаги:**
+1. Prerequisites: tenant создан, billing settings заполнены, webhook URLs переданы
+2. Billing cutover: dry-run validation → production cutover (`BILLING_DRY_RUN=false`)
+3. Go-live: Prometheus/Grafana healthy, SLO alerts green, first invoice paid
+4. Monitoring: первые 7 дней ежедневные проверки dashboards и alerts
+
+**Grafana dashboard:** `Billing SLA / Invoices v2` (v2.1) — `observability/grafana/dashboards/billing_sla_dashboard_v2.json`
+
 ## Tenant onboarding via Admin (v1)
 
 Операционный onboarding делается через SQLAdmin (без отдельного фронта).
