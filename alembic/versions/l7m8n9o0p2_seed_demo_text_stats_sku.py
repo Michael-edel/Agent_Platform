@@ -1,4 +1,4 @@
-"""Seed demo.sentiment_basic AgentSKU (paid subscription add-on)
+"""Seed demo.text_stats AgentSKU (free)
 
 Revision ID: l7m8n9o0p2
 Revises: k6l7m8n9o0p1
@@ -29,13 +29,11 @@ def upgrade() -> None:
 
     params = {
         "id": str(uuid.uuid4()),
-        "code": "demo.sentiment_basic",
-        "name": "Demo: Sentiment Analysis (Basic)",
-        "description": "Analyzes text sentiment (positive/negative/neutral) - subscription add-on.",
+        "code": "demo.text_stats",
+        "name": "Demo: Text Stats",
+        "description": "Counts chars/words/lines and top words (built-in demo agent).",
         "status": "active",
-        "pricing_model": "subscription",
-        "usage_enabled": True,
-        "subscription_monthly_price": 999,
+        "pricing_model": "free",
         "created_at": now,
         "updated_at": now,
     }
@@ -45,11 +43,9 @@ def upgrade() -> None:
             sa.text(
                 """
                 INSERT OR IGNORE INTO agent_skus
-                  (id, code, name, description, status, pricing_model, usage_enabled, 
-                   subscription_monthly_price, created_at, updated_at)
+                  (id, code, name, description, status, pricing_model, created_at, updated_at)
                 VALUES
-                  (:id, :code, :name, :description, :status, :pricing_model, :usage_enabled,
-                   :subscription_monthly_price, :created_at, :updated_at)
+                  (:id, :code, :name, :description, :status, :pricing_model, :created_at, :updated_at)
                 """
             ),
             params,
@@ -59,11 +55,9 @@ def upgrade() -> None:
             sa.text(
                 """
                 INSERT INTO agent_skus
-                  (id, code, name, description, status, pricing_model, usage_enabled,
-                   subscription_monthly_price, created_at, updated_at)
+                  (id, code, name, description, status, pricing_model, created_at, updated_at)
                 VALUES
-                  (:id, :code, :name, :description, :status, :pricing_model, :usage_enabled,
-                   :subscription_monthly_price, :created_at, :updated_at)
+                  (:id, :code, :name, :description, :status, :pricing_model, :created_at, :updated_at)
                 ON CONFLICT (code) DO NOTHING
                 """
             ),
@@ -72,5 +66,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    bind.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.sentiment_basic"})
+    op.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.text_stats"})
+

@@ -24,12 +24,19 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "agent_executions",
-        sa.Column("cancel_requested", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "cancel_requested",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
     )
-    op.add_column(
+    op.alter_column(
         "agent_executions",
-        sa.Column("cancel_requested_at", sa.String(), nullable=True),
+        "cancel_requested",
+        server_default=None,
     )
+
 
 
 def downgrade() -> None:

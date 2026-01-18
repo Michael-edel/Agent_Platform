@@ -29,11 +29,11 @@ def upgrade() -> None:
 
     params = {
         "id": str(uuid.uuid4()),
-        "code": "demo.sentiment_basic",
-        "name": "Demo: Sentiment Basic",
-        "description": "Paid demo agent: simple lexicon-based sentiment (RU/EN).",
+        "code": "demo.text_stats",
+        "name": "Demo: Text Stats",
+        "description": "Counts chars/words/lines and top words (built-in demo agent).",
         "status": "active",
-        "pricing_model": "subscription",
+        "pricing_model": "free",
         "created_at": now,
         "updated_at": now,
     }
@@ -66,5 +66,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    bind.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.sentiment_basic"})
+    op.execute(sa.text("DELETE FROM agent_skus WHERE code = :code"), {"code": "demo.sentiment_basic"})
+
