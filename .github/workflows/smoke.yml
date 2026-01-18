@@ -13,6 +13,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create .env from .env.example
+        run: |
+          cp .env.example .env
+          # Override with CI-specific values
+          echo "OPENAI_API_KEY=dummy-key-for-ci" >> .env
+          echo "DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_platform" >> .env
+          echo "POSTGRES_PASSWORD=postgres" >> .env
+          echo "DEBUG=0" >> .env
+          echo "BILLING_ENABLED=1" >> .env
+          echo "DEMO_BOOTSTRAP_ENABLED=true" >> .env
+
       - name: Build and start docker compose
         run: |
           docker compose up -d --build
@@ -46,4 +57,3 @@ jobs:
         if: always()
         run: |
           docker compose down -v
-
