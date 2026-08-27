@@ -165,6 +165,11 @@ def test_approval_uses_token_role_and_subject_not_request_body(client_with_overr
         tenant_id="tenant-1",
         headers={"Authorization": "Bearer secret-token"},
     )
+    submitted = client_with_overrides.post(
+        f"/api/v1/payments/orders/{payment_id}/submit",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"},
+    )
+    assert submitted.status_code == 200, submitted.text
 
     forged = client_with_overrides.post(
         f"/api/v1/payments/orders/{payment_id}/approve",
