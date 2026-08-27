@@ -7,8 +7,12 @@ while ! pg_isready -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${
 done
 echo "PostgreSQL is ready!"
 
-echo "Running Alembic migrations..."
-alembic upgrade head
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+  echo "Running Alembic migrations..."
+  alembic upgrade head
+else
+  echo "Skipping Alembic migrations."
+fi
 
 echo "Starting application..."
 exec "$@"
