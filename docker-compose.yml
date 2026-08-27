@@ -77,6 +77,7 @@ services:
       - .env
     environment:
       - PLATFORM_DB_PATH=${PLATFORM_DB_PATH:-platform.db}
+      - RUN_MIGRATIONS=false
       - DATABASE_URL=${DATABASE_URL:-}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
