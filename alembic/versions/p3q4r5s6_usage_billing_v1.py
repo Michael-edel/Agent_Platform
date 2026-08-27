@@ -61,7 +61,7 @@ def upgrade() -> None:
 
     # Configure demo.sentiment_basic as usage-priced
     now = datetime.now(timezone.utc).isoformat()
-    op.execute(
+    op.get_bind().execute(
         sa.text(
             """
             UPDATE agent_skus
