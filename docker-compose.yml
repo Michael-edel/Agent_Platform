@@ -94,7 +94,7 @@ services:
     expose:
       - "9101"
     depends_on:
-      app:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     volumes:
