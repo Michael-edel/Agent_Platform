@@ -30,7 +30,7 @@ class Actor:
 
 
 def _is_auth_enabled() -> bool:
-    return os.getenv("AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+    return os.getenv("AUTH_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
 
 
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
