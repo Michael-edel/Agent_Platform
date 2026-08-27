@@ -31,6 +31,10 @@ def upgrade() -> None:
             server_default=sa.false(),
         ),
     )
+    op.add_column(
+        "agent_executions",
+        sa.Column("cancel_requested_at", sa.String(), nullable=True),
+    )
     op.alter_column(
         "agent_executions",
         "cancel_requested",
