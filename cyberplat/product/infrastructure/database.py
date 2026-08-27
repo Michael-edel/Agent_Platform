@@ -4,6 +4,7 @@ import os
 import logging
 from typing import Generator
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker, Session
 from utils.db_url import normalize_sqlalchemy_database_url
 
@@ -18,6 +19,32 @@ _SessionLocal = None
 def _is_testing_mode() -> bool:
     """Проверка, запущен ли код в тестовом режиме."""
     return os.getenv("CYBERPLAT_TESTING") == "1" or os.getenv("PYTEST_CURRENT_TEST") is not None
+
+
+def _postgres_url_from_environment() -> str | None:
+    """Build a safe SQLAlchemy URL when Compose provides POSTGRES_* settings."""
+    host = os.getenv("POSTGRES_HOST", "").strip()
+    if not host:
+        return None
+
+    password = os.getenv("POSTGRES_PASSWORD", "")
+    if not password:
+        raise RuntimeError("POSTGRES_PASSWORD must be set when POSTGRES_HOST is configured")
+
+    port = os.getenv("POSTGRES_PORT", "5432").strip()
+    try:
+        port_number = int(port)
+    except ValueError as exc:
+        raise RuntimeError("POSTGRES_PORT must be an integer") from exc
+
+    return URL.create(
+        "postgresql+psycopg",
+        username=os.getenv("POSTGRES_USER", "postgres").strip() or "postgres",
+        password=password,
+        host=host,
+        port=port_number,
+        database=os.getenv("POSTGRES_DB", "agent_platform").strip() or "agent_platform",
+    ).render_as_string(hide_password=False)
 
 
 def get_database_url() -> str:
@@ -35,12 +62,14 @@ def get_database_url() -> str:
             database_url = f"sqlite:///{db_path}"
         # Если уже sqlite:// - используем как есть
     elif not database_url:
-        # Fallback для dev (SQLite) - используем тот же путь, что и legacy сервисы
-        db_path = os.getenv("PLATFORM_DB_PATH", "platform.db")
-        # Преобразуем относительный путь в абсолютный для SQLite
-        if not os.path.isabs(db_path):
-            db_path = os.path.abspath(db_path)
-        database_url = f"sqlite:///{db_path}"
+        # Docker Compose explicitly provides POSTGRES_*; do not split runtime data into SQLite.
+        database_url = _postgres_url_from_environment()
+        if not database_url:
+            # Local development without Postgres keeps the legacy SQLite workflow.
+            db_path = os.getenv("PLATFORM_DB_PATH", "platform.db")
+            if not os.path.isabs(db_path):
+                db_path = os.path.abspath(db_path)
+            database_url = f"sqlite:///{db_path}"
     
     # Нормализация для PostgreSQL (psycopg v3) - только в non-test режиме
     if not _is_testing_mode():
