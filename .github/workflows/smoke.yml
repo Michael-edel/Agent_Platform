@@ -46,7 +46,7 @@ jobs:
 
       - name: Run security and smoke tests in test container
         run: |
-          docker compose run --rm --no-deps -e E2E_SMOKE_ENABLED=1 -e E2E_BASE_URL=http://app:8000 app-test python -m pytest -q tests/test_auth_rbac_audit.py tests/test_product_database_config.py tests/smoke/test_demo_e2e.py
+          docker compose run --rm --no-deps -e E2E_SMOKE_ENABLED=1 -e E2E_BASE_URL=http://app:8000 app-test sh -c 'python -m pip check && python -m pytest -q tests/test_auth_rbac_audit.py tests/test_product_database_config.py tests/smoke/test_demo_e2e.py
 
       - name: Dump docker logs on failure
         if: failure()
