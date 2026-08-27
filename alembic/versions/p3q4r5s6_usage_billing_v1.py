@@ -32,7 +32,7 @@ def upgrade() -> None:
     op.add_column("agent_skus", sa.Column("usage_price_cents", sa.Integer(), nullable=True))
     op.add_column(
         "agent_skus",
-        sa.Column("usage_included_per_month", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("usage_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
     op.add_column(
         "agent_skus",
