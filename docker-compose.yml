@@ -5,7 +5,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change-me}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - pg-data:/var/lib/postgresql/data
     ports:
@@ -38,7 +38,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       # Demo tenant bootstrap for local demo/pilot
       - DEMO_BOOTSTRAP_ENABLED=${DEMO_BOOTSTRAP_ENABLED:-true}
     volumes:
@@ -83,7 +83,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       - BILLING_WORKER_INTERVAL_SECONDS=${BILLING_WORKER_INTERVAL_SECONDS:-5}
       - BILLING_WORKER_BATCH_SIZE=${BILLING_WORKER_BATCH_SIZE:-50}
       - BILLING_WORKER_JITTER_SECONDS=${BILLING_WORKER_JITTER_SECONDS:-0}
@@ -148,7 +148,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-agent_platform}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       - DATABASE_URL=${DATABASE_URL:-}
     depends_on:
       postgres:
