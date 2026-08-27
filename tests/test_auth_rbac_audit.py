@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 
@@ -23,7 +24,6 @@ def temp_db():
 
 @pytest.fixture
 def client_with_overrides(temp_db, monkeypatch):
-    # ensure auth is off by default for this fixture unless test overrides
     monkeypatch.setenv("AUTH_ENABLED", "false")
 
     payment_service = PaymentService(db_path=temp_db)
@@ -46,8 +46,27 @@ def client_with_overrides(temp_db, monkeypatch):
     app.dependency_overrides.clear()
 
 
+def _enable_scoped_auth(monkeypatch, identities=None):
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv(
+        "API_TOKEN_CONFIG",
+        json.dumps(identities or {
+            "secret-token": {
+                "subject": "pilot-accountant",
+                "role": "accountant",
+                "tenants": ["tenant-1"],
+            },
+            "approver-token": {
+                "subject": "pilot-approver",
+                "role": "approver",
+                "tenants": ["tenant-1"],
+            },
+        }),
+    )
+
+
 def _create_payment(client: TestClient, *, tenant_id: str, headers: dict) -> str:
-    r = client.post(
+    response = client.post(
         "/api/v1/payments/orders",
         headers={"X-Tenant-ID": tenant_id, **headers},
         json={
@@ -59,100 +78,75 @@ def _create_payment(client: TestClient, *, tenant_id: str, headers: dict) -> str
             "currency": "KZT",
         },
     )
-    assert r.status_code == 201, r.text
-    return r.json()["payment_id"]
+    assert response.status_code == 201, response.text
+    return response.json()["payment_id"]
 
 
 def test_auth_off_endpoints_work_as_before(client_with_overrides):
     client = client_with_overrides
     payment_id = _create_payment(client, tenant_id="tenant-1", headers={})
-    r = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-1"})
-    assert r.status_code == 200
+    response = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-1"})
+    assert response.status_code == 200
 
 
 def test_auth_on_without_token_is_401(client_with_overrides, monkeypatch):
-    client = client_with_overrides
-    monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("API_TOKEN", "secret-token")
-
-    r = client.post(
+    _enable_scoped_auth(monkeypatch)
+    response = client_with_overrides.post(
         "/api/v1/payments/orders",
-        headers={"X-Tenant-ID": "tenant-1", "X-Role": "accountant"},
-        json={
-            "amount": 1000.0,
-            "beneficiary_name": "Demo Supplier",
-            "beneficiary_account_iban": "KZ000000000000000000",
-            "purpose": "INV-123",
-            "created_by_role": "accountant",
-            "currency": "KZT",
-        },
+        headers={"X-Tenant-ID": "tenant-1"},
+        json={"amount": 1000.0, "beneficiary_name": "Demo Supplier", "beneficiary_account_iban": "KZ000000000000000000", "purpose": "INV-123", "created_by_role": "accountant", "currency": "KZT"},
     )
-    assert r.status_code == 401
+    assert response.status_code == 401
 
 
-def test_auth_on_token_ok_missing_role_is_403(client_with_overrides, monkeypatch):
-    client = client_with_overrides
-    monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("API_TOKEN", "secret-token")
-
-    r = client.post(
-        "/api/v1/payments/orders",
-        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"},
-        json={
-            "amount": 1000.0,
-            "beneficiary_name": "Demo Supplier",
-            "beneficiary_account_iban": "KZ000000000000000000",
-            "purpose": "INV-123",
-            "created_by_role": "accountant",
-            "currency": "KZT",
-        },
-    )
-    assert r.status_code == 403
-
-
-def test_rbac_approve_accountant_forbidden_approver_allowed(client_with_overrides, monkeypatch):
-    client = client_with_overrides
-    monkeypatch.setenv("AUTH_ENABLED", "true")
-    monkeypatch.setenv("API_TOKEN", "secret-token")
-
+def test_auth_on_ignores_request_role_and_uses_token_role(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
-        client,
+        client_with_overrides,
         tenant_id="tenant-1",
-        headers={"Authorization": "Bearer secret-token", "X-Role": "accountant"},
+        headers={"Authorization": "Bearer secret-token", "X-Role": "approver"},
     )
-
-    # approve with accountant -> forbidden
-    r = client.post(
-        f"/api/v1/payments/orders/{payment_id}/approve",
-        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token", "X-Role": "accountant"},
-        json={"role": "director", "comment": "ok"},
-    )
-    assert r.status_code == 403
-
-    # approve with approver -> ok
-    r = client.post(
+    response = client_with_overrides.post(
         f"/api/v1/payments/orders/{payment_id}/approve",
         headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token", "X-Role": "approver"},
         json={"role": "director", "comment": "ok"},
     )
-    assert r.status_code == 200, r.text
+    assert response.status_code == 403
+
+
+def test_token_cannot_access_another_tenant(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    response = client_with_overrides.post(
+        "/api/v1/payments/orders",
+        headers={"X-Tenant-ID": "tenant-2", "Authorization": "Bearer secret-token"},
+        json={"amount": 1000.0, "beneficiary_name": "Demo Supplier", "beneficiary_account_iban": "KZ000000000000000000", "purpose": "INV-123", "created_by_role": "accountant", "currency": "KZT"},
+    )
+    assert response.status_code == 403
+
+
+def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    payment_id = _create_payment(
+        client_with_overrides,
+        tenant_id="tenant-1",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    response = client_with_overrides.post(
+        f"/api/v1/payments/orders/{payment_id}/approve",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"},
+        json={"role": "director", "comment": "ok"},
+    )
+    assert response.status_code == 200, response.text
 
 
 def test_audit_endpoints_content_type_and_tenant_isolation(client_with_overrides):
     client = client_with_overrides
     payment_id = _create_payment(client, tenant_id="tenant-1", headers={})
-
-    # tenant isolation
-    r = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-2"})
-    assert r.status_code == 404
-
-    # JSON audit
-    r = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-1"})
-    assert r.status_code == 200
-    assert r.headers.get("content-type", "").startswith("application/json")
-
-    # CSV audit
-    r = client.get(f"/api/v1/payments/{payment_id}/audit.csv", headers={"X-Tenant-ID": "tenant-1"})
-    assert r.status_code == 200
-    assert "text/csv" in (r.headers.get("content-type", "") or "")
-
+    response = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-2"})
+    assert response.status_code == 404
+    response = client.get(f"/api/v1/payments/{payment_id}/audit", headers={"X-Tenant-ID": "tenant-1"})
+    assert response.status_code == 200
+    assert response.headers.get("content-type", "").startswith("application/json")
+    response = client.get(f"/api/v1/payments/{payment_id}/audit.csv", headers={"X-Tenant-ID": "tenant-1"})
+    assert response.status_code == 200
+    assert "text/csv" in (response.headers.get("content-type", "") or "")

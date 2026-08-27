@@ -23,6 +23,8 @@ jobs:
           echo "DEBUG=0" >> .env
           echo "BILLING_ENABLED=1" >> .env
           echo "DEMO_BOOTSTRAP_ENABLED=true" >> .env
+          # Smoke uses unauthenticated demo requests; production keeps AUTH_ENABLED=true.
+          echo "AUTH_ENABLED=false" >> .env
 
       - name: Build and start docker compose
         run: |
@@ -42,9 +44,9 @@ jobs:
           echo "FAIL: /health did not become ready"
           exit 1
 
-      - name: Run smoke test inside app container
+      - name: Run security and smoke tests in test container
         run: |
-          docker compose exec -T -e E2E_SMOKE_ENABLED=1 app python -m pytest -q tests/smoke/test_demo_e2e.py
+          docker compose run --rm --no-deps -e E2E_SMOKE_ENABLED=1 -e E2E_BASE_URL=http://app:8000 app-test python -m pytest -q tests/test_auth_rbac_audit.py tests/smoke/test_demo_e2e.py
 
       - name: Dump docker logs on failure
         if: failure()

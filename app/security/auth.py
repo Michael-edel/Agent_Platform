@@ -1,10 +1,11 @@
-"""Opt-in bearer auth + RBAC for pilot deployments."""
+"""Bearer authentication with server-side roles and tenant scopes."""
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
-from typing import Iterable, Optional, Set
+from typing import Optional, Set
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -12,6 +13,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 
 ALLOWED_ROLES: Set[str] = {"accountant", "approver", "system"}
+PUBLIC_PATHS = {"/health", "/ready", "/metrics"}
+
+
+@dataclass(frozen=True)
+class TokenIdentity:
+    subject: str
+    role: str
+    tenant_ids: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -24,108 +33,114 @@ def _is_auth_enabled() -> bool:
     return os.getenv("AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
 
 
-def _parse_tokens() -> list[str]:
-    raw_many = os.getenv("API_TOKENS", "")
-    raw_one = os.getenv("API_TOKEN", "")
-    tokens: list[str] = []
-    if raw_many.strip():
-        tokens.extend([t.strip() for t in raw_many.split(",") if t.strip()])
-    if raw_one.strip():
-        tokens.append(raw_one.strip())
-    # De-dup while keeping order
-    out: list[str] = []
-    for t in tokens:
-        if t not in out:
-            out.append(t)
-    return out
-
-
 def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
     if not authorization:
         return None
     parts = authorization.strip().split()
-    if len(parts) != 2:
-        return None
-    if parts[0].lower() != "bearer":
+    if len(parts) != 2 or parts[0].lower() != "bearer":
         return None
     return parts[1].strip() or None
 
 
-def _token_subject(token: str, valid_tokens: list[str]) -> str:
+def _parse_token_identities() -> dict[str, TokenIdentity]:
+    """Parse API_TOKEN_CONFIG without trusting request-provided roles or tenants.
+
+    Expected JSON format:
+    {
+      "secret-token": {
+        "subject": "pilot-accountant",
+        "role": "accountant",
+        "tenants": ["tenant-1"]
+      }
+    }
+    """
+    raw = os.getenv("API_TOKEN_CONFIG", "").strip()
+    if not raw:
+        raise ValueError("AUTH_ENABLED=true требует API_TOKEN_CONFIG")
+
     try:
-        idx = valid_tokens.index(token)
-        return f"token-{idx + 1}"
-    except Exception:
-        return "token"
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("API_TOKEN_CONFIG должен быть корректным JSON object") from exc
 
+    if not isinstance(payload, dict):
+        raise ValueError("API_TOKEN_CONFIG должен быть JSON object")
 
-def _extract_role(request: Request) -> Optional[str]:
-    role = request.headers.get("X-Role") or request.headers.get("X-User-Role")
-    if not role:
-        return None
-    role = role.strip().lower()
-    return role or None
+    identities: dict[str, TokenIdentity] = {}
+    for token, value in payload.items():
+        if not isinstance(token, str) or not token.strip() or not isinstance(value, dict):
+            raise ValueError("API_TOKEN_CONFIG содержит некорректную запись")
+
+        subject = value.get("subject")
+        role = value.get("role")
+        tenants = value.get("tenants")
+        if not isinstance(subject, str) or not subject.strip():
+            raise ValueError("Для каждого токена требуется непустой subject")
+        if not isinstance(role, str) or role.strip().lower() not in ALLOWED_ROLES:
+            raise ValueError("Для каждого токена требуется допустимая role")
+        if not isinstance(tenants, list) or not tenants or not all(
+            isinstance(tenant, str) and tenant.strip() for tenant in tenants
+        ):
+            raise ValueError("Для каждого токена требуется непустой список tenants")
+
+        identities[token] = TokenIdentity(
+            subject=subject.strip(),
+            role=role.strip().lower(),
+            tenant_ids=frozenset(tenant.strip() for tenant in tenants),
+        )
+    return identities
 
 
 def get_actor(request: Request) -> Actor:
-    """Get actor for events. When auth is off, uses best-effort defaults."""
-    role = _extract_role(request) or "accountant"
-    subject = getattr(request.state, "actor_subject", None) or "anonymous"
-    role = role.lower()
-    if role not in ALLOWED_ROLES:
-        role = "accountant"
-    return Actor(role=role, subject=subject)
+    """Return the middleware-verified identity for audit events."""
+    return Actor(
+        role=getattr(request.state, "actor_role", None) or "accountant",
+        subject=getattr(request.state, "actor_subject", None) or "anonymous",
+    )
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         auth_enabled = _is_auth_enabled()
         request.state.auth_enabled = auth_enabled
-
-        # Default actor subject (even when auth is off)
         request.state.actor_subject = "anonymous"
+        request.state.actor_role = "accountant"
 
-        # Skip auth for basic health/metrics endpoints
-        if request.url.path in {"/health", "/ready", "/metrics"}:
+        if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
-
         if not auth_enabled:
             return await call_next(request)
 
-        tokens = _parse_tokens()
-        if not tokens:
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "AUTH_ENABLED=true, но не задан API_TOKEN/API_TOKENS"},
-            )
+        try:
+            identities = _parse_token_identities()
+        except ValueError as exc:
+            return JSONResponse(status_code=500, content={"detail": str(exc)})
 
         token = _extract_bearer_token(request.headers.get("Authorization"))
-        if not token or token not in tokens:
+        identity = identities.get(token or "")
+        if not identity:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
-        request.state.actor_subject = _token_subject(token, tokens)
+        requested_tenant = request.headers.get("X-Tenant-ID")
+        if requested_tenant:
+            requested_tenant = requested_tenant.strip()
+            if requested_tenant not in identity.tenant_ids and "*" not in identity.tenant_ids:
+                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
-        role = _extract_role(request)
-        if not role or role not in ALLOWED_ROLES:
-            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-
-        request.state.actor_role = role
+        request.state.actor_subject = identity.subject
+        request.state.actor_role = identity.role
+        request.state.actor_tenant_ids = identity.tenant_ids
         return await call_next(request)
 
 
 def require_roles(*allowed: str):
-    allowed_set = {r.lower() for r in allowed}
+    allowed_set = {role.lower() for role in allowed}
 
     async def _dep(request: Request) -> None:
         if not _is_auth_enabled():
             return
-
-        role = getattr(request.state, "actor_role", None) or _extract_role(request)
-        if not role:
-            raise HTTPException(status_code=403, detail="Forbidden")
-        role = role.lower()
-        if role not in allowed_set:
+        role = getattr(request.state, "actor_role", None)
+        if not role or role.lower() not in allowed_set:
             raise HTTPException(status_code=403, detail="Forbidden")
 
     return _dep
-

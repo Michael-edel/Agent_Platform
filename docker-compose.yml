@@ -51,7 +51,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-          test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
+          test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
           interval: 30s
           timeout: 10s
           retries: 3
@@ -77,6 +77,7 @@ services:
       - .env
     environment:
       - PLATFORM_DB_PATH=${PLATFORM_DB_PATH:-platform.db}
+      - RUN_MIGRATIONS=false
       - DATABASE_URL=${DATABASE_URL:-}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
@@ -93,7 +94,7 @@ services:
     expose:
       - "9101"
     depends_on:
-      postgres:
+      app:
         condition: service_healthy
     restart: unless-stopped
     volumes:

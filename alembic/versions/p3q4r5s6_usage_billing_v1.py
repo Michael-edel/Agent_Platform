@@ -32,7 +32,7 @@ def upgrade() -> None:
     op.add_column("agent_skus", sa.Column("usage_price_cents", sa.Integer(), nullable=True))
     op.add_column(
         "agent_skus",
-        sa.Column("usage_included_per_month", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("usage_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
     op.add_column(
         "agent_skus",
@@ -61,11 +61,11 @@ def upgrade() -> None:
 
     # Configure demo.sentiment_basic as usage-priced
     now = datetime.now(timezone.utc).isoformat()
-    op.execute(
+    op.get_bind().execute(
         sa.text(
             """
             UPDATE agent_skus
-            SET usage_enabled = 1,
+            SET usage_enabled = true,
                 usage_unit = 'execution',
                 usage_price_cents = 10,
                 usage_included_per_month = 1,

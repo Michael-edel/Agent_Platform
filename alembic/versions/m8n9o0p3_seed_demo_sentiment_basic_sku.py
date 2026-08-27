@@ -29,11 +29,11 @@ def upgrade() -> None:
 
     params = {
         "id": str(uuid.uuid4()),
-        "code": "demo.text_stats",
-        "name": "Demo: Text Stats",
-        "description": "Counts chars/words/lines and top words (built-in demo agent).",
+        "code": "demo.sentiment_basic",
+        "name": "Demo: Sentiment Basic",
+        "description": "Basic sentiment analysis (subscription demo agent).",
         "status": "active",
-        "pricing_model": "free",
+        "pricing_model": "subscription",
         "created_at": now,
         "updated_at": now,
     }

@@ -112,11 +112,11 @@ def ensure_demo_tenant(*, tenant_id: str = DEMO_TENANT_ID, name: str = DEMO_TENA
             text(
                 """
                 INSERT INTO tenants (id, name, is_active, created_at, updated_at)
-                VALUES (:id, :name, 1, :now, :now)
+                VALUES (:id, :name, :is_active, :now, :now)
                 ON CONFLICT (id) DO NOTHING
                 """
             ),
-            {"id": tenant_id, "name": name, "now": now},
+            {"id": tenant_id, "name": name, "is_active": True, "now": now},
         )
 
         # Seed minimal billing settings (disabled but valid) – idempotent.
@@ -127,11 +127,11 @@ def ensure_demo_tenant(*, tenant_id: str = DEMO_TENANT_ID, name: str = DEMO_TENA
                     INSERT INTO tenant_billing_settings (
                         tenant_id, default_provider, stripe_enabled, kaspi_enabled, created_at, updated_at
                     )
-                    VALUES (:tenant_id, NULL, 0, 0, :now, :now)
+                    VALUES (:tenant_id, NULL, :stripe_enabled, :kaspi_enabled, :now, :now)
                     ON CONFLICT (tenant_id) DO NOTHING
                     """
                 ),
-                {"tenant_id": tenant_id, "now": now},
+                {"tenant_id": tenant_id, "stripe_enabled": False, "kaspi_enabled": False, "now": now},
             )
         except Exception:
             # Table may be absent in Postgres if migrations not applied; ignore for demo bootstrap.
