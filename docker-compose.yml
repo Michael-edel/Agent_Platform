@@ -9,8 +9,8 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     ports:
-      # Открываем порт только для dev/staging (в production можно убрать)
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Локальный доступ для разработки; не публикуем БД в локальную сеть.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-agent_platform}"]
