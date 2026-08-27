@@ -23,6 +23,8 @@ jobs:
           echo "DEBUG=0" >> .env
           echo "BILLING_ENABLED=1" >> .env
           echo "DEMO_BOOTSTRAP_ENABLED=true" >> .env
+          # Smoke uses unauthenticated demo requests; production keeps AUTH_ENABLED=true.
+          echo "AUTH_ENABLED=false" >> .env
 
       - name: Build and start docker compose
         run: |
