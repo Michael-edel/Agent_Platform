@@ -73,10 +73,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\" || exit 1
 
 # Используем entrypoint для запуска миграций (ДО USER appuser)
-ENTRYPOINT [\"/usr/local/bin/docker-entrypoint.sh\"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Переключаемся на non-root пользователя ПОСЛЕ entrypoint
 USER appuser
 
 # По умолчанию запускаем FastAPI сервер
-CMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
