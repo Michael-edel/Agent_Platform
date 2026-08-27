@@ -44,9 +44,9 @@ jobs:
           echo "FAIL: /health did not become ready"
           exit 1
 
-      - name: Run smoke test inside app container
+      - name: Run smoke test in test container
         run: |
-          docker compose exec -T -e E2E_SMOKE_ENABLED=1 app python -m pytest -q tests/smoke/test_demo_e2e.py
+          docker compose run --rm --no-deps -e E2E_SMOKE_ENABLED=1 app-test python -m pytest -q tests/smoke/test_demo_e2e.py
 
       - name: Dump docker logs on failure
         if: failure()
