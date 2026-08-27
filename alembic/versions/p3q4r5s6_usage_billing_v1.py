@@ -65,7 +65,7 @@ def upgrade() -> None:
         sa.text(
             """
             UPDATE agent_skus
-            SET usage_enabled = 1,
+            SET usage_enabled = true,
                 usage_unit = 'execution',
                 usage_price_cents = 10,
                 usage_included_per_month = 1,
