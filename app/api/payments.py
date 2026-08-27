@@ -569,7 +569,7 @@ async def reject_payment_order(
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
     case_service: CaseService = Depends(get_case_service),
-    _: None = Depends(require_roles("approver")),
+    _: None = Depends(require_roles("approver", "director")),
 ):
     """
     Отклонить платёжное поручение.
