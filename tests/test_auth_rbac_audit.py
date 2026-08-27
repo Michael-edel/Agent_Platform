@@ -99,6 +99,20 @@ def test_auth_on_without_token_is_401(client_with_overrides, monkeypatch):
     assert response.status_code == 401
 
 
+def test_auth_defaults_to_enabled_and_fails_closed_without_config(client_with_overrides, monkeypatch):
+    monkeypatch.delenv("AUTH_ENABLED", raising=False)
+    monkeypatch.delenv("API_TOKEN_CONFIG", raising=False)
+
+    response = client_with_overrides.post(
+        "/api/v1/payments/orders",
+        headers={"X-Tenant-ID": "tenant-1"},
+        json={"amount": 1000.0, "beneficiary_name": "Demo Supplier", "beneficiary_account_iban": "KZ000000000000000000", "purpose": "INV-123", "created_by_role": "accountant", "currency": "KZT"},
+    )
+
+    assert response.status_code == 500
+    assert "API_TOKEN_CONFIG" in response.json()["detail"]
+
+
 def test_auth_on_ignores_request_role_and_uses_token_role(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
