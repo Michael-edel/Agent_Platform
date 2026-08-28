@@ -767,7 +767,8 @@ async def metrics():
 @app.post("/v1/process", response_model=ProcessResponse)
 async def process_document(
     file: UploadFile = File(...),
-    x_client_id: Optional[str] = Header(None, alias="X-Client-ID")
+    x_client_id: Optional[str] = Header(None, alias="X-Client-ID"),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Поставить задачу на обработку документа в очередь.
@@ -1156,7 +1157,8 @@ async def upload_document(
 async def run_doc_agent(
     request: Request,
     agent_request: AgentRunRequest,
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Запустить doc_agent для обработки документа.
@@ -1335,7 +1337,8 @@ async def list_agents():
 @app.post("/api/v1/agents/payment_agent/run", response_model=AgentRunResponse)
 async def run_payment_agent(
     request: AgentRunRequest,
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Запустить payment_agent для создания payment артефакта из invoice артефакта.
