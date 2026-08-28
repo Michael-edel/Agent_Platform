@@ -136,6 +136,34 @@ class TestAdminAuth:
                 assert response.status_code != 403
 
 
+class TestEmailIngestAuth:
+    """Email ingestion must fail closed until its webhook secret is configured."""
+
+    def test_ingest_rejects_missing_or_invalid_webhook_key(self, test_app):
+        with patch.dict(os.environ, {"EMAIL_INGEST_API_KEY": "email-secret"}):
+            client = TestClient(test_app)
+
+            missing = client.post("/api/v1/ingest/email", json={})
+            assert missing.status_code == 403
+
+            invalid = client.post(
+                "/api/v1/ingest/email",
+                headers={"X-Email-Ingest-Key": "wrong-key"},
+                json={},
+            )
+            assert invalid.status_code == 403
+
+    def test_ingest_allows_valid_webhook_key_past_auth(self, test_app):
+        with patch.dict(os.environ, {"EMAIL_INGEST_API_KEY": "email-secret"}):
+            client = TestClient(test_app)
+            response = client.post(
+                "/api/v1/ingest/email",
+                headers={"X-Email-Ingest-Key": "email-secret"},
+                json={},
+            )
+            assert response.status_code != 403
+
+
 class TestRecoveryStuckJobs:
     """Тесты recovery stuck processing jobs."""
     
