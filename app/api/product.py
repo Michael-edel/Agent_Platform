@@ -32,6 +32,7 @@ from cyberplat.product.application.get_invoice_detail_use_case import GetInvoice
 from cyberplat.product.application.run_ocr_use_case import RunOCRUseCase
 from cyberplat.product.application.confirm_invoice_use_case import ConfirmInvoiceUseCase
 from cyberplat.product.application.export_invoice_use_case import ExportInvoiceUseCase
+from app.security.auth import require_roles
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ def get_agent_registry(request: Request):
 async def get_document_detail(
     document_id: str,
     tenant_id: str = Depends(get_tenant_id),
+    _: None = Depends(require_roles("accountant", "system")),
     artifact_state_repo: ArtifactStateRepository = Depends(get_artifact_state_repo),
     artifact_service = Depends(get_artifact_service)
 ):
@@ -405,6 +407,7 @@ async def get_invoice_detail(
 async def confirm_invoice(
     invoice_id: str,
     tenant_id: str = Depends(get_tenant_id),
+    _: None = Depends(require_roles("accountant", "system")),
     artifact_state_repo: ArtifactStateRepository = Depends(get_artifact_state_repo)
 ):
     """
@@ -431,6 +434,7 @@ async def export_invoice(
     invoice_id: str,
     export_request: ExportInvoiceRequest,
     tenant_id: str = Depends(get_tenant_id),
+    _: None = Depends(require_roles("accountant", "system")),
     artifact_state_repo: ArtifactStateRepository = Depends(get_artifact_state_repo),
     export_repo: ExportRepository = Depends(get_export_repo)
 ):
