@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 from urllib.parse import urlsplit
 
+
 class OutboundDestinationError(ValueError):
     """The destination is not safe for server-side HTTP requests."""
 
