@@ -153,6 +153,7 @@ async def get_document_detail(
 async def run_ocr_on_document(
     document_id: str,
     tenant_id: str = Depends(get_tenant_id),
+    _: None = Depends(require_roles("accountant", "system")),
     artifact_state_repo: ArtifactStateRepository = Depends(get_artifact_state_repo),
     request: Request = None  # Для получения services
 ):
