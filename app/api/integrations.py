@@ -278,7 +278,8 @@ async def upsert_onec_settings(
     request: OneCSettingsRequest,
     tenant_id: Optional[str] = Query(None),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    settings_service: OneCSettingsService = Depends(get_settings_service)
+    settings_service: OneCSettingsService = Depends(get_settings_service),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Создать или обновить настройки интеграции 1С.
@@ -320,7 +321,8 @@ async def upsert_onec_settings(
 async def test_onec_connection(
     tenant_id: Optional[str] = Query(None),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    settings_service: OneCSettingsService = Depends(get_settings_service)
+    settings_service: OneCSettingsService = Depends(get_settings_service),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Проверить соединение с 1С.
