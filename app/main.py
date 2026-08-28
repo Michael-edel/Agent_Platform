@@ -108,6 +108,7 @@ app.add_middleware(RequestIDMiddleware)
 
 # Opt-in auth + RBAC (pilots)
 from app.security.auth import AuthMiddleware, require_roles
+from app.api.admin_auth import admin_auth
 app.add_middleware(AuthMiddleware)
 
 # Middleware для метрик HTTP запросов (если включены)
@@ -1770,7 +1771,8 @@ async def get_billing_rates(
 async def create_billing_rate(
     request: Request,
     rate_request: RateCreateRequest,
-    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _admin_auth: bool = Depends(admin_auth),
 ):
     """
     Создать или обновить тариф (tenant-specific или default).
@@ -2715,7 +2717,7 @@ async def get_billing_quota(
 async def admin_reset_usage(
     request: Request,
     reset_request: ResetUsageRequest,
-    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")
+    _admin_auth: bool = Depends(admin_auth),
 ):
     """
     Admin-only endpoint для сброса usage (для тестов/демо).
@@ -2724,32 +2726,9 @@ async def admin_reset_usage(
     - **tenant_id**: ID тенанта
     - **period**: Период в формате YYYY-MM
     """
-    import os
-    
     bs = getattr(request.app.state, "billing_service", None)
     if not bs:
         raise HTTPException(status_code=500, detail="Billing not initialized")
-    
-    # Проверка наличия admin key в ENV
-    admin_key_env = os.getenv("BILLING_ADMIN_KEY", "").strip()
-    if not admin_key_env:
-        raise HTTPException(
-            status_code=501,
-            detail="Admin reset usage endpoint is not configured. Set BILLING_ADMIN_KEY environment variable."
-        )
-    
-    # Проверка переданного ключа
-    if not x_admin_key:
-        raise HTTPException(
-            status_code=403,
-            detail="X-Admin-Key заголовок обязателен"
-        )
-    
-    if x_admin_key != admin_key_env:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid admin key"
-        )
     
     # Валидация формата периода
     try:
@@ -3101,7 +3080,10 @@ async def get_billing_portal(
 
 
 @app.post("/api/v1/billing/cron/charge-kaspi", response_model=KaspiRecurringChargeResponse)
-async def charge_kaspi_recurring(request: Request):
+async def charge_kaspi_recurring(
+    request: Request,
+    _admin_auth: bool = Depends(admin_auth),
+):
     """
     Запустить recurring charge для активных Kaspi подписок.
     
