@@ -136,7 +136,7 @@ async def import_bank_statement_lines(
     file: UploadFile = File(...),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     artifact_service: ArtifactService = Depends(get_artifact_service),
-    _: None = Depends(require_roles("accountant")),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Импорт выписки (CSV) как артефакты bank.statement.line.
@@ -290,7 +290,8 @@ async def get_reconciliation_suggestions(
 async def upload_statement(
     file: UploadFile = File(...),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    reconciliation_service: ReconciliationService = Depends(get_reconciliation_service)
+    reconciliation_service: ReconciliationService = Depends(get_reconciliation_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Загрузить банковскую выписку (CSV).
@@ -348,7 +349,8 @@ async def auto_match_statement(
     statement_id: str,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     reconciliation_service: ReconciliationService = Depends(get_reconciliation_service),
-    payment_service: PaymentService = Depends(get_payment_service)
+    payment_service: PaymentService = Depends(get_payment_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Автоматическое сопоставление транзакций выписки с платёжными поручениями.
@@ -459,7 +461,8 @@ async def manual_match(
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     reconciliation_service: ReconciliationService = Depends(get_reconciliation_service),
     payment_service: PaymentService = Depends(get_payment_service),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Ручное сопоставление транзакции с платёжным поручением.
@@ -543,7 +546,8 @@ async def manual_match(
 async def finalize_statement(
     statement_id: str,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    reconciliation_service: ReconciliationService = Depends(get_reconciliation_service)
+    reconciliation_service: ReconciliationService = Depends(get_reconciliation_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Завершить обработку выписки (пометить как reconciled).

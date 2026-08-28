@@ -331,6 +331,16 @@ def test_approver_cannot_mutate_cases(client_with_overrides, monkeypatch):
     )
     assert response.status_code == 403
 
+
+def test_approver_cannot_upload_reconciliation_statement(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    response = client_with_overrides.post(
+        "/api/v1/reconciliation/statements/upload",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"},
+        files={"file": ("statement.csv", "date,amount,description,counterparty\\n2026-01-01,-1000,Invoice,Supplier\\n", "text/csv")},
+    )
+    assert response.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
