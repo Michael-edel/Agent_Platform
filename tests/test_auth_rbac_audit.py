@@ -270,6 +270,30 @@ def test_token_cannot_finalize_another_tenants_statement(client_with_overrides, 
     assert original.status_code == 200, original.text
     assert original.json()["status"] == "parsed"
 
+
+def test_accountant_cannot_change_or_probe_onec_settings(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"}
+
+    changed = client_with_overrides.put(
+        "/api/v1/integrations/onec/settings",
+        headers=headers,
+        json={
+            "enabled": True,
+            "base_url": "http://example.invalid",
+            "auth_type": "token",
+            "token": "secret",
+            "timeout_seconds": 10,
+        },
+    )
+    assert changed.status_code == 403
+
+    probed = client_with_overrides.post(
+        "/api/v1/integrations/onec/test-connection",
+        headers=headers,
+    )
+    assert probed.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
