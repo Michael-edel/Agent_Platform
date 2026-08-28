@@ -359,6 +359,25 @@ def test_approver_cannot_execute_or_cancel_agents(client_with_overrides, monkeyp
     assert cancel.status_code == 403
 
 
+def test_approver_cannot_run_legacy_agent_endpoints(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"}
+
+    doc = client_with_overrides.post(
+        "/agents/doc_agent/run",
+        headers=headers,
+        json={"artifact_id": "not-owned"},
+    )
+    assert doc.status_code == 403
+
+    payment = client_with_overrides.post(
+        "/api/v1/agents/payment_agent/run",
+        headers=headers,
+        json={"artifact_id": "not-owned"},
+    )
+    assert payment.status_code == 403
+
+
 def test_approver_cannot_run_ocr_or_confirm_invoice(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"}
