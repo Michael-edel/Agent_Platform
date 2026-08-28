@@ -34,11 +34,13 @@ def client_with_overrides(temp_db, monkeypatch):
     from app.api.payments import get_case_service as get_case_service_dep
     from app.api.integrations import get_payment_service as get_integrations_payment_dep
     from app.api.integrations import get_event_service as get_integrations_event_dep
+    from app.api.cases import get_case_service as get_cases_service_dep
 
     app.dependency_overrides[get_payment_service_dep] = lambda: payment_service
     app.dependency_overrides[get_case_service_dep] = lambda: case_service
     app.dependency_overrides[get_integrations_payment_dep] = lambda: payment_service
     app.dependency_overrides[get_integrations_event_dep] = lambda: event_service
+    app.dependency_overrides[get_cases_service_dep] = lambda: case_service
 
     with TestClient(app) as client:
         yield client
@@ -213,6 +215,31 @@ def test_token_cannot_override_header_scope_with_query_tenant(client_with_overri
 
     assert response.status_code == 403
 
+
+
+def test_token_cannot_mutate_case_in_another_tenant(client_with_overrides, monkeypatch):
+    created = client_with_overrides.post(
+        "/api/v1/cases",
+        headers={"X-Tenant-ID": "tenant-2"},
+        json={"case_type": "invoice", "title": "Tenant 2 case"},
+    )
+    assert created.status_code == 201, created.text
+    case_id = created.json()["id"]
+
+    _enable_scoped_auth(monkeypatch)
+    denied = client_with_overrides.post(
+        f"/api/v1/cases/{case_id}/close",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"},
+    )
+    assert denied.status_code == 404
+
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    original = client_with_overrides.get(
+        f"/api/v1/cases/{case_id}",
+        headers={"X-Tenant-ID": "tenant-2"},
+    )
+    assert original.status_code == 200, original.text
+    assert original.json()["status"] == "open"
 
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
