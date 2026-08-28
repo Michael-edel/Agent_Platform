@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from cyberplat.product.infrastructure.database import get_engine
 from cyberplat.product.infrastructure.models import AgentExecution, AgentSKU
 from app.agents.metrics import inc_failed
+from app.security.auth import require_roles
 
 
 router = APIRouter(prefix="/api/v1/executions", tags=["executions"])
@@ -34,6 +35,7 @@ class CancelResponse(BaseModel):
 def cancel_execution(
     execution_id: str,
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Best-effort cancellation.
