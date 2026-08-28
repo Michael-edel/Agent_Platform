@@ -123,6 +123,14 @@ def get_artifact_service() -> ArtifactService:
     return ArtifactService()
 
 
+def _require_tenant_statement(
+    reconciliation_service: ReconciliationService, statement_id: str, tenant_id: str
+) -> None:
+    """Raise 404 unless the statement belongs to the request tenant."""
+    if not reconciliation_service.get_statement(statement_id, tenant_id=tenant_id):
+        raise HTTPException(status_code=404, detail="Выписка не найдена")
+
+
 @router.post("/reconciliation/bank-statements/import", response_model=BankStatementImportResponse, status_code=201)
 async def import_bank_statement_lines(
     file: UploadFile = File(...),
@@ -351,6 +359,7 @@ async def auto_match_statement(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_statement(reconciliation_service, statement_id, x_tenant_id)
         match_result = reconciliation_service.auto_match(
             statement_id=statement_id,
             tenant_id=x_tenant_id,
@@ -380,6 +389,8 @@ async def auto_match_statement(
             matched_count=match_result["matched_count"],
             unmatched_count=match_result["unmatched_count"]
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при автосопоставлении: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при автосопоставлении: {str(e)}")
@@ -543,12 +554,15 @@ async def finalize_statement(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_statement(reconciliation_service, statement_id, x_tenant_id)
         reconciliation_service.finalize_statement(statement_id, x_tenant_id)
         
         return FinalizeResponse(
             success=True,
             message="Выписка завершена"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка при завершении выписки: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при завершении выписки: {str(e)}")
