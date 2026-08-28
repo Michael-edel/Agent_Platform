@@ -29,17 +29,21 @@ def client_with_overrides(temp_db, monkeypatch):
     payment_service = PaymentService(db_path=temp_db)
     case_service = CaseService(db_path=temp_db)
     event_service = EventService(db_path=temp_db)
+    from cyberplat.reconciliation.reconciliation_service import ReconciliationService
+    reconciliation_service = ReconciliationService(db_path=temp_db)
 
     from app.api.payments import get_payment_service as get_payment_service_dep
     from app.api.payments import get_case_service as get_case_service_dep
     from app.api.integrations import get_payment_service as get_integrations_payment_dep
     from app.api.integrations import get_event_service as get_integrations_event_dep
+    from app.api.reconciliation import get_reconciliation_service as get_reconciliation_service_dep
     from app.api.cases import get_case_service as get_cases_service_dep
 
     app.dependency_overrides[get_payment_service_dep] = lambda: payment_service
     app.dependency_overrides[get_case_service_dep] = lambda: case_service
     app.dependency_overrides[get_integrations_payment_dep] = lambda: payment_service
     app.dependency_overrides[get_integrations_event_dep] = lambda: event_service
+    app.dependency_overrides[get_reconciliation_service_dep] = lambda: reconciliation_service
     app.dependency_overrides[get_cases_service_dep] = lambda: case_service
 
     with TestClient(app) as client:
@@ -240,6 +244,31 @@ def test_token_cannot_mutate_case_in_another_tenant(client_with_overrides, monke
     )
     assert original.status_code == 200, original.text
     assert original.json()["status"] == "open"
+
+
+def test_token_cannot_finalize_another_tenants_statement(client_with_overrides, monkeypatch):
+    uploaded = client_with_overrides.post(
+        "/api/v1/reconciliation/statements/upload",
+        headers={"X-Tenant-ID": "tenant-2"},
+        files={"file": ("statement.csv", "date,amount,description,counterparty\\n2026-01-01,-1000,Invoice,Supplier\\n", "text/csv")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    statement_id = uploaded.json()["statement_id"]
+
+    _enable_scoped_auth(monkeypatch)
+    denied = client_with_overrides.post(
+        f"/api/v1/reconciliation/statements/{statement_id}/finalize",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"},
+    )
+    assert denied.status_code == 404
+
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    original = client_with_overrides.get(
+        f"/api/v1/reconciliation/statements/{statement_id}",
+        headers={"X-Tenant-ID": "tenant-2"},
+    )
+    assert original.status_code == 200, original.text
+    assert original.json()["status"] == "parsed"
 
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
