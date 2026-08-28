@@ -10,6 +10,7 @@ from cyberplat.artifact_service import ArtifactService
 from cyberplat.integrations.onec_settings_service import OneCSettingsService
 from cyberplat.integrations.integration_job_service import IntegrationJobService
 from cyberplat.integrations.idempotency_service import IdempotencyService
+from app.security.auth import require_roles
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,8 @@ def get_idempotency_service() -> IdempotencyService:
 async def create_case(
     request: CreateCaseRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Создать новый кейс.
@@ -213,7 +215,8 @@ async def add_task(
     case_id: str,
     request: AddTaskRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Добавить задачу к кейсу.
@@ -253,7 +256,8 @@ async def complete_task(
     case_id: str,
     task_id: str,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Завершить задачу.
@@ -281,7 +285,8 @@ async def transition_step(
     case_id: str,
     request: TransitionStepRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Перевести кейс на новый шаг.
@@ -314,7 +319,8 @@ async def transition_step(
 async def close_case(
     case_id: str,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    case_service: CaseService = Depends(get_case_service)
+    case_service: CaseService = Depends(get_case_service),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Закрыть кейс.
@@ -346,7 +352,8 @@ async def sync_case_to_onec(
     artifact_service: ArtifactService = Depends(get_artifact_service),
     settings_service: OneCSettingsService = Depends(get_onec_settings_service),
     job_service: IntegrationJobService = Depends(get_integration_job_service),
-    idempotency_service: IdempotencyService = Depends(get_idempotency_service)
+    idempotency_service: IdempotencyService = Depends(get_idempotency_service),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Ручная синхронизация артефакта из кейса в 1С.
