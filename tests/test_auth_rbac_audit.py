@@ -321,6 +321,16 @@ def test_system_cannot_create_webhook_for_private_address(client_with_overrides,
     assert response.status_code == 400
     assert "private address" in response.json()["detail"]
 
+
+def test_approver_cannot_mutate_cases(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    response = client_with_overrides.post(
+        "/api/v1/cases",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"},
+        json={"case_type": "invoice", "title": "Should not be created"},
+    )
+    assert response.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
