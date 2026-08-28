@@ -239,6 +239,8 @@ async def add_task(
             raise HTTPException(status_code=500, detail="Ошибка при создании задачи")
         
         return TaskResponse(**task)
+    except HTTPException:
+        raise
     except CaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -265,6 +267,8 @@ async def complete_task(
         _require_tenant_case(case_service, case_id, x_tenant_id)
         case_service.complete_task(case_id, task_id)
         return {"status": "ok", "message": "Задача завершена"}
+    except HTTPException:
+        raise
     except CaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -295,6 +299,8 @@ async def transition_step(
             from_step=request.from_step
         )
         return {"status": "ok", "message": "Кейс переведён на новый шаг"}
+    except HTTPException:
+        raise
     except CaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidTransitionError as e:
@@ -322,6 +328,8 @@ async def close_case(
         _require_tenant_case(case_service, case_id, x_tenant_id)
         case_service.close_case(case_id)
         return {"status": "ok", "message": "Кейс закрыт"}
+    except HTTPException:
+        raise
     except CaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
