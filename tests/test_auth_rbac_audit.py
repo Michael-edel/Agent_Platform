@@ -294,6 +294,16 @@ def test_accountant_cannot_change_or_probe_onec_settings(client_with_overrides, 
     )
     assert probed.status_code == 403
 
+
+def test_accountant_cannot_manage_webhooks(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    response = client_with_overrides.post(
+        "/api/v1/webhooks",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer secret-token"},
+        json={"url": "https://example.invalid/webhook", "events": ["invoice.ready"]},
+    )
+    assert response.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
