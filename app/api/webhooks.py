@@ -9,6 +9,7 @@ from pydantic import BaseModel, HttpUrl
 
 from app.api.admin_auth import admin_auth
 from app.security.auth import require_roles
+from app.security.outbound import OutboundDestinationError, validate_public_webhook_url
 from cyberplat.product.infrastructure.database import get_sessionmaker
 from cyberplat.event_service import EventService  # noqa: F401  (для unit-тестов, которые патчат модуль)
 
@@ -101,6 +102,11 @@ async def create_webhook(
             detail="X-Tenant-ID header is required"
         )
     
+    try:
+        validate_public_webhook_url(str(webhook_data.url))
+    except OutboundDestinationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     # Валидация events
     valid_events = {
         "invoice.ready",
