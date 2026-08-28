@@ -359,6 +359,26 @@ def test_approver_cannot_execute_or_cancel_agents(client_with_overrides, monkeyp
     assert cancel.status_code == 403
 
 
+def test_financial_admin_operations_require_admin_key(client_with_overrides, monkeypatch):
+    monkeypatch.setenv("ADMIN_API_KEY", "admin-secret")
+
+    rate = client_with_overrides.post(
+        "/api/v1/billing/rates",
+        headers={"X-Tenant-ID": "tenant-1"},
+        json={"metric": "invoice_extracted", "unit_price_minor": 100},
+    )
+    assert rate.status_code == 403
+
+    reset = client_with_overrides.post(
+        "/api/v1/billing/admin/reset-usage",
+        json={"tenant_id": "tenant-1", "period": "2026-08"},
+    )
+    assert reset.status_code == 403
+
+    recurring = client_with_overrides.post("/api/v1/billing/cron/charge-kaspi")
+    assert recurring.status_code == 403
+
+
 def test_approver_cannot_run_legacy_agent_endpoints(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"}
