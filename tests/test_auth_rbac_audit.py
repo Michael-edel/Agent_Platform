@@ -196,6 +196,24 @@ def test_token_cannot_access_another_tenant(client_with_overrides, monkeypatch):
     assert response.status_code == 403
 
 
+def test_token_cannot_override_header_scope_with_query_tenant(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch, {
+        "system-token": {
+            "subject": "pilot-system",
+            "role": "system",
+            "tenants": ["tenant-1"],
+        },
+    })
+
+    response = client_with_overrides.put(
+        "/api/v1/payments/policy?tenant_id=tenant-2",
+        headers={"X-Tenant-ID": "tenant-1", "Authorization": "Bearer system-token"},
+        json={"enabled": True, "thresholds": []},
+    )
+
+    assert response.status_code == 403
+
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
