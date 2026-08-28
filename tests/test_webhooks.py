@@ -325,8 +325,8 @@ class TestAdminProtection:
             assert response.status_code == 403
             assert "Invalid" in response.json()["detail"]
     
-    def test_dispatch_allows_without_key_in_dev_mode(self, test_app):
-        """Тест: dispatch разрешает доступ без ключа в dev режиме."""
+    def test_dispatch_denies_when_admin_key_is_missing(self, test_app):
+        """Тест: dispatch закрыт, когда ADMIN_API_KEY не настроен."""
         with patch.dict(os.environ, {}, clear=True):
             if "ADMIN_API_KEY" in os.environ:
                 del os.environ["ADMIN_API_KEY"]
@@ -337,10 +337,9 @@ class TestAdminProtection:
             with patch("app.api.webhooks.get_sessionmaker") as mock_session, \
                  patch("app.api.webhooks.EventService") as mock_event:
                 
-                # Без ключа (dev режим)
                 response = client.post("/api/v1/webhooks/dispatch?limit=10")
-                # Должен пройти auth (не 403), но может быть 500 из-за моков
-                assert response.status_code != 403
+                assert response.status_code == 503
+                assert response.json()["detail"] == "Administrative API is not configured"
 
 
 class TestSafePayload:
