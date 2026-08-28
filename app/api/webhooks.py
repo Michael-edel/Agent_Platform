@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from pydantic import BaseModel, HttpUrl
 
 from app.api.admin_auth import admin_auth
+from app.security.auth import require_roles
 from cyberplat.product.infrastructure.database import get_sessionmaker
 from cyberplat.event_service import EventService  # noqa: F401  (для unit-тестов, которые патчат модуль)
 
@@ -86,7 +87,8 @@ async def list_webhooks(
 async def create_webhook(
     request: Request,
     webhook_data: CreateWebhookRequest,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID")
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Создать webhook для tenant.
@@ -158,7 +160,8 @@ async def create_webhook(
 async def delete_webhook(
     request: Request,
     webhook_id: str,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID")
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Удалить webhook.
@@ -201,7 +204,8 @@ async def delete_webhook(
 async def rotate_webhook_secret(
     request: Request,
     webhook_id: str,
-    x_tenant_id: str = Header(..., alias="X-Tenant-ID")
+    x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Обновить secret для webhook (rotate).
