@@ -341,6 +341,23 @@ def test_approver_cannot_upload_reconciliation_statement(client_with_overrides, 
     )
     assert response.status_code == 403
 
+
+def test_approver_cannot_execute_or_cancel_agents(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"}
+    execute = client_with_overrides.post(
+        "/api/v1/agents/demo.text_stats/execute",
+        headers=headers,
+        json={"input": {}, "idempotency_key": "rbac-check"},
+    )
+    assert execute.status_code == 403
+
+    cancel = client_with_overrides.post(
+        "/api/v1/executions/not-owned/cancel",
+        headers=headers,
+    )
+    assert cancel.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
