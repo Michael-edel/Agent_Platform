@@ -22,6 +22,7 @@ from app.agents.guards import (
     AgentAddonInactiveError,
 )
 from app.billing.limits import check_plan_limit, PlanLimitExceededError
+from app.security.auth import require_roles
 
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
@@ -112,6 +113,7 @@ def execute_agent(
     agent_code: str,
     request: ExecuteRequest,
     x_tenant_id: str = Header(..., alias="X-Tenant-ID"),
+    _: None = Depends(require_roles("accountant", "system")),
 ):
     """
     Execute an agent for the tenant.
