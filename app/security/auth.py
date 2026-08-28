@@ -121,8 +121,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not identity:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
-        requested_tenant = request.headers.get("X-Tenant-ID")
-        if requested_tenant:
+        requested_tenants = [request.headers.get("X-Tenant-ID"), *request.query_params.getlist("tenant_id")]
+        for requested_tenant in requested_tenants:
+            if not requested_tenant:
+                continue
             requested_tenant = requested_tenant.strip()
             if requested_tenant not in identity.tenant_ids and "*" not in identity.tenant_ids:
                 return JSONResponse(status_code=403, content={"detail": "Forbidden"})
