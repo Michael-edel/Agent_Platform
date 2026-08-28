@@ -358,6 +358,16 @@ def test_approver_cannot_execute_or_cancel_agents(client_with_overrides, monkeyp
     )
     assert cancel.status_code == 403
 
+
+def test_approver_cannot_run_ocr_or_confirm_invoice(client_with_overrides, monkeypatch):
+    _enable_scoped_auth(monkeypatch)
+    headers = {"X-Tenant-ID": "tenant-1", "Authorization": "Bearer approver-token"}
+    ocr = client_with_overrides.post("/api/v1/documents/not-owned/run-ocr", headers=headers)
+    assert ocr.status_code == 403
+
+    confirm = client_with_overrides.post("/api/v1/invoices/not-owned/confirm", headers=headers)
+    assert confirm.status_code == 403
+
 def test_rbac_approve_requires_approver_token(client_with_overrides, monkeypatch):
     _enable_scoped_auth(monkeypatch)
     payment_id = _create_payment(
