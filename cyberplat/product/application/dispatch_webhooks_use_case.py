@@ -9,6 +9,7 @@ import random
 import httpx
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from app.security.outbound import OutboundDestinationError, validate_public_webhook_url
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,12 @@ class DispatchWebhooksUseCase:
             return {"status": "skipped", "error": None}
         
         url = webhook["url"]
+        try:
+            validate_public_webhook_url(url)
+        except OutboundDestinationError as exc:
+            error_message = f"Unsafe webhook URL: {exc}"
+            self.webhook_delivery_repo.mark_dead(delivery_id, error_message)
+            return {"status": "dead", "error": error_message}
         secret = webhook["secret"]
         tenant_id = webhook["tenant_id"]
         
