@@ -5,6 +5,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from app.api.admin_auth import admin_auth
+from app.api.email_ingest_auth import email_ingest_auth
 from cyberplat.product.infrastructure.database import get_sessionmaker
 
 # Импорты ниже нужны не для runtime логики endpoint,
@@ -21,7 +22,8 @@ router = APIRouter()
 @router.post("/ingest/email")
 async def ingest_email(
     request: Request,
-    payload: Dict[str, Any]
+    payload: Dict[str, Any],
+    _email_ingest_auth: bool = Depends(email_ingest_auth),
 ):
     """
     Email ingestion endpoint.
