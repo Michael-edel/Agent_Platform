@@ -91,6 +91,12 @@ def get_case_service() -> CaseService:
     return CaseService()
 
 
+def _require_tenant_case(case_service: CaseService, case_id: str, tenant_id: str) -> None:
+    """Raise 404 unless the case belongs to the tenant in the request."""
+    if not case_service.get_case(case_id, tenant_id=tenant_id):
+        raise HTTPException(status_code=404, detail="Кейс не найден")
+
+
 def get_artifact_service() -> ArtifactService:
     """Получить экземпляр ArtifactService."""
     return ArtifactService()
@@ -218,6 +224,7 @@ async def add_task(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_case(case_service, case_id, x_tenant_id)
         task_id = case_service.add_task(
             case_id=case_id,
             step_key=request.step_key,
@@ -255,6 +262,7 @@ async def complete_task(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_case(case_service, case_id, x_tenant_id)
         case_service.complete_task(case_id, task_id)
         return {"status": "ok", "message": "Задача завершена"}
     except CaseNotFoundError as e:
@@ -280,6 +288,7 @@ async def transition_step(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_case(case_service, case_id, x_tenant_id)
         case_service.transition_step(
             case_id=case_id,
             new_step=request.new_step,
@@ -310,6 +319,7 @@ async def close_case(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        _require_tenant_case(case_service, case_id, x_tenant_id)
         case_service.close_case(case_id)
         return {"status": "ok", "message": "Кейс закрыт"}
     except CaseNotFoundError as e:
