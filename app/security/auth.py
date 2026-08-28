@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
-ALLOWED_ROLES: Set[str] = {"accountant", "approver", "system"}
+ALLOWED_ROLES: Set[str] = {"accountant", "approver", "director", "system"}
 PUBLIC_PATHS = {"/health", "/ready", "/metrics"}
 
 

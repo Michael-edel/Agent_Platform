@@ -21,7 +21,7 @@ class CreatePaymentOrderRequest(BaseModel):
     beneficiary_name: str
     beneficiary_account_iban: str
     purpose: str
-    created_by_role: str
+    created_by_role: Optional[str] = None  # Ignored: derived from the authenticated token.
     case_id: Optional[str] = None
     source_invoice_id: Optional[str] = None
     currency: str = "KZT"
@@ -93,9 +93,7 @@ class SubmitForApprovalResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    role: str
     comment: Optional[str] = None
-    decided_by: Optional[str] = None
 
 
 class ApproveResponse(BaseModel):
@@ -104,9 +102,7 @@ class ApproveResponse(BaseModel):
 
 
 class RejectRequest(BaseModel):
-    role: str
     comment: Optional[str] = None
-    decided_by: Optional[str] = None
 
 
 class RejectResponse(BaseModel):
@@ -168,6 +164,7 @@ async def create_payment_order(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        actor = get_actor(http_request)
         # Проверяем case_id если указан
         if request.case_id:
             case = case_service.get_case(request.case_id, tenant_id=x_tenant_id)
@@ -180,7 +177,7 @@ async def create_payment_order(
             beneficiary_name=request.beneficiary_name,
             beneficiary_account_iban=request.beneficiary_account_iban,
             purpose=request.purpose,
-            created_by_role=request.created_by_role,
+            created_by_role=actor.role,
             case_id=request.case_id,
             source_invoice_id=request.source_invoice_id,
             currency=request.currency,
@@ -499,7 +496,7 @@ async def approve_payment_order(
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
     case_service: CaseService = Depends(get_case_service),
-    _: None = Depends(require_roles("approver")),
+    _: None = Depends(require_roles("approver", "director")),
 ):
     """
     Одобрить шаг согласования платёжного поручения.
@@ -510,14 +507,15 @@ async def approve_payment_order(
         raise HTTPException(status_code=400, detail="X-Tenant-ID header обязателен")
     
     try:
+        actor = get_actor(http_request)
         payment_service.approve(
             order_id=order_id,
             tenant_id=x_tenant_id,
-            role=request.role,
+            role=actor.role,
             comment=request.comment,
-            decided_by=request.decided_by,
-            actor_role=get_actor(http_request).role,
-            actor_subject=get_actor(http_request).subject,
+            decided_by=actor.subject,
+            actor_role=actor.role,
+            actor_subject=actor.subject,
         )
         
         # Получаем обновлённый order
@@ -571,7 +569,7 @@ async def reject_payment_order(
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
     payment_service: PaymentService = Depends(get_payment_service),
     case_service: CaseService = Depends(get_case_service),
-    _: None = Depends(require_roles("approver")),
+    _: None = Depends(require_roles("approver", "director")),
 ):
     """
     Отклонить платёжное поручение.
@@ -584,14 +582,15 @@ async def reject_payment_order(
     try:
         if not request.comment or not request.comment.strip():
             raise HTTPException(status_code=400, detail="Причина отклонения обязательна")
+        actor = get_actor(http_request)
         payment_service.reject(
             order_id=order_id,
             tenant_id=x_tenant_id,
-            role=request.role,
+            role=actor.role,
             comment=request.comment,
-            decided_by=request.decided_by,
-            actor_role=get_actor(http_request).role,
-            actor_subject=get_actor(http_request).subject,
+            decided_by=actor.subject,
+            actor_role=actor.role,
+            actor_subject=actor.subject,
         )
         
         # Логируем событие в кейсе
@@ -606,7 +605,7 @@ async def reject_payment_order(
                     "payment_rejected",
                     {
                         "payment_order_id": order_id,
-                        "role": request.role,
+                        "role": get_actor(http_request).role,
                         "comment": request.comment
                     }
                 )
@@ -633,7 +632,8 @@ async def export_payment_order(
     order_id: str,
     request: ExportRequest,
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    payment_service: PaymentService = Depends(get_payment_service)
+    payment_service: PaymentService = Depends(get_payment_service),
+    _: None = Depends(require_roles("accountant")),
 ):
     """
     Экспортировать платёжное поручение.
@@ -718,7 +718,8 @@ async def upsert_payment_policy(
     request: PaymentPolicyRequest,
     tenant_id: Optional[str] = Query(None),
     x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
-    payment_service: PaymentService = Depends(get_payment_service)
+    payment_service: PaymentService = Depends(get_payment_service),
+    _: None = Depends(require_roles("system")),
 ):
     """
     Создать или обновить политику согласования.
